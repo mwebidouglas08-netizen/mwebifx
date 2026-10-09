@@ -1,16 +1,13 @@
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import ErrorBoundary from '@/components/error-component/error-boundary';
 import ErrorComponent from '@/components/error-component/error-component';
-import ChunkErrorBoundary from '@/components/chunk-error-boundary';
-import { retryableLazy } from '@/utils/retryable-lazy';
 import ChunkLoader from '@/components/loader/chunk-loader';
 import { api_base } from '@/external/bot-skeleton';
 import { useStore } from '@/hooks/useStore';
 import { localize } from '@deriv-com/translations';
+import AppContent from './app-content';
 import './app-root.scss';
-
-const AppContent = retryableLazy(() => import('./app-content'));
 
 const AppRootLoader = () => {
     return <ChunkLoader message={localize('Loading...')} />;
@@ -70,14 +67,10 @@ const AppRoot = () => {
     if (!store || !is_api_initialized) return <AppRootLoader />;
 
     return (
-        <ChunkErrorBoundary>
-            <Suspense fallback={<AppRootLoader />}>
-                <ErrorBoundary root_store={store}>
-                    <ErrorComponentWrapper />
-                    <AppContent />
-                </ErrorBoundary>
-            </Suspense>
-        </ChunkErrorBoundary>
+        <ErrorBoundary root_store={store}>
+            <ErrorComponentWrapper />
+            <AppContent />
+        </ErrorBoundary>
     );
 };
 

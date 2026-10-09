@@ -2,7 +2,6 @@ import { Suspense } from 'react';
 import React from 'react';
 import { createBrowserRouter, createRoutesFromElements, Route, RouterProvider } from 'react-router';
 import ChunkErrorBoundary from '@/components/chunk-error-boundary';
-import { retryableLazy } from '@/utils/retryable-lazy';
 import { cleanupUrl, handleOAuthCallback } from '@/external/deriv-core';
 import ChunkLoader from '@/components/loader/chunk-loader';
 import LocalStorageSyncWrapper from '@/components/localStorage-sync-wrapper';
@@ -14,10 +13,9 @@ import { isPreviewMode, PREVIEW_BASE_PATH } from '@/utils/is-preview-mode';
 import { localize, TranslationProvider } from '@deriv-com/translations';
 import CoreStoreProvider from './CoreStoreProvider';
 import i18nInstance from './i18n';
+import Layout from '../components/layout';
+import AppRoot from './app-root';
 import './app-root.scss';
-
-const Layout = retryableLazy(() => import('../components/layout'));
-const AppRoot = retryableLazy(() => import('./app-root'));
 
 /**
  * Component wrapper to handle language URL parameter
