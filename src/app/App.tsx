@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import React from 'react';
 import { createBrowserRouter, createRoutesFromElements, Route, RouterProvider } from 'react-router';
+import ChunkErrorBoundary from '@/components/chunk-error-boundary';
 import { cleanupUrl, handleOAuthCallback } from '@/external/deriv-core';
 import ChunkLoader from '@/components/loader/chunk-loader';
 import LocalStorageSyncWrapper from '@/components/localStorage-sync-wrapper';
@@ -36,28 +37,44 @@ const router = createBrowserRouter(
         <Route
             path='/'
             element={
-                <Suspense
-                    fallback={<ChunkLoader message={localize('Please wait while we connect to the server...')} />}
-                >
-                    <TranslationProvider defaultLang='EN' i18nInstance={i18nInstance}>
-                        <LanguageHandler>
-                            <StoreProvider>
-                                <LocalStorageSyncWrapper>
-                                    <RoutePromptDialog />
-                                    <CoreStoreProvider>
-                                        <Layout />
-                                    </CoreStoreProvider>
-                                </LocalStorageSyncWrapper>
-                            </StoreProvider>
-                        </LanguageHandler>
-                    </TranslationProvider>
-                </Suspense>
+                <ChunkErrorBoundary>
+                    <Suspense
+                        fallback={<ChunkLoader message={localize('Please wait while we connect to the server...')} />}
+                    >
+                        <TranslationProvider defaultLang='EN' i18nInstance={i18nInstance}>
+                            <LanguageHandler>
+                                <StoreProvider>
+                                    <LocalStorageSyncWrapper>
+                                        <RoutePromptDialog />
+                                        <CoreStoreProvider>
+                                            <Layout />
+                                        </CoreStoreProvider>
+                                    </LocalStorageSyncWrapper>
+                                </StoreProvider>
+                            </LanguageHandler>
+                        </TranslationProvider>
+                    </Suspense>
+                </ChunkErrorBoundary>
             }
         >
             {/* All child routes will be passed as children to Layout */}
-            <Route index element={<AppRoot />} />
+            <Route
+                index
+                element={
+                    <ChunkErrorBoundary>
+                        <AppRoot />
+                    </ChunkErrorBoundary>
+                }
+            />
             {/* App Builder embeds the template at /preview — render the same app shell */}
-            <Route path='preview' element={<AppRoot />} />
+            <Route
+                path='preview'
+                element={
+                    <ChunkErrorBoundary>
+                        <AppRoot />
+                    </ChunkErrorBoundary>
+                }
+            />
         </Route>
     ),
     { basename: routerBasename }

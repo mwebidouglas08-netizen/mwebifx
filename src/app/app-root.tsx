@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import ErrorBoundary from '@/components/error-component/error-boundary';
 import ErrorComponent from '@/components/error-component/error-component';
+import ChunkErrorBoundary from '@/components/chunk-error-boundary';
 import ChunkLoader from '@/components/loader/chunk-loader';
 import { api_base } from '@/external/bot-skeleton';
 import { useStore } from '@/hooks/useStore';
@@ -68,12 +69,14 @@ const AppRoot = () => {
     if (!store || !is_api_initialized) return <AppRootLoader />;
 
     return (
-        <Suspense fallback={<AppRootLoader />}>
-            <ErrorBoundary root_store={store}>
-                <ErrorComponentWrapper />
-                <AppContent />
-            </ErrorBoundary>
-        </Suspense>
+        <ChunkErrorBoundary>
+            <Suspense fallback={<AppRootLoader />}>
+                <ErrorBoundary root_store={store}>
+                    <ErrorComponentWrapper />
+                    <AppContent />
+                </ErrorBoundary>
+            </Suspense>
+        </ChunkErrorBoundary>
     );
 };
 
