@@ -6,7 +6,7 @@ export class DashboardStore {
     active_tour = '';
 
     constructor() {
-        makeAutoObservable(this);
+        makeAutoObservable(this, undefined, { autoBind: true });
     }
 
     setIsWebSocketInitialised(value: boolean) {

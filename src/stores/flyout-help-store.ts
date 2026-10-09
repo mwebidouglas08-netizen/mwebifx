@@ -11,7 +11,7 @@ export class FlyoutHelpStore {
     title = '';
 
     constructor() {
-        makeAutoObservable(this);
+        makeAutoObservable(this, undefined, { autoBind: true });
     }
 
     initFlyoutHelp(_node: Element, _block_type: string) {

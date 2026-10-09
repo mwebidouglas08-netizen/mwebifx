@@ -5,7 +5,7 @@ export class GoogleDriveStore {
     is_authorised = false;
 
     constructor() {
-        makeAutoObservable(this);
+        makeAutoObservable(this, undefined, { autoBind: true });
     }
 
     signIn() {

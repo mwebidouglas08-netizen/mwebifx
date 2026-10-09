@@ -4,7 +4,7 @@ export class QuickStrategyStore {
     is_open = false;
 
     constructor() {
-        makeAutoObservable(this);
+        makeAutoObservable(this, undefined, { autoBind: true });
     }
 
     setOpen(open: boolean) {

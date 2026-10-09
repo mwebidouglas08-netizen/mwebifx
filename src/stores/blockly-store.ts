@@ -4,7 +4,7 @@ export class BlocklyStore {
     is_loading = false;
 
     constructor() {
-        makeAutoObservable(this);
+        makeAutoObservable(this, undefined, { autoBind: true });
     }
 
     setLoading(value: boolean) {

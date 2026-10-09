@@ -10,7 +10,7 @@ export class RunPanelStore {
     is_statistics_info_modal_open = false;
 
     constructor() {
-        makeAutoObservable(this);
+        makeAutoObservable(this, undefined, { autoBind: true });
     }
 
     setIsRunning(value: boolean) {

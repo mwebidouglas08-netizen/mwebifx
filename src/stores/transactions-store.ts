@@ -13,7 +13,7 @@ export class TransactionsStore {
     };
 
     constructor() {
-        makeAutoObservable(this);
+        makeAutoObservable(this, undefined, { autoBind: true });
     }
 
     recoverPendingContracts(contract: any) {

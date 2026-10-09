@@ -17,7 +17,7 @@ export class ClientStore {
     should_hide_header = false;
 
     constructor() {
-        makeAutoObservable(this);
+        makeAutoObservable(this, undefined, { autoBind: true });
     }
 
     setLoginId(loginid: string) {

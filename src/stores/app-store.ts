@@ -4,7 +4,7 @@ export class AppStore {
     api_helpers_store: any = null;
 
     constructor() {
-        makeAutoObservable(this);
+        makeAutoObservable(this, undefined, { autoBind: true });
     }
 
     setDBotEngineStores() {

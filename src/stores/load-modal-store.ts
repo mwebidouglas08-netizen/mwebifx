@@ -13,7 +13,7 @@ export class LoadModalStore {
     selected_strategy_id: string | number | null = null;
 
     constructor() {
-        makeAutoObservable(this);
+        makeAutoObservable(this, undefined, { autoBind: true });
     }
 
     setActiveTabIndex(index: number) {

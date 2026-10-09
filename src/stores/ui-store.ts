@@ -6,7 +6,8 @@ export class UiStore {
     device: 'mobile' | 'tablet' | 'desktop' = 'desktop';
 
     constructor() {
-        makeAutoObservable(this);
+        // autoBind ensures actions stay bound when destructured (e.g. `const { setDevice } = ui`)
+        makeAutoObservable(this, undefined, { autoBind: true });
     }
 
     setShowPrompt(value: boolean) {

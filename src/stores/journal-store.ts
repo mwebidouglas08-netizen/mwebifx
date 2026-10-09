@@ -8,7 +8,7 @@ export class JournalStore {
     is_filter_dialog_visible = false;
 
     constructor() {
-        makeAutoObservable(this);
+        makeAutoObservable(this, undefined, { autoBind: true });
     }
 
     filterMessage(_checked: boolean, _item_id: number) {

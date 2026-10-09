@@ -7,7 +7,7 @@ export class CommonStore {
     socket_opened = false;
 
     constructor() {
-        makeAutoObservable(this);
+        makeAutoObservable(this, undefined, { autoBind: true });
     }
 
     setError(error: any) {

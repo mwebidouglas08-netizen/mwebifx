@@ -11,7 +11,7 @@ export class FlyoutStore {
     first_get_variable_block_index = -1;
 
     constructor() {
-        makeAutoObservable(this);
+        makeAutoObservable(this, undefined, { autoBind: true });
     }
 
     initBlockWorkspace(_workspace_el: any, _block_node: any) {
