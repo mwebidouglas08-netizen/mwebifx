@@ -14,18 +14,15 @@ const subscribe = (key: string, listener: Listener) => {
     };
 };
 
-const getPreviewLogo = (): string | null => localStorage.getItem('preview_logo');
+export const getPreviewLogo = (): string | null => localStorage.getItem('preview_logo');
 
-export const getPreviewLogo = getPreviewLogo;
 export const subscribePreviewLogo = (listener: Listener) => subscribe('preview_logo', listener);
 
-const getPreviewAppName = (): string | null => localStorage.getItem('preview_app_name');
+export const getPreviewAppName = (): string | null => localStorage.getItem('preview_app_name');
 
-export const getPreviewAppName = getPreviewAppName;
 export const subscribePreviewAppName = (listener: Listener) => subscribe('preview_app_name', listener);
 
-const getPreviewShowAppName = (): boolean => localStorage.getItem('preview_show_app_name') === 'true';
+export const getPreviewShowAppName = (): boolean => localStorage.getItem('preview_show_app_name') === 'true';
 
-export const getPreviewShowAppName = getPreviewShowAppName;
 export const subscribePreviewShowAppName = (listener: Listener) =>
     subscribe('preview_show_app_name', listener);
