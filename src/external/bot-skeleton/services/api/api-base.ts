@@ -30,4 +30,5 @@ const api_base = {
     is_running_contract_update_barrier_stop_loss_take_profit_cancellation_expiry: false,
 };
 
+export { api_base };
 export default api_base;

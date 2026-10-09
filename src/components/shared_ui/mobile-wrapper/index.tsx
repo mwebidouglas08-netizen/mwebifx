@@ -8,3 +8,5 @@ interface MobileWrapperProps {
 export const MobileWrapper: React.FC<MobileWrapperProps> = ({ children, className = '' }) => {
     return <div className={`mobile-wrapper ${className}`}>{children}</div>;
 };
+
+export default MobileWrapper;

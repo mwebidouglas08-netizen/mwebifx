@@ -22,8 +22,9 @@ export default defineConfig({
     pluginSass({
       sassLoaderOptions: {
         sourceMap: true,
-        includePaths: [path.resolve(__dirname, './src')],
-        loadPaths: [path.resolve(__dirname, './src')],
+        sassOptions: {
+          loadPaths: [path.resolve(__dirname, './src')],
+        },
       },
       exclude: /node_modules/,
     }),
@@ -62,6 +63,7 @@ export default defineConfig({
       // the repo root, so a cwd-relative './node_modules/react' fails in CI).
       react: path.dirname(require.resolve('react/package.json')),
       'react-dom': path.dirname(require.resolve('react-dom/package.json')),
+      '@/brand.config.json': path.resolve(__dirname, './brand.config.json'),
       '@/external': path.resolve(__dirname, './src/external'),
       '@/components': path.resolve(__dirname, './src/components'),
       '@/hooks': path.resolve(__dirname, './src/hooks'),

@@ -6,3 +6,5 @@ export const video_config = {
     webinars: 'webinars',
     downloads: 'downloads',
 };
+
+export const getJournalStatsVideoId = (): string => video_config.analysis;

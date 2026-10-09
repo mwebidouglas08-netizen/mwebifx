@@ -47,3 +47,5 @@ export const MobileDialog: React.FC<MobileDialogProps> = ({
         </div>
     );
 };
+
+export default MobileDialog;

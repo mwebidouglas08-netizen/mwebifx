@@ -8,3 +8,5 @@ interface DesktopWrapperProps {
 export const DesktopWrapper: React.FC<DesktopWrapperProps> = ({ children, className = '' }) => {
     return <div className={`desktop-wrapper ${className}`}>{children}</div>;
 };
+
+export default DesktopWrapper;
