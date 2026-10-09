@@ -1,7 +1,8 @@
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
 import React from 'react';
 import { createBrowserRouter, createRoutesFromElements, Route, RouterProvider } from 'react-router';
 import ChunkErrorBoundary from '@/components/chunk-error-boundary';
+import { retryableLazy } from '@/utils/retryable-lazy';
 import { cleanupUrl, handleOAuthCallback } from '@/external/deriv-core';
 import ChunkLoader from '@/components/loader/chunk-loader';
 import LocalStorageSyncWrapper from '@/components/localStorage-sync-wrapper';
@@ -15,8 +16,8 @@ import CoreStoreProvider from './CoreStoreProvider';
 import i18nInstance from './i18n';
 import './app-root.scss';
 
-const Layout = lazy(() => import('../components/layout'));
-const AppRoot = lazy(() => import('./app-root'));
+const Layout = retryableLazy(() => import('../components/layout'));
+const AppRoot = retryableLazy(() => import('./app-root'));
 
 /**
  * Component wrapper to handle language URL parameter

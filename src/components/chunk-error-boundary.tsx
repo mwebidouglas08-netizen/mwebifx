@@ -2,7 +2,7 @@ import { Component, type ReactNode } from 'react';
 
 const CHUNK_ERROR_RE = /Loading chunk [\w-]+ failed|Loading CSS chunk/i;
 
-function isChunkLoadError(error: unknown): boolean {
+export function isChunkLoadError(error: unknown): boolean {
     if (!error) return false;
     const msg = error instanceof Error ? error.message : String(error);
     return CHUNK_ERROR_RE.test(msg);
@@ -13,20 +13,21 @@ interface Props {
 }
 
 interface State {
-    hasError: boolean;
+    error: Error | null;
 }
 
 /**
- * Catches ChunkLoadError thrown by React.lazy during render and performs a
- * single hard reload with a cache-busting query param. Without this the error
- * bubbles to React's default error boundary ("Unexpected Application Error!")
- * and the window-level handlers in main.tsx never fire.
+ * Catches only ChunkLoadError thrown by React.lazy during render.
+ * Non-chunk errors are re-thrown so they reach the parent error boundary.
+ *
+ * On a chunk error it performs a single hard reload with a cache-busting
+ * query param, guarded by sessionStorage so it never loops.
  */
 export default class ChunkErrorBoundary extends Component<Props, State> {
-    state: State = { hasError: false };
+    state: State = { error: null };
 
-    static getDerivedStateFromError(): State {
-        return { hasError: true };
+    static getDerivedStateFromError(error: Error): State {
+        return { error };
     }
 
     componentDidCatch(error: Error) {
@@ -38,12 +39,13 @@ export default class ChunkErrorBoundary extends Component<Props, State> {
         sessionStorage.setItem(RETRY_KEY, '1');
         const url = new URL(window.location.href);
         url.searchParams.set('_cb', String(Date.now()));
-        // Small delay lets React finish painting the fallback before navigating.
         setTimeout(() => window.location.replace(url.toString()), 150);
     }
 
     render() {
-        if (this.state.hasError) {
+        const { error } = this.state;
+
+        if (error && isChunkLoadError(error)) {
             return (
                 <div
                     style={{
@@ -77,6 +79,13 @@ export default class ChunkErrorBoundary extends Component<Props, State> {
                 </div>
             );
         }
+
+        if (error) {
+            // Re-throw non-chunk errors so they bubble to the nearest
+            // parent error boundary instead of being swallowed here.
+            throw error;
+        }
+
         return this.props.children;
     }
 }
