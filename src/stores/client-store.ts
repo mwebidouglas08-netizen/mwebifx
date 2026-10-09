@@ -11,6 +11,10 @@ export class ClientStore {
     last_name = '';
     account_list: Record<string, any> = {};
     user_id: string | number | null = null;
+    is_account_regenerating = false;
+    all_accounts_balance: Record<string, any> = {};
+    is_logging_out = false;
+    should_hide_header = false;
 
     constructor() {
         makeAutoObservable(this);
@@ -54,6 +58,26 @@ export class ClientStore {
 
     setUserId(id: string | number) {
         this.user_id = id;
+    }
+
+    setIsAccountRegenerating(value: boolean) {
+        this.is_account_regenerating = value;
+    }
+
+    setAllAccountsBalance(balances: Record<string, any>) {
+        this.all_accounts_balance = balances;
+    }
+
+    setIsLoggingOut(value: boolean) {
+        this.is_logging_out = value;
+    }
+
+    setShouldHideHeader(value: boolean) {
+        this.should_hide_header = value;
+    }
+
+    checkAndRegenerateWebSocket() {
+        // no-op stub
     }
 
     logout() {
