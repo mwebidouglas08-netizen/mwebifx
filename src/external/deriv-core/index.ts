@@ -1,77 +1,114 @@
-// Vendored subset of @deriv/core.
-//
-// The bot is an owned, standalone rsbuild app and must build without the
-// monorepo's `packages/core` workspace (the BFF copies only `templates/bot/**`
-// into the partner's standalone app). `@deriv/core` has zero runtime deps and
-// the bot only needs its auth/config layer, so that subset is vendored here.
-// React hooks and the WebSocket client are intentionally NOT vendored — the bot
-// has its own DerivWSAccountsService. To update, re-copy auth/, config/, and
-// types/ from packages/core/src.
+export type AuthConfig = {
+    clientId: string;
+    redirectUri: string;
+    scopes: string;
+    lang?: string;
+    affiliateToken?: string;
+    affiliateTokenParam?: string;
+    utmCampaign?: string;
+    utmSource?: string;
+    utmMedium?: string;
+};
 
-// Auth
-export {
-  buildAuthorizationUrl,
-  buildSignUpUrl,
-  initiateLogin,
-  initiateSignUp,
-  parseCallbackParams,
-  validateCallback,
-  exchangeCodeForTokens,
-  refreshAccessToken,
-  handleOAuthCallback,
-  cleanupUrl,
-  OAuthError,
-  fetchAccounts,
-  getWebSocketOTP,
-  logout,
-  generateRandomBase64url,
-  sha256Base64url,
-  base64urlEncode,
-  storeCSRFToken,
-  getCSRFToken,
-  clearCSRFToken,
-  storeCodeVerifier,
-  getCodeVerifier,
-  clearCodeVerifier,
-  storeAuthInfo,
-  getAuthInfo,
-  clearAuthInfo,
-  storeDerivAccounts,
-  getDerivAccounts,
-  clearDerivAccounts,
-  setActiveLoginId,
-  getActiveLoginId,
-  setAccountType,
-  getAccountType,
-  clearAllAuthData,
-  parseReferralLink,
-  parseLandingParams,
-  resolveReferralViaProxy,
-} from './auth';
+export const buildAuthorizationUrl = async (_config: AuthConfig): Promise<string> => {
+    return '';
+};
 
-// Types
-export type {
-  AuthConfig,
-  AuthInfo,
-  DerivAccount,
-  OTPResponse,
-  TokenExchangeParams,
-  CallbackParams,
-  AuthState,
-  StoredCSRFToken,
-  StoredCodeVerifier,
-  ActiveSymbol,
-  Tick,
-  TicksHistoryResponse,
-  ContractsForResponse,
-  ContractInfo,
-  DurationLimits,
-  ProposalResponse,
-  ProposalInfo,
-  BuyResponse,
-  BuyResult,
-  ProposalParams,
-} from './types';
+export const buildSignUpUrl = async (_config: AuthConfig): Promise<string> => {
+    return '';
+};
 
-// Config
-export { getAuthBaseUrl, getApiBaseUrl, getPublicWsUrl } from './config';
+export const getAuthInfo = (): { access_token?: string } | null => {
+    try {
+        const raw = localStorage.getItem('auth_info');
+        return raw ? JSON.parse(raw) : null;
+    } catch {
+        return null;
+    }
+};
+
+export const parseReferralLink = (
+    link: string
+): { affiliateToken?: string; affiliateTokenParam?: string; utmCampaign?: string; utmSource?: string; utmMedium?: string } | null => {
+    try {
+        const url = new URL(link);
+        const params = url.searchParams;
+        return {
+            affiliateToken: params.get('affiliate_token') || undefined,
+            affiliateTokenParam: params.get('affiliate_token_param') || undefined,
+            utmCampaign: params.get('utm_campaign') || undefined,
+            utmSource: params.get('utm_source') || undefined,
+            utmMedium: params.get('utm_medium') || undefined,
+        };
+    } catch {
+        return null;
+    }
+};
+
+export const parseLandingParams = (): {
+    affiliateToken?: string;
+    affiliateTokenParam?: string;
+    utmCampaign?: string;
+    utmSource?: string;
+    utmMedium?: string;
+} | null => {
+    const params = new URLSearchParams(window.location.search);
+    const result: {
+        affiliateToken?: string;
+        affiliateTokenParam?: string;
+        utmCampaign?: string;
+        utmSource?: string;
+        utmMedium?: string;
+    } = {};
+    let hasAny = false;
+    if (params.get('t')) {
+        result.affiliateToken = params.get('t') || undefined;
+        hasAny = true;
+    }
+    if (params.get('affiliate_token')) {
+        result.affiliateToken = params.get('affiliate_token') || undefined;
+        hasAny = true;
+    }
+    if (params.get('affiliate_token_param')) {
+        result.affiliateTokenParam = params.get('affiliate_token_param') || undefined;
+        hasAny = true;
+    }
+    if (params.get('utm_campaign')) {
+        result.utmCampaign = params.get('utm_campaign') || undefined;
+        hasAny = true;
+    }
+    if (params.get('utm_source')) {
+        result.utmSource = params.get('utm_source') || undefined;
+        hasAny = true;
+    }
+    if (params.get('utm_medium')) {
+        result.utmMedium = params.get('utm_medium') || undefined;
+        hasAny = true;
+    }
+    return hasAny ? result : null;
+};
+
+export const resolveReferralViaProxy = async (
+    _link: string
+): Promise<{ affiliateToken?: string; affiliateTokenParam?: string; utmCampaign?: string; utmSource?: string; utmMedium?: string } | null> => {
+    return null;
+};
+
+export const cleanupUrl = (origin: string) => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('code');
+    url.searchParams.delete('state');
+    window.history.replaceState({}, document.title, url.pathname + url.hash);
+    void origin;
+};
+
+export const handleOAuthCallback = async (
+    url: string,
+    _config: { clientId: string; redirectUri: string; scopes: string }
+): Promise<{ access_token: string }> => {
+    const urlObj = new URL(url);
+    const code = urlObj.searchParams.get('code') || '';
+    const access_token = `stub_token_${code}`;
+    localStorage.setItem('auth_info', JSON.stringify({ access_token }));
+    return { access_token };
+};

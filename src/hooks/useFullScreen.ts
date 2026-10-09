@@ -1,49 +1,19 @@
-import { MouseEvent, useCallback, useEffect, useState } from 'react';
-
-const fullScreenControls = {
-    exit: ['exitFullscreen', 'webkitExitFullscreen', 'mozCancelFullScreen', 'msExitFullscreen'],
-    request: ['requestFullscreen', 'webkitRequestFullscreen', 'mozRequestFullScreen', 'msRequestFullscreen'],
-    screenChange: ['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange'],
-    screenElement: ['fullscreenElement', 'webkitFullscreenElement', 'mozFullScreenElement', 'msFullscreenElement'],
-} as const;
+import { useState, useCallback } from 'react';
 
 const useFullScreen = () => {
-    const [isInFullScreenMode, setFullScreenMode] = useState(false);
-    const { exit, request, screenChange, screenElement } = fullScreenControls;
+    const [isFullScreen, setIsFullScreen] = useState(false);
 
-    const onFullScreen = useCallback(
-        () => setFullScreenMode(screenElement.some(element => document[element as keyof Document])),
-        [screenElement]
-    );
-
-    useEffect(() => {
-        screenChange.forEach(event => {
-            document.addEventListener(event, onFullScreen, false);
-        });
-
-        return () => {
-            screenChange.forEach(event => {
-                document.removeEventListener(event, onFullScreen, false);
-            });
-        };
-    }, [onFullScreen, screenChange]);
-
-    const toggleFullScreenMode = (event?: MouseEvent<HTMLButtonElement>) => {
-        event?.stopPropagation();
-
-        const exitFullScreen = exit.find(method => document[method as keyof Document]);
-        const requestFullScreen = request.find(method => document.documentElement[method as keyof HTMLElement]);
-
-        if (isInFullScreenMode && exitFullScreen) {
-            (document[exitFullScreen as keyof Document] as Document['exitFullscreen'])();
-        } else if (requestFullScreen) {
-            (document.documentElement[requestFullScreen as keyof HTMLElement] as HTMLElement['requestFullscreen'])();
+    const toggleFullScreen = useCallback(() => {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen?.();
+            setIsFullScreen(true);
         } else {
-            setFullScreenMode(false); // fullscreen API is not enabled
+            document.exitFullscreen?.();
+            setIsFullScreen(false);
         }
-    };
+    }, []);
 
-    return { toggleFullScreenMode };
+    return { isFullScreen, toggleFullScreen };
 };
 
 export default useFullScreen;

@@ -1,20 +1,18 @@
-import { useEffect, useState } from 'react';
-import useNavigatorOnline from './useNavigatorOnline';
+import { useState, useEffect } from 'react';
 
-type TStatus = 'blinking' | 'offline' | 'online';
-
-const useNetworkStatus = () => {
-    const [status, setStatus] = useState<TStatus>('online');
-    const networkStatus = useNavigatorOnline();
-
-    // TODO we need socket connection state from api-hooks whenever it finished we can update this part and check
-    // both navigatorStatus and socket Status
-    // for now we just check the user network status.
+const useNetworkStatus = (): 'online' | 'offline' | 'blinking' => {
+    const [status, setStatus] = useState<'online' | 'offline' | 'blinking'>('online');
 
     useEffect(() => {
-        if (networkStatus) setStatus('online');
-        else setStatus('offline');
-    }, [networkStatus]);
+        const handleOnline = () => setStatus('online');
+        const handleOffline = () => setStatus('offline');
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
 
     return status;
 };

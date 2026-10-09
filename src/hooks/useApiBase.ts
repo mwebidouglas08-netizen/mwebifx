@@ -1,50 +1,35 @@
-import { useEffect, useState } from 'react';
-import {
-    account_list$,
-    authData$,
-    CONNECTION_STATUS,
-    connectionStatus$,
-    isAuthorized$,
-    isAuthorizing$,
-} from '@/external/bot-skeleton/services/api/observables/connection-status-stream';
-import { TAuthData } from '@/types/api-types';
+import { useState, useEffect } from 'react';
+import { CONNECTION_STATUS } from '@/external/bot-skeleton/services/api/observables/connection-status-stream';
 
 export const useApiBase = () => {
-    const [connectionStatus, setConnectionStatus] = useState<CONNECTION_STATUS>(CONNECTION_STATUS.UNKNOWN);
-    const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
-    const [isAuthorizing, setIsAuthorizing] = useState<boolean>(true); // Will be overridden by observable stream which now starts with true
-    const [accountList, setAccountList] = useState<TAuthData['account_list']>([]);
-    const [authData, setAuthData] = useState<TAuthData | null>(null);
-    const [activeLoginid, setActiveLoginid] = useState<string>('');
+    const [connectionStatus, setConnectionStatus] = useState<CONNECTION_STATUS>(CONNECTION_STATUS.CONNECTING);
+    const [isAuthorizing, setIsAuthorizing] = useState(false);
+    const [isAuthorized, setIsAuthorized] = useState(false);
+    const [accountList, setAccountList] = useState<any[]>([]);
+    const [activeLoginid, setActiveLoginid] = useState<string | null>(null);
+    const [authData, setAuthData] = useState<any>(null);
 
     useEffect(() => {
-        const connectionStatusSubscription = connectionStatus$.subscribe(status => {
-            setConnectionStatus(status as CONNECTION_STATUS);
-        });
-
-        const isAuthorizedSubscription = isAuthorized$.subscribe(isAuthorized => {
-            setIsAuthorized(isAuthorized);
-        });
-
-        const isAuthorizingSubscription = isAuthorizing$.subscribe(isAuthorizing => {
-            setIsAuthorizing(isAuthorizing);
-        });
-        const accountListSubscription = account_list$.subscribe(accountList => {
-            setAccountList(accountList);
-        });
-        const authDataSubscription = authData$.subscribe(authData => {
-            setAuthData(authData);
-            setActiveLoginid(authData?.loginid ?? '');
-        });
-
-        return () => {
-            connectionStatusSubscription.unsubscribe();
-            isAuthorizedSubscription.unsubscribe();
-            isAuthorizingSubscription.unsubscribe();
-            accountListSubscription.unsubscribe();
-            authDataSubscription.unsubscribe();
-        };
+        const loginid = localStorage.getItem('active_loginid');
+        if (loginid) {
+            setActiveLoginid(loginid);
+            setIsAuthorized(true);
+            setConnectionStatus(CONNECTION_STATUS.OPENED);
+        }
     }, []);
 
-    return { connectionStatus, isAuthorized, isAuthorizing, accountList, authData, activeLoginid, setIsAuthorizing };
+    return {
+        connectionStatus,
+        setConnectionStatus,
+        isAuthorizing,
+        setIsAuthorizing,
+        isAuthorized,
+        setIsAuthorized,
+        accountList,
+        setAccountList,
+        activeLoginid,
+        setActiveLoginid,
+        authData,
+        setAuthData,
+    };
 };

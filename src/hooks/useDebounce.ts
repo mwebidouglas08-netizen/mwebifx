@@ -1,18 +1,13 @@
-// @ts-nocheck — vendored bot code with known upstream type gaps; see AGENTS.md
-import React from 'react';
-import debounce from 'debounce';
+import { useRef, useCallback } from 'react';
 
-export const useDebounce = (callback: () => void, timeout: number) => {
-    const debouncedCallback = React.useMemo(
-        () => debounce(callback, timeout),
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        []
-    );
+export const useDebounce = <T extends (...args: any[]) => void>(callback: T, delay: number): T => {
+    const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    React.useEffect(() => {
-        return debouncedCallback.cancel;
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    return debouncedCallback;
+    return useCallback(
+        (...args: Parameters<T>) => {
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
+            timeoutRef.current = setTimeout(() => callback(...args), delay);
+        },
+        [callback, delay]
+    ) as T;
 };
