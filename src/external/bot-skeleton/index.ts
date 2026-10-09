@@ -1,3 +1,20 @@
+export enum LogTypes {
+    LOAD_BLOCK = 'LOAD_BLOCK',
+    NOT_OFFERED = 'NOT_OFFERED',
+    PURCHASE = 'PURCHASE',
+    SELL = 'SELL',
+    PROFIT = 'PROFIT',
+    LOST = 'LOST',
+    WELCOME_BACK = 'WELCOME_BACK',
+    WELCOME = 'WELCOME',
+}
+
+export enum MessageTypes {
+    SUCCESS = 'SUCCESS',
+    NOTIFY = 'NOTIFY',
+    ERROR = 'ERROR',
+}
+
 export const api_base = {
     api: null as null | { onMessage: () => { subscribe: () => { unsubscribe: () => void } } },
     account_info: {} as Record<string, unknown>,

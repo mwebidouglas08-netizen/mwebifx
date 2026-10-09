@@ -1,6 +1,6 @@
 import { ComponentProps, ReactNode, useMemo } from 'react';
 import useThemeSwitcher from '@/hooks/useThemeSwitcher';
-import RootStore from '@/stores/root-store';
+import { RootStore } from '@/stores';
 import { LegacyLogout1pxIcon, LegacyTheme1pxIcon } from '@deriv/quill-icons/Legacy';
 import { useTranslations } from '@deriv-com/translations';
 import { ToggleSwitch } from '@deriv-com/ui';

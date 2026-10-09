@@ -1,7 +1,7 @@
 // @ts-nocheck — vendored bot code with known upstream type gaps; see AGENTS.md
 // Updated to use brand configuration for footer elements visibility
 // Controls language settings and theme toggle via brand.config.json
-import brandConfig from '@/../brand.config.json';
+import brandConfig from '@/brand.config.json';
 import { useApiBase } from '@/hooks/useApiBase';
 import useModalManager from '@/hooks/useModalManager';
 import { getActiveTabUrl } from '@/utils/getActiveTabUrl';

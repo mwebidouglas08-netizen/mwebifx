@@ -2,7 +2,7 @@
 // Updated to use brand configuration for mobile menu elements visibility
 // Controls language settings and theme toggle via brand.config.json
 import { useState } from 'react';
-import brandConfig from '@/../brand.config.json';
+import brandConfig from '@/brand.config.json';
 import useModalManager from '@/hooks/useModalManager';
 // [AI] Import useStore to check if menu has items
 import { useStore } from '@/hooks/useStore';

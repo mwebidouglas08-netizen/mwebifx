@@ -20,7 +20,11 @@ const smartchartsDist = path.join(
 export default defineConfig({
   plugins: [
     pluginSass({
-      sassLoaderOptions: { sourceMap: true },
+      sassLoaderOptions: {
+        sourceMap: true,
+        includePaths: [path.resolve(__dirname, './src')],
+        loadPaths: [path.resolve(__dirname, './src')],
+      },
       exclude: /node_modules/,
     }),
     pluginReact(),
@@ -50,6 +54,8 @@ export default defineConfig({
         GD_API_KEY: JSON.stringify(process.env.GD_API_KEY),
       },
     },
+  },
+  resolve: {
     alias: {
       // Resolve from wherever the package actually lives so the build works
       // both standalone and inside the monorepo (npm workspaces hoist react to
@@ -104,7 +110,7 @@ export default defineConfig({
       appendPlugins(
         new rspack.NormalModuleReplacementPlugin(
           /@deriv-com[\\/]quill-ui[\\/]dist[\\/]jsx-runtime[^/]*\.js$/,
-          path.resolve(__dirname, './src/utils/quill-ui-jsx-runtime-shim.js')
+          path.resolve(__dirname, './src/utils/quill-ui-jsx-runtime-shim.ts')
         )
       );
       appendRules({
