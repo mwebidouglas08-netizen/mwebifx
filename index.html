@@ -11,6 +11,39 @@
                 root.style.colorScheme = mode;
             })();
         </script>
+        <script>
+            // Pre-bundle error catcher: catches crashes that happen while the
+            // JS bundle is being parsed/evaluated, before main.tsx can register
+            // its own handlers. Renders directly into #root (no React needed).
+            window.__showFatalError = function (message) {
+                var el = document.getElementById('root');
+                if (!el || el.childElementCount > 0) return;
+                el.innerHTML =
+                    '<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#050a14;color:#fff;font-family:sans-serif;flex-direction:column;gap:16px;padding:24px;text-align:center">' +
+                    '<p style="font-size:18px;font-weight:600">Something went wrong</p>' +
+                    '<p style="font-size:14px;color:#aaa;max-width:600px;word-break:break-word">' +
+                    String(message).replace(/</g, '&lt;') +
+                    '</p>' +
+                    '<button onclick="location.reload()" style="padding:8px 24px;border-radius:4px;border:none;background:#ff444f;color:#fff;cursor:pointer;font-size:14px">Refresh</button>' +
+                    '</div>';
+            };
+            window.addEventListener('error', function (e) {
+                if (e.error) window.__showFatalError(e.error.message || String(e.error));
+                else if (e.message) window.__showFatalError(e.message);
+            }, true);
+            window.addEventListener('unhandledrejection', function (e) {
+                var r = e.reason;
+                window.__showFatalError(r instanceof Error ? r.message : String(r));
+            });
+            // If the bundle silently fails (e.g. a deferred script 404s or a
+            // module throws before any handler fires), detect the blank state.
+            setTimeout(function () {
+                var el = document.getElementById('root');
+                if (el && el.childElementCount === 0) {
+                    window.__showFatalError('Application bundle failed to load or crashed during startup.');
+                }
+            }, 8000);
+        </script>
         <meta charset="UTF-8" />
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
