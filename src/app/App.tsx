@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import React from 'react';
 import { createBrowserRouter, createRoutesFromElements, Route, RouterProvider } from 'react-router';
-import ChunkErrorBoundary from '@/components/chunk-error-boundary';
+import ErrorBoundary from '@/components/error-boundary';
 import { cleanupUrl, handleOAuthCallback } from '@/external/deriv-core';
 import ChunkLoader from '@/components/loader/chunk-loader';
 import LocalStorageSyncWrapper from '@/components/localStorage-sync-wrapper';
@@ -36,7 +36,7 @@ const router = createBrowserRouter(
         <Route
             path='/'
             element={
-                <ChunkErrorBoundary>
+                <ErrorBoundary>
                     <Suspense
                         fallback={<ChunkLoader message={localize('Please wait while we connect to the server...')} />}
                     >
@@ -53,25 +53,25 @@ const router = createBrowserRouter(
                             </LanguageHandler>
                         </TranslationProvider>
                     </Suspense>
-                </ChunkErrorBoundary>
+                </ErrorBoundary>
             }
         >
             {/* All child routes will be passed as children to Layout */}
             <Route
                 index
                 element={
-                    <ChunkErrorBoundary>
+                    <ErrorBoundary>
                         <AppRoot />
-                    </ChunkErrorBoundary>
+                    </ErrorBoundary>
                 }
             />
             {/* App Builder embeds the template at /preview — render the same app shell */}
             <Route
                 path='preview'
                 element={
-                    <ChunkErrorBoundary>
+                    <ErrorBoundary>
                         <AppRoot />
-                    </ChunkErrorBoundary>
+                    </ErrorBoundary>
                 }
             />
         </Route>
