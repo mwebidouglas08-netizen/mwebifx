@@ -1,3 +1,5 @@
+export * from './routes';
+
 export const getRoute = (path: string): string => path.replace(/^\/+|\/+$/g, '');
 
 export const joinPaths = (...paths: string[]): string =>
