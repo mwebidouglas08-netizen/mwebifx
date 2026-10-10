@@ -2,7 +2,12 @@ import { useState, useEffect } from 'react';
 import { CONNECTION_STATUS } from '@/external/bot-skeleton/services/api/observables/connection-status-stream';
 
 export const useApiBase = () => {
-    const [connectionStatus, setConnectionStatus] = useState<CONNECTION_STATUS>(CONNECTION_STATUS.CONNECTING);
+    // The stub api_base.init() succeeds synchronously and sets api_base.api,
+    // so the connection is considered OPENED immediately. Without this the app
+    // would sit on the loading screen forever for logged-out visitors, because
+    // the only other place OPENED was set required an active_loginid in
+    // localStorage (i.e. an already-authenticated user).
+    const [connectionStatus, setConnectionStatus] = useState<CONNECTION_STATUS>(CONNECTION_STATUS.OPENED);
     const [isAuthorizing, setIsAuthorizing] = useState(false);
     const [isAuthorized, setIsAuthorized] = useState(false);
     const [accountList, setAccountList] = useState<any[]>([]);
@@ -14,7 +19,6 @@ export const useApiBase = () => {
         if (loginid) {
             setActiveLoginid(loginid);
             setIsAuthorized(true);
-            setConnectionStatus(CONNECTION_STATUS.OPENED);
         }
     }, []);
 

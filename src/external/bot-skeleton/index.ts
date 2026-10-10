@@ -29,7 +29,10 @@ export const api_base = {
 };
 
 export class ApiHelpers {
-    static instance: ApiHelpers;
+    static instance: ApiHelpers = new ApiHelpers();
+    static setInstance(store: Partial<ApiHelpers>) {
+        Object.assign(ApiHelpers.instance, store);
+    }
     active_symbols = {
         retrieveActiveSymbols: () => Promise.resolve(),
     };
