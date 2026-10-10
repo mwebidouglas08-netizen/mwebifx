@@ -109,9 +109,13 @@ export default defineConfig({
       // @deriv-com/quill-ui@1.x vendors a React 18 jsx-runtime that reads
       // React.__SECRET_INTERNALS_…ReactCurrentOwner (removed in React 19). Remap
       // it to React's own jsx-runtime so ThemeProvider / Chip / Link etc. work.
+      // The plugin must match BOTH package-level imports (@deriv-com/quill-ui/dist/jsx-runtime-*.js)
+      // AND relative imports within the package (./jsx-runtime-*.js) — the internal
+      // files (snackbar-controller, index-*) import the runtime relatively, which
+      // bypasses a package-path-only regex and loads the broken React 18 runtime.
       appendPlugins(
         new rspack.NormalModuleReplacementPlugin(
-          /@deriv-com[\\/]quill-ui[\\/]dist[\\/]jsx-runtime[^/]*\.js$/,
+          /@deriv-com[\\/]quill-ui[\\/]dist[\\/]jsx-runtime[^/]*\.js$|^\.\/jsx-runtime-[A-Za-z0-9_-]+\.js$/,
           path.resolve(__dirname, './src/utils/quill-ui-jsx-runtime-shim.ts')
         )
       );

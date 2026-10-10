@@ -4,9 +4,13 @@ import App from './app/App';
 // DOM-level error fallback: if the bundle crashes before React mounts,
 // render the error directly into #root so the user sees it instead of
 // a blank screen. This bypasses React entirely.
+let fatalErrorShown = false;
 function showFatalError(message: string) {
+    if (fatalErrorShown) return;
+    fatalErrorShown = true;
+    console.error('[FATAL]', message);
     const root = document.getElementById('root');
-    if (!root || root.childElementCount > 0) return;
+    if (!root) return;
     root.innerHTML =
         '<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#050a14;color:#fff;font-family:sans-serif;flex-direction:column;gap:16px;padding:24px;text-align:center">' +
         '<p style="font-size:18px;font-weight:600">Something went wrong</p>' +

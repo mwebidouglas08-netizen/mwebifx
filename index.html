@@ -15,9 +15,13 @@
             // Pre-bundle error catcher: catches crashes that happen while the
             // JS bundle is being parsed/evaluated, before main.tsx can register
             // its own handlers. Renders directly into #root (no React needed).
+            window.__fatalErrorShown = false;
             window.__showFatalError = function (message) {
+                if (window.__fatalErrorShown) return;
+                window.__fatalErrorShown = true;
+                console.error('[FATAL]', message);
                 var el = document.getElementById('root');
-                if (!el || el.childElementCount > 0) return;
+                if (!el) return;
                 el.innerHTML =
                     '<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#050a14;color:#fff;font-family:sans-serif;flex-direction:column;gap:16px;padding:24px;text-align:center">' +
                     '<p style="font-size:18px;font-weight:600">Something went wrong</p>' +
@@ -28,8 +32,9 @@
                     '</div>';
             };
             window.addEventListener('error', function (e) {
-                if (e.error) window.__showFatalError(e.error.message || String(e.error));
-                else if (e.message) window.__showFatalError(e.message);
+                var src = e.target && e.target.src ? ' (script: ' + e.target.src + ')' : '';
+                if (e.error) window.__showFatalError((e.error.message || String(e.error)) + src);
+                else if (e.message) window.__showFatalError(e.message + src);
             }, true);
             window.addEventListener('unhandledrejection', function (e) {
                 var r = e.reason;
@@ -38,9 +43,17 @@
             // If the bundle silently fails (e.g. a deferred script 404s or a
             // module throws before any handler fires), detect the blank state.
             setTimeout(function () {
+                if (window.__fatalErrorShown) return;
                 var el = document.getElementById('root');
                 if (el && el.childElementCount === 0) {
-                    window.__showFatalError('Application bundle failed to load or crashed during startup.');
+                    var scripts = Array.prototype.map.call(
+                        document.querySelectorAll('script[src]'),
+                        function (s) { return s.src; }
+                    );
+                    window.__showFatalError(
+                        'Application bundle failed to load or crashed during startup. ' +
+                        'Scripts loaded: ' + scripts.join(', ')
+                    );
                 }
             }, 8000);
         </script>
