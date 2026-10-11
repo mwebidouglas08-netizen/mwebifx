@@ -11,3 +11,13 @@ export const addQueryParams = (url: string, params: Record<string, string>): str
 };
 
 export const removeQueryParams = (url: string): string => url.split('?')[0];
+
+// Restored from the original Deriv App Builder source (deleted in 956dcae).
+// Used by app-content.jsx to set the smartcharts public path.
+export const getUrlBase = (path = ''): string => {
+    const l = window.location;
+
+    if (!/^\/(br_)/.test(l.pathname)) return path;
+
+    return `/${l.pathname.split('/')[1]}${/^\//.test(path) ? path : `/${path}`}`;
+};

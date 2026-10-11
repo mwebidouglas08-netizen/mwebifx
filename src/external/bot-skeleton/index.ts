@@ -1,3 +1,5 @@
+import moment from 'moment';
+
 export enum LogTypes {
     LOAD_BLOCK = 'LOAD_BLOCK',
     NOT_OFFERED = 'NOT_OFFERED',
@@ -44,8 +46,10 @@ export class ApiHelpers {
 }
 
 export const ServerTime = {
+    // Consumers (e.g. footer/ServerTime.tsx) call common.server_time.format(...),
+    // so this must store a moment — a raw Date has no .format() and crashes.
     init: (common: { setServerTime: (time: any, is_stale: boolean) => void }) => {
-        common.setServerTime(new Date(), false);
+        common.setServerTime(moment(new Date()), false);
     },
 };
 

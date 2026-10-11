@@ -1,5 +1,13 @@
 import { createRoot } from 'react-dom/client';
 import App from './app/App';
+import { getUrlBase } from './components/shared/utils/url';
+import { isPreviewMode, PREVIEW_BASE_PATH } from './utils/is-preview-mode';
+
+// Runtime public path used to build asset URLs (audio, Blockly media, favicon).
+// Restored from src/public-path.ts (deleted in 956dcae) — without it every asset
+// URL renders as "undefinedassets/..." and 404s.
+window.__webpack_public_path__ = isPreviewMode() ? `${PREVIEW_BASE_PATH}/` : getUrlBase('/');
+
 
 // DOM-level error fallback: if the bundle crashes before React mounts,
 // render the error directly into #root so the user sees it instead of
