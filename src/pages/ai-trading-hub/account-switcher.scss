@@ -1,0 +1,142 @@
+/* Demo / Real account switcher in the AI Hub header. */
+.hub-account {
+    position: relative;
+
+    &__trigger {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.55rem 0.9rem;
+        border: 1px solid var(--border-normal);
+        border-radius: 8px;
+        background: var(--general-section-1);
+        color: var(--text-prominent);
+        font-size: 1.2rem;
+        line-height: 1.2;
+        cursor: default;
+
+        &--login {
+            cursor: pointer;
+            border-color: var(--brand-primary);
+            color: var(--brand-primary);
+            font-weight: 600;
+
+            &:hover {
+                background: var(--brand-primary);
+                color: var(--general-section-1);
+            }
+        }
+
+        &[aria-haspopup] {
+            cursor: pointer;
+
+            &:hover {
+                border-color: var(--brand-primary);
+            }
+        }
+    }
+
+    &__badge {
+        padding: 0.2rem 0.6rem;
+        border-radius: 999px;
+        font-size: 1rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        background: var(--brand-danger, #e34444);
+        color: #fff;
+
+        &--demo,
+        .hub-account__trigger--demo & {
+            background: var(--brand-success, #4bb4b3);
+        }
+    }
+
+    &__meta {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.1rem;
+        min-width: 0;
+    }
+
+    &__balance {
+        color: var(--text-general);
+        font-size: 1rem;
+        white-space: nowrap;
+    }
+
+    &__chevron {
+        flex: none;
+        transition: transform 0.2s;
+
+        &.is-open {
+            transform: rotate(180deg);
+        }
+    }
+
+    &__menu {
+        position: absolute;
+        top: calc(100% + 0.5rem);
+        right: 0;
+        z-index: 40;
+        min-width: 22rem;
+        padding: 0.4rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        background: var(--general-section-1);
+        border: 1px solid var(--border-normal);
+        border-radius: 10px;
+        box-shadow: 0 8px 24px rgb(0 0 0 / 25%);
+    }
+
+    &__option {
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+        width: 100%;
+        padding: 0.7rem 0.8rem;
+        border: none;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--text-prominent);
+        font-size: 1.2rem;
+        text-align: left;
+        cursor: pointer;
+
+        &:hover {
+            background: var(--general-main-1);
+        }
+
+        &.is-active {
+            background: var(--general-main-1);
+            outline: 1px solid var(--brand-primary);
+        }
+    }
+
+    &__option-id {
+        flex: 1;
+        font-weight: 600;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    &__option-balance {
+        color: var(--text-general);
+        white-space: nowrap;
+    }
+
+    @media (max-width: 768px) {
+        &__meta {
+            max-width: 12rem;
+        }
+
+        &__menu {
+            left: 0;
+            right: auto;
+            min-width: 20rem;
+        }
+    }
+}

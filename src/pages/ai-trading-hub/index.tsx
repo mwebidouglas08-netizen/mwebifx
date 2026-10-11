@@ -1,10 +1,31 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useStore } from '@/hooks/useStore';
 import { transaction_elements } from '@/constants/transactions';
 import useThemeSwitcher from '@/hooks/useThemeSwitcher';
 import { computeRsi, useLivePrices } from './use-live-data';
+import HubAccountSwitcher from './account-switcher';
+import { HUB_STRATEGIES, deployHubStrategy, type HubStrategy } from './deploy-strategy';
 import './ai-trading-hub.scss';
+
+/**
+ * Turn an engine rejection into something a user can act on. The bot skeleton
+ * throws plain strings, Error instances and Deriv API error objects
+ * (`{ error: { code, message } }`), and the hub is the only surface that shows
+ * them, so normalise all three.
+ */
+const humaniseEngineError = (error: unknown, fallback: string): string => {
+    if (!error) return fallback;
+    if (typeof error === 'string' && error.trim()) return error;
+    const err = error as { message?: unknown; error?: { message?: unknown; code?: unknown } };
+    const nested = err?.error?.message;
+    const code = err?.error?.code;
+    if (typeof nested === 'string' && nested.trim()) {
+        return code ? `${nested} (${code})` : nested;
+    }
+    if (typeof err?.message === 'string' && err.message.trim()) return err.message;
+    return fallback;
+};
 
 interface MarketData {
     symbol: string;
@@ -22,15 +43,12 @@ interface MarketData {
     trend: 'up' | 'down' | 'sideways';
 }
 
-interface Strategy {
-    id: string;
-    name: string;
-    description: string;
-    risk: 'Very Low' | 'Low' | 'Medium' | 'High';
-    winRate: number;
-    avgReturn: number;
-    markets: string[];
-}
+const RISK_ORDER: Record<HubStrategy['risk'], number> = { 'Very Low': 0, Low: 1, Medium: 2, High: 3 };
+
+/** Minimum signal confidence before Auto Trading will place a trade. */
+const AUTO_TRADE_CONFIDENCE = 70;
+/** Minimum gap between automated deployments, in ms. */
+const AUTO_TRADE_COOLDOWN_MS = 60000;
 
 interface Trade {
     id: string;
@@ -75,19 +93,6 @@ const MARKET_CATALOG: { symbol: string; name: string; category: 'synthetic' | 'f
     { symbol: 'frxAUDJPY', name: 'AUD/JPY', category: 'forex' },
 ];
 
-const STRATEGIES: Strategy[] = [
-    { id: 'momentum', name: 'Momentum Pro', description: 'AI-powered momentum detection with multi-timeframe analysis', risk: 'Medium', winRate: 72, avgReturn: 3.2, markets: ['R_100', '1HZ100V', 'BOOM500'] },
-    { id: 'mean_reversion', name: 'Mean Reversion', description: 'Identifies overbought and oversold conditions using RSI and Bollinger Bands', risk: 'Low', winRate: 78, avgReturn: 2.1, markets: ['R_50', 'R_25', 'frxEURUSD'] },
-    { id: 'breakout', name: 'Breakout Hunter', description: 'Detects volatility breakouts with volume confirmation', risk: 'High', winRate: 65, avgReturn: 5.8, markets: ['CRASH500', 'BOOM1000', 'R_100'] },
-    { id: 'scalping', name: 'AI Scalper', description: 'High-frequency micro-trend capture with tight risk management', risk: 'Medium', winRate: 81, avgReturn: 1.4, markets: ['R_10', '1HZ10V', 'stpRNG'] },
-    { id: 'trend_following', name: 'Trend Rider', description: 'Follows strong trends using moving average crossovers and ADX', risk: 'Medium', winRate: 69, avgReturn: 4.1, markets: ['R_75', '1HZ75V', 'frxGBPUSD'] },
-    { id: 'grid', name: 'Smart Grid', description: 'Adaptive grid trading with dynamic spacing based on volatility', risk: 'Low', winRate: 74, avgReturn: 2.8, markets: ['R_50', 'stpRNG', 'frxUSDJPY'] },
-    { id: 'arbitrage', name: 'Arbitrage Scanner', description: 'Cross-market price discrepancy detection and execution', risk: 'Very Low', winRate: 88, avgReturn: 0.9, markets: ['frxEURUSD', 'frxGBPUSD'] },
-    { id: 'news', name: 'News Sentiment', description: 'Sentiment analysis for event-driven trading on major pairs', risk: 'High', winRate: 62, avgReturn: 6.5, markets: ['frxUSDJPY', 'frxEURJPY'] },
-];
-
-const RISK_ORDER: Record<Strategy['risk'], number> = { 'Very Low': 0, Low: 1, Medium: 2, High: 3 };
-
 type MarketFilter = 'all' | 'synthetic' | 'forex';
 
 type TProps = {
@@ -106,6 +111,8 @@ const AITradingHub: React.FC<TProps> = observer(({ onOpenDashboard }) => {
     const [marketFilter, setMarketFilter] = useState<MarketFilter>('all');
     const [marketQuery, setMarketQuery] = useState('');
     const [notice, setNotice] = useState<string>('');
+    const [isDeploying, setIsDeploying] = useState(false);
+    const autoTradeCooldownRef = useRef(0);
 
     const symbols = useMemo(() => MARKET_CATALOG.map(m => m.symbol), []);
     const { quotes, buffers } = useLivePrices(symbols);
@@ -113,7 +120,13 @@ const AITradingHub: React.FC<TProps> = observer(({ onOpenDashboard }) => {
     const runPanel = store?.run_panel;
     const transactions = store?.transactions;
     const client = store?.client;
-    const isEngineRunning = Boolean(runPanel?.is_running);
+    // `is_running` alone is misleading: the engine flips it back to false as
+    // soon as the tick stream is ready (run-panel-store.ts onBotReadyEvent),
+    // even though the bot keeps trading until an open contract closes.
+    // `is_stop_button_visible` is the state the dashboard itself uses to mean
+    // "a bot is live", so the hub must use the same one — otherwise Start
+    // re-enables and Stop disables while a trade is genuinely running.
+    const isEngineRunning = Boolean(runPanel?.is_stop_button_visible);
     const isLoggedIn = Boolean(client?.is_logged_in);
 
     const flashNotice = useCallback((message: string) => {
@@ -124,13 +137,42 @@ const AITradingHub: React.FC<TProps> = observer(({ onOpenDashboard }) => {
     const startEngine = useCallback(() => {
         if (!isLoggedIn) {
             flashNotice('Log in to start automated trading.');
+            runPanel?.showLoginDialog?.();
+            return;
         }
-        void Promise.resolve(runPanel?.onRunButtonClick()).catch(() => undefined);
+        // The engine rejects an incomplete workspace by returning silently from
+        // onRunButtonClick, and it writes the reason into the Journal drawer,
+        // which is hidden while the hub is showing. Pre-check here so the hub
+        // can explain the rejection on its own surface.
+        if (runPanel?.dbot && typeof runPanel.dbot.shouldRunBot === 'function' && !runPanel.dbot.shouldRunBot()) {
+            flashNotice(
+                'Strategy incomplete — open Bot Dashboard and set a market, trade type, duration and purchase block, then run again.'
+            );
+            return;
+        }
+        // Surface failures instead of swallowing them. The dashboard writes
+        // errors into its Journal drawer, which is display:none while the hub
+        // owns the screen, so a dropped rejection here was completely silent.
+        try {
+            const result = runPanel?.onRunButtonClick?.();
+            Promise.resolve(result).catch((error: unknown) => {
+                flashNotice(humaniseEngineError(error, 'The bot could not start.'));
+            });
+        } catch (error) {
+            flashNotice(humaniseEngineError(error, 'The bot could not start.'));
+        }
     }, [runPanel, isLoggedIn, flashNotice]);
 
     const stopEngine = useCallback(() => {
-        void Promise.resolve(runPanel?.onStopButtonClick()).catch(() => undefined);
-    }, [runPanel]);
+        try {
+            const result = runPanel?.onStopButtonClick?.();
+            Promise.resolve(result).catch((error: unknown) => {
+                flashNotice(humaniseEngineError(error, 'The bot could not be stopped.'));
+            });
+        } catch (error) {
+            flashNotice(humaniseEngineError(error, 'The bot could not be stopped.'));
+        }
+    }, [runPanel, flashNotice]);
 
     const markets: MarketData[] = useMemo(
         () =>
@@ -213,9 +255,12 @@ const AITradingHub: React.FC<TProps> = observer(({ onOpenDashboard }) => {
         setIsAnalyzing(true);
         setAnalysisLog([]);
 
+        // Real technical analysis over the live Deriv tick stream: the prices
+        // come from use-live-data's WebSocket and the RSI is a genuine Wilder
+        // RSI over the sampled buffer. There is no predictive model behind it,
+        // so the log says what it actually did rather than implying otherwise.
         const lines: string[] = [];
-        lines.push('[AI] Initializing market analysis engine...');
-        lines.push(`[AI] Subscribed to ${markets.length} live Deriv markets (${streamingCount} streaming).`);
+        lines.push(`[scan] Subscribed to ${markets.length} live Deriv markets (${streamingCount} streaming).`);
 
         const actionable = markets
             .filter(m => m.price !== null)
@@ -225,20 +270,20 @@ const AITradingHub: React.FC<TProps> = observer(({ onOpenDashboard }) => {
         actionable.forEach(market => {
             const zone = market.rsi > 60 ? 'overbought' : market.rsi < 40 ? 'oversold' : 'neutral';
             lines.push(
-                `[AI] ${market.symbol} @ ${market.price!.toFixed(market.price! < 10 ? 5 : 2)} | ` +
+                `[scan] ${market.symbol} @ ${market.price!.toFixed(market.price! < 10 ? 5 : 2)} | ` +
                     `${market.changePercent >= 0 ? '+' : ''}${market.changePercent.toFixed(2)}% | ` +
                     `RSI ${market.rsi.toFixed(1)} (${zone}) → ${market.signal} ${market.confidence}%`
             );
         });
 
         const setups = markets.filter(m => m.price !== null && m.signal !== 'HOLD');
-        lines.push(`[AI] ${setups.length} actionable setup(s) across ${streamingCount} live markets.`);
+        lines.push(`[scan] ${setups.length} actionable setup(s) across ${streamingCount} live markets.`);
         lines.push(
-            `[AI] Risk profile set to ${riskLevel}. ` +
+            `[scan] Risk profile set to ${riskLevel}. ` +
                 (isLoggedIn
                     ? isEngineRunning
                         ? 'Engine is running.'
-                        : 'Auto Trading toggle will start the engine.'
+                        : 'Auto Trading will start the engine when a setup appears.'
                     : 'Log in to let the engine place trades.')
         );
 
@@ -255,15 +300,74 @@ const AITradingHub: React.FC<TProps> = observer(({ onOpenDashboard }) => {
         }, 220);
     }, [markets, streamingCount, riskLevel, isLoggedIn, isEngineRunning]);
 
+    /**
+     * Auto trading: when enabled, act on a genuine signal from the live feed.
+     *
+     * A setup is a streaming market whose RSI/direction heuristic produced a
+     * BUY or SELL above the confidence floor. When one appears and the engine is
+     * idle, the matching strategy is loaded into Blockly and the engine is
+     * started — the same path a human pressing Deploy then Start would take.
+     */
+    useEffect(() => {
+        if (!autoTradeEnabled || !isLoggedIn || isEngineRunning || isDeploying || isAnalyzing) return;
+        const now = Date.now();
+        if (now < autoTradeCooldownRef.current) return;
+
+        const best = markets
+            .filter(m => m.price !== null && m.signal !== 'HOLD' && m.confidence >= AUTO_TRADE_CONFIDENCE)
+            .sort((a, b) => b.confidence - a.confidence)[0];
+        if (!best) return;
+
+        const wantsRise = best.signal === 'BUY';
+        const strategy = HUB_STRATEGIES.find(s => s.symbol === best.symbol && (s.direction === 'CALL') === wantsRise);
+        if (!strategy) return;
+
+        // Space out automated deployments so a flat market cannot queue a
+        // string of identical trades.
+        autoTradeCooldownRef.current = now + AUTO_TRADE_COOLDOWN_MS;
+
+        let cancelled = false;
+        (async () => {
+            try {
+                await deployHubStrategy(strategy, window.Blockly?.derivWorkspace);
+                if (cancelled) return;
+                flashNotice(
+                    `Auto Trading: ${best.symbol} ${best.signal} at ${best.confidence}% confidence — running ${strategy.name}.`
+                );
+                const result = runPanel?.onRunButtonClick?.();
+                Promise.resolve(result).catch((error: unknown) => {
+                    if (!cancelled) flashNotice(humaniseEngineError(error, 'Auto Trading could not start the bot.'));
+                });
+            } catch (error) {
+                if (!cancelled) {
+                    flashNotice(humaniseEngineError(error, 'Auto Trading could not load a strategy.'));
+                }
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autoTradeEnabled, isLoggedIn, isEngineRunning, isDeploying, isAnalyzing, markets, runPanel]);
+
     const toggleAutoTrade = useCallback(() => {
         const next = !autoTradeEnabled;
         setAutoTradeEnabled(next);
-        if (next) startEngine();
-        else stopEngine();
-    }, [autoTradeEnabled, startEngine, stopEngine]);
+        if (next && !isLoggedIn) {
+            flashNotice('Log in to enable Auto Trading.');
+            runPanel?.showLoginDialog?.();
+            return;
+        }
+        if (next) {
+            flashNotice('Auto Trading on — it will act when a setup appears on a live market.');
+        } else {
+            flashNotice('Auto Trading off.');
+        }
+    }, [autoTradeEnabled, isLoggedIn, runPanel, flashNotice]);
 
     const deployStrategy = useCallback(
-        (strategy: Strategy) => {
+        async (strategy: HubStrategy) => {
             const exceedsRisk =
                 (riskLevel === 'low' && RISK_ORDER[strategy.risk] > 1) ||
                 (riskLevel === 'medium' && RISK_ORDER[strategy.risk] > 3);
@@ -273,12 +377,29 @@ const AITradingHub: React.FC<TProps> = observer(({ onOpenDashboard }) => {
             }
             if (!isLoggedIn) {
                 flashNotice('Log in first — then deploy a strategy and press Run on the Bot Dashboard.');
+                runPanel?.showLoginDialog?.();
                 return;
             }
-            flashNotice(`${strategy.name} armed. Finish its setup on the Bot Dashboard, then press Run.`);
-            onOpenDashboard?.();
+            const workspace = window.Blockly?.derivWorkspace;
+            if (!workspace) {
+                flashNotice('The Bot Dashboard workspace is still loading. Try again in a moment.');
+                return;
+            }
+
+            setIsDeploying(true);
+            try {
+                await deployHubStrategy(strategy, workspace);
+                flashNotice(
+                    `${strategy.name} loaded onto the Bot Dashboard (${strategy.symbol}, ${strategy.direction}, ${strategy.duration}${strategy.durationUnit}). Press Start to trade it.`
+                );
+                onOpenDashboard?.();
+            } catch (error) {
+                flashNotice(humaniseEngineError(error, `${strategy.name} could not be loaded onto the Bot Dashboard.`));
+            } finally {
+                setIsDeploying(false);
+            }
         },
-        [riskLevel, isLoggedIn, flashNotice, onOpenDashboard]
+        [riskLevel, isLoggedIn, flashNotice, onOpenDashboard, runPanel]
     );
 
     const formatPrice = (value: number | null) => (value === null ? '—' : value.toFixed(value < 10 ? 5 : 2));
@@ -289,7 +410,7 @@ const AITradingHub: React.FC<TProps> = observer(({ onOpenDashboard }) => {
             <div className='hub-header'>
                 <div className='hub-title'>
                     <h1>AI Trading Hub</h1>
-                    <p>Autonomous AI-powered trading across all live Deriv markets</p>
+                    <p>Live Deriv market data, RSI signals and automated strategy execution</p>
                 </div>
 
                 <div className='hub-controls'>
@@ -329,6 +450,8 @@ const AITradingHub: React.FC<TProps> = observer(({ onOpenDashboard }) => {
                     <button className='analyze-btn' onClick={runAnalysis} disabled={isAnalyzing}>
                         {isAnalyzing ? 'Analyzing…' : 'Run AI Analysis'}
                     </button>
+
+                    <HubAccountSwitcher />
 
                     <div className='theme-switcher' role='group' aria-label='Theme'>
                         <button
@@ -558,7 +681,7 @@ const AITradingHub: React.FC<TProps> = observer(({ onOpenDashboard }) => {
                                 </div>
                             </div>
 
-                            {STRATEGIES.map(strategy => (
+                            {HUB_STRATEGIES.map(strategy => (
                                 <div key={strategy.id} className='bot-card'>
                                     <div className='bot-header'>
                                         <h4>{strategy.name}</h4>
@@ -569,24 +692,30 @@ const AITradingHub: React.FC<TProps> = observer(({ onOpenDashboard }) => {
                                     <p className='bot-desc'>{strategy.description}</p>
                                     <div className='bot-stats'>
                                         <div className='bot-stat'>
-                                            <span className='label'>Win Rate</span>
-                                            <span className='value'>{strategy.winRate}%</span>
+                                            <span className='label'>Direction</span>
+                                            <span className={`value ${strategy.direction === 'CALL' ? 'positive' : 'negative'}`}>
+                                                {strategy.direction === 'CALL' ? 'Rise' : 'Fall'}
+                                            </span>
                                         </div>
                                         <div className='bot-stat'>
-                                            <span className='label'>Avg Return</span>
-                                            <span className='value'>{strategy.avgReturn}%</span>
+                                            <span className='label'>Stake</span>
+                                            <span className='value'>{strategy.amount.toFixed(2)}</span>
                                         </div>
                                     </div>
                                     <div className='bot-markets'>
-                                        {strategy.markets.map(m => (
-                                            <span key={m} className='market-tag'>
-                                                {m}
-                                            </span>
-                                        ))}
+                                        <span className='market-tag'>{strategy.symbol}</span>
+                                        <span className='market-tag'>
+                                            {strategy.duration}
+                                            {strategy.durationUnit}
+                                        </span>
                                     </div>
                                     <div className='bot-actions'>
-                                        <button className='action-btn start' onClick={() => deployStrategy(strategy)}>
-                                            Deploy
+                                        <button
+                                            className='action-btn start'
+                                            onClick={() => deployStrategy(strategy)}
+                                            disabled={isDeploying}
+                                        >
+                                            {isDeploying ? 'Deploying…' : 'Deploy'}
                                         </button>
                                     </div>
                                 </div>
@@ -634,7 +763,7 @@ const AITradingHub: React.FC<TProps> = observer(({ onOpenDashboard }) => {
                 {selectedTab === 'strategies' && (
                     <div className='strategies-panel'>
                         <div className='strategies-grid'>
-                            {STRATEGIES.map(strategy => (
+                            {HUB_STRATEGIES.map(strategy => (
                                 <div key={strategy.id} className='strategy-card'>
                                     <div className='strategy-header'>
                                         <h4>{strategy.name}</h4>
@@ -645,23 +774,33 @@ const AITradingHub: React.FC<TProps> = observer(({ onOpenDashboard }) => {
                                     <p className='strategy-desc'>{strategy.description}</p>
                                     <div className='strategy-metrics'>
                                         <div className='metric'>
-                                            <span className='metric-label'>Win Rate</span>
-                                            <span className='metric-value'>{strategy.winRate}%</span>
+                                            <span className='metric-label'>Market</span>
+                                            <span className='metric-value'>{strategy.symbol}</span>
                                         </div>
                                         <div className='metric'>
-                                            <span className='metric-label'>Avg Return</span>
-                                            <span className='metric-value'>{strategy.avgReturn}%</span>
+                                            <span className='metric-label'>Direction</span>
+                                            <span className='metric-value'>
+                                                {strategy.direction === 'CALL' ? 'Rise' : 'Fall'}
+                                            </span>
+                                        </div>
+                                        <div className='metric'>
+                                            <span className='metric-label'>Duration</span>
+                                            <span className='metric-value'>
+                                                {strategy.duration}
+                                                {strategy.durationUnit}
+                                            </span>
+                                        </div>
+                                        <div className='metric'>
+                                            <span className='metric-label'>Stake</span>
+                                            <span className='metric-value'>{strategy.amount.toFixed(2)}</span>
                                         </div>
                                     </div>
-                                    <div className='bot-markets'>
-                                        {strategy.markets.map(m => (
-                                            <span key={m} className='market-tag'>
-                                                {m}
-                                            </span>
-                                        ))}
-                                    </div>
-                                    <button className='deploy-btn' onClick={() => deployStrategy(strategy)}>
-                                        Deploy Bot
+                                    <button
+                                        className='deploy-btn'
+                                        onClick={() => deployStrategy(strategy)}
+                                        disabled={isDeploying}
+                                    >
+                                        {isDeploying ? 'Deploying…' : 'Deploy Bot'}
                                     </button>
                                 </div>
                             ))}

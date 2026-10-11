@@ -196,6 +196,12 @@ export default class RunPanelStore {
 
         if (!this.dbot.shouldRunBot()) {
             this.unregisterBotListeners();
+            // This used to return silently, so pressing Run on an incomplete
+            // workspace did nothing at all with no explanation. The Journal is
+            // the app's error surface, so record why the run was rejected.
+            this.showErrorMessage(
+                'Your strategy is incomplete. Open the Bot Dashboard and choose a market, a trade type, a duration and a purchase block before running.'
+            );
             return;
         }
 

@@ -14,8 +14,16 @@ const Main = observer(() => {
     // Publish the active view so dashboard-only chrome (the onboarding tour)
     // knows to stay quiet while the hub is showing. Both views stay mounted —
     // hiding the dashboard keeps the bot engine alive for the hub's controls.
+    //
+    // The body class unlocks the page scroll. `.layout` is `height: 100vh` and
+    // `.bot-dashboard` is `height: calc(100vh - 4.4rem); overflow: hidden` — a
+    // fixed-height app shell the bot builder scrolls *inside*. The hub is a
+    // normal document, so it needs that shell relaxed (see main.scss).
     useEffect(() => {
         ui?.setActiveHubView?.(activeView);
+        const isHub = activeView === 'ai-hub';
+        document.body.classList.toggle('hub-view', isHub);
+        return () => document.body.classList.remove('hub-view');
     }, [activeView, ui]);
 
     return (
