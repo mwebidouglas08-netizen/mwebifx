@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { observer } from 'mobx-react-lite';
-import RunPanel from '@/components/run-panel/run-panel';
 import AITradingHub from '@/pages/ai-trading-hub';
+import AppWrapper from './main';
 import './main.scss';
 
 const Main = observer(() => {
@@ -24,7 +24,7 @@ const Main = observer(() => {
                         Dashboard
                     </button>
                 </div>
-                {activeView === 'ai-hub' ? <AITradingHub /> : <RunPanel />}
+                {activeView === 'ai-hub' ? <AITradingHub /> : <AppWrapper />}
             </main>
         </div>
     );
