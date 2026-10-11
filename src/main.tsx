@@ -2,6 +2,12 @@ import { createRoot } from 'react-dom/client';
 import App from './app/App';
 import { getUrlBase } from './components/shared/utils/url';
 import { isPreviewMode, PREVIEW_BASE_PATH } from './utils/is-preview-mode';
+// Global stylesheet: defines the .theme--light / .theme--dark CSS variables
+// (--general-main-1, --text-prominent, --border-normal, …) plus the body font
+// and background. Dropped somewhere after 4037a32, which left every
+// var(--theme-token) in the app silently unresolved — light mode rendered as
+// white text on a transparent background.
+import './styles/index.scss';
 
 // Runtime public path used to build asset URLs (audio, Blockly media, favicon).
 // Restored from src/public-path.ts (deleted in 956dcae) — without it every asset

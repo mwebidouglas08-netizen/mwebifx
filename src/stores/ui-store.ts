@@ -23,6 +23,13 @@ export default class UiStore {
     is_tablet = false;
     is_chart_layout_default = true;
     is_dark_mode_on = getInitialDarkMode();
+    /**
+     * Which top-level view the shell is showing. The AI Hub and the dashboard
+     * stay mounted at the same time (the hub hides the dashboard so the bot
+     * engine keeps running), so dashboard-only chrome — the onboarding tour in
+     * particular — needs this to know when to stay out of the way.
+     */
+    active_hub_view: 'ai-hub' | 'dashboard' = 'ai-hub';
     account_switcher_disabled_message = '';
     current_focus = null;
     show_prompt = false;
@@ -35,6 +42,7 @@ export default class UiStore {
     constructor() {
         makeObservable(this, {
             account_switcher_disabled_message: observable,
+            active_hub_view: observable,
             current_focus: observable,
             is_accounts_switcher_on: observable,
             is_dark_mode_on: observable,
@@ -44,6 +52,7 @@ export default class UiStore {
             is_trading_assessment_for_new_user_enabled: observable,
             show_prompt: observable,
             setAccountSwitcherDisabledMessage: action.bound,
+            setActiveHubView: action.bound,
             setCurrentFocus: action.bound,
             setDarkMode: action.bound,
             setDevice: action.bound,
@@ -71,6 +80,10 @@ export default class UiStore {
 
     setDarkMode = (value: boolean) => {
         this.is_dark_mode_on = value;
+    };
+
+    setActiveHubView = (view: 'ai-hub' | 'dashboard') => {
+        this.active_hub_view = view;
     };
 
     setDevice = (value: 'mobile' | 'desktop' | 'tablet') => {

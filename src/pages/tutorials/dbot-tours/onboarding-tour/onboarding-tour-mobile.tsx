@@ -25,8 +25,11 @@ type TTourData = TMobileTourConfig & {
 };
 
 const OnboardingTourMobile = observer(() => {
-    const { dashboard } = useStore();
+    const { dashboard, ui } = useStore();
     const { onCloseTour, onTourEnd, setTourActiveStep, active_tour, active_tab, setActiveTour } = dashboard;
+    // See onboarding-tour-desktop: the dashboard is kept mounted behind the AI
+    // Hub, so the tour has to stay quiet while the hub owns the screen.
+    const is_hub_active = ui?.active_hub_view === 'ai-hub';
     const [tour_step, setStep] = React.useState<number>(1);
     const [tour_data, setTourData] = React.useState<TTourData>(default_tour_data);
     const { content, header, img, media, tour_step_key } = tour_data;
@@ -50,15 +53,20 @@ const OnboardingTourMobile = observer(() => {
         const checkTokenForTour = () => {
             // Onboarding tours are noise inside the App Builder preview — skip them.
             if (isPreviewMode()) return;
+            if (is_hub_active) return;
             const token = getSetting('onboard_tour_token');
             if (!token && active_tab === 0) {
                 setActiveTour('onboarding');
             }
         };
         checkTokenForTour();
-    }, [active_tab, active_tour]);
+    }, [active_tab, active_tour, is_hub_active, setActiveTour]);
 
-    if (!active_tour) {
+    React.useEffect(() => {
+        if (is_hub_active && active_tour) setActiveTour('');
+    }, [is_hub_active, active_tour, setActiveTour]);
+
+    if (!active_tour || is_hub_active) {
         return null;
     }
 

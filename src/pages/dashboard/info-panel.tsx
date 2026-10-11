@@ -11,7 +11,12 @@ import { SIDEBAR_INTRO } from './constants';
 
 const InfoPanel = observer(() => {
     const { isDesktop } = useDevice();
-    const { dashboard } = useStore();
+    const { dashboard, ui } = useStore();
+    // The dashboard stays mounted behind the AI Hub so the bot engine is live.
+    // On mobile this panel renders as a Modal that portals into the global
+    // .modal-root (z-index 9998, full-screen backdrop), which would escape the
+    // hidden dashboard and cover the hub — so it must stay closed there.
+    const is_hub_active = ui?.active_hub_view === 'ai-hub';
 
     const [is_tour_open, setIsTourOpen] = React.useState(false);
 
@@ -40,12 +45,17 @@ const InfoPanel = observer(() => {
     };
 
     React.useEffect(() => {
+        if (is_hub_active) {
+            setInfoPanelVisibility(false);
+            setIsTourOpen(false);
+            return;
+        }
         if (is_info_panel_visible) {
             setIsTourOpen(true);
         } else {
             setIsTourOpen(false);
         }
-    }, [is_info_panel_visible]);
+    }, [is_info_panel_visible, is_hub_active, setInfoPanelVisibility]);
 
     const renderInfo = () => (
         <div className='db-info-panel'>
@@ -80,6 +90,8 @@ const InfoPanel = observer(() => {
             })}
         </div>
     );
+
+    if (is_hub_active) return null;
 
     return isDesktop ? (
         !active_tour && (
