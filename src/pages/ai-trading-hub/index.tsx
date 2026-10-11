@@ -1,12 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useStore } from '@/hooks/useStore';
+import { transaction_elements } from '@/constants/transactions';
+import { computeRsi, useLivePrices } from './use-live-data';
 import './ai-trading-hub.scss';
 
 interface MarketData {
     symbol: string;
     name: string;
-    price: number;
+    price: number | null;
     change: number;
     changePercent: number;
     volume: string;
@@ -188,121 +190,136 @@ const AI_STRATEGIES = [
     { id: 'news', name: 'News Sentiment', description: 'NLP-based news sentiment analysis for event-driven trading', risk: 'High', winRate: 62, avgReturn: 6.5 },
 ];
 
-const generateMarketData = (): MarketData[] => {
-    return AI_TRADING_MARKETS.slice(0, 20).map(market => {
-        const basePrice = market.category === 'forex' ? 1.0 + Math.random() * 0.5 : 1000 + Math.random() * 9000;
-        const change = (Math.random() - 0.5) * basePrice * 0.02;
-        const changePercent = (change / basePrice) * 100;
-        const signal = changePercent > 0.5 ? 'BUY' : changePercent < -0.5 ? 'SELL' : 'HOLD';
-        const confidence = 55 + Math.random() * 40;
-        const trend = changePercent > 0.3 ? 'up' : changePercent < -0.3 ? 'down' : 'sideways';
-
-        return {
-            symbol: market.symbol,
-            name: market.name,
-            price: basePrice,
-            change,
-            changePercent,
-            volume: (Math.random() * 1000000).toFixed(0),
-            high: basePrice + Math.abs(change),
-            low: basePrice - Math.abs(change),
-            signal,
-            confidence: Math.round(confidence),
-            trend,
-        };
-    });
-};
-
-const generateBots = (): Bot[] => {
-    return AI_STRATEGIES.slice(0, 6).map((strategy, i) => ({
-        id: `bot_${i}`,
-        name: strategy.name,
-        strategy: strategy.id,
-        status: i < 3 ? 'running' : 'paused',
-        profit: (Math.random() - 0.3) * 500,
-        trades: Math.floor(Math.random() * 200) + 50,
-        winRate: strategy.winRate + (Math.random() - 0.5) * 10,
-        lastTrade: `${Math.floor(Math.random() * 59) + 1}m ago`,
-        markets: AI_TRADING_MARKETS.slice(0, Math.floor(Math.random() * 5) + 3).map(m => m.symbol),
-    }));
-};
-
-const generateTrades = (): Trade[] => {
-    return Array.from({ length: 15 }, (_, i) => {
-        const market = AI_TRADING_MARKETS[Math.floor(Math.random() * AI_TRADING_MARKETS.length)];
-        const type = Math.random() > 0.5 ? 'BUY' : 'SELL';
-        const amount = Math.floor(Math.random() * 100) + 10;
-        const price = market.category === 'forex' ? 1.0 + Math.random() * 0.5 : 1000 + Math.random() * 9000;
-        const profit = (Math.random() - 0.4) * amount * 0.5;
-
-        return {
-            id: `trade_${i}`,
-            time: new Date(Date.now() - Math.random() * 3600000).toLocaleTimeString(),
-            symbol: market.symbol,
-            type,
-            amount,
-            price,
-            profit,
-            status: Math.random() > 0.3 ? 'closed' : 'open',
-        };
-    });
-};
+const DISPLAY_MARKETS = AI_TRADING_MARKETS.slice(0, 20);
 
 const AITradingHub = observer(() => {
     const store = useStore();
-    const [markets, setMarkets] = useState<MarketData[]>([]);
-    const [bots, setBots] = useState<Bot[]>([]);
-    const [trades, setTrades] = useState<Trade[]>([]);
     const [selectedTab, setSelectedTab] = useState<'overview' | 'markets' | 'bots' | 'trades' | 'strategies'>('overview');
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [analysisLog, setAnalysisLog] = useState<string[]>([]);
     const [autoTradeEnabled, setAutoTradeEnabled] = useState(true);
     const [riskLevel, setRiskLevel] = useState<'low' | 'medium' | 'high'>('medium');
 
-    const refreshData = useCallback(() => {
-        setMarkets(generateMarketData());
-        setBots(generateBots());
-        setTrades(generateTrades());
-    }, []);
+    const { quotes, buffers } = useLivePrices(DISPLAY_MARKETS.map(market => market.symbol));
 
-    useEffect(() => {
-        refreshData();
-        const interval = setInterval(refreshData, 5000);
-        return () => clearInterval(interval);
-    }, [refreshData]);
+    const runPanel = store?.run_panel;
+    const transactions = store?.transactions;
+    const isEngineRunning = Boolean(runPanel?.is_running);
+    const isLoggedIn = Boolean(store?.client?.is_logged_in);
+
+    const startEngine = useCallback(() => {
+        void Promise.resolve(runPanel?.onRunButtonClick()).catch(() => undefined);
+    }, [runPanel]);
+    const stopEngine = useCallback(() => {
+        void Promise.resolve(runPanel?.onStopButtonClick()).catch(() => undefined);
+    }, [runPanel]);
+
+    const toggleAutoTrade = useCallback(() => {
+        const next = !autoTradeEnabled;
+        setAutoTradeEnabled(next);
+        if (next) startEngine();
+        else stopEngine();
+    }, [autoTradeEnabled, startEngine, stopEngine]);
+
+    const markets: MarketData[] = DISPLAY_MARKETS.map(market => {
+        const quote = quotes[market.symbol];
+        const price = quote?.price ?? null;
+        const changePercent = quote?.changePercent ?? 0;
+        const rsi = computeRsi(buffers.current[market.symbol] || []);
+        const isFlat = price === null || Math.abs(changePercent) < 0.15;
+
+        return {
+            symbol: market.symbol,
+            name: market.name,
+            price,
+            change: quote?.change ?? 0,
+            changePercent,
+            volume: quote ? String(quote.samples) : '0',
+            high: quote?.high ?? 0,
+            low: quote?.low ?? 0,
+            signal: isFlat ? 'HOLD' : changePercent > 0 ? 'BUY' : 'SELL',
+            confidence: price === null ? 0 : Math.min(97, Math.round(Math.abs(changePercent) * 20 + Math.abs(rsi - 50) + 40)),
+            trend: isFlat ? 'sideways' : changePercent > 0 ? 'up' : 'down',
+        };
+    });
+
+    const statistics = transactions?.statistics;
+    const trades: Trade[] = [];
+    for (const entry of transactions?.transactions ?? []) {
+        if (entry.type !== transaction_elements.CONTRACT) continue;
+        const contract = entry.data;
+        if (!contract || typeof contract !== 'object') continue;
+        const contractType = String(contract.contract_type ?? '');
+        trades.push({
+            id: String(contract.contract_id ?? trades.length),
+            time: String(contract.date_start ?? ''),
+            symbol: String(contract.underlying_symbol ?? ''),
+            type: contractType.includes('PUT') ? 'SELL' : 'BUY',
+            amount: Number(contract.buy_price) || 0,
+            price: Number(contract.entry_tick) || 0,
+            profit: Number(contract.profit) || 0,
+            status: contract.is_completed ? 'closed' : 'open',
+        });
+    }
+
+    const totalProfit = Number(statistics?.total_profit) || 0;
+    const totalRuns = Number(statistics?.number_of_runs) || 0;
+    const winRate = totalRuns > 0 ? (Number(statistics?.won_contracts) / totalRuns) * 100 : 0;
+
+    const bots: Bot[] = [
+        {
+            id: 'primary-ai-bot',
+            name: 'Primary AI Bot',
+            strategy: riskLevel,
+            status: isEngineRunning ? 'running' : 'stopped',
+            profit: totalProfit,
+            trades: trades.length,
+            winRate,
+            lastTrade: trades.length ? String(trades[0].time) : 'No trades yet',
+            markets: DISPLAY_MARKETS.slice(0, 5).map(market => market.symbol),
+        },
+    ];
 
     const runAnalysis = useCallback(() => {
         setIsAnalyzing(true);
-        const logs = [
-            '[AI] Initializing market analysis engine...',
-            '[AI] Scanning 100+ markets across all categories...',
-            '[AI] Analyzing price action patterns...',
-            '[AI] Computing RSI, MACD, Bollinger Bands...',
-            '[AI] Detecting support/resistance levels...',
-            '[AI] Evaluating volume profiles...',
-            '[AI] Running sentiment analysis...',
-            '[AI] Identifying high-probability setups...',
-            '[AI] Calculating risk/reward ratios...',
-            '[AI] Generating trade signals...',
-            '[AI] Analysis complete. 3 high-confidence opportunities found.',
-        ];
+        setAnalysisLog([]);
 
-        let i = 0;
-        const interval = setInterval(() => {
-            if (i < logs.length) {
-                setAnalysisLog(prev => [...prev, logs[i]]);
-                i++;
+        const lines: string[] = [];
+        let streaming = 0;
+        lines.push('[AI] Initializing market analysis engine...');
+        lines.push(`[AI] Subscribed to ${DISPLAY_MARKETS.length} live Deriv markets.`);
+        DISPLAY_MARKETS.forEach(market => {
+            const quote = quotes[market.symbol];
+            if (!quote || quote.price === null) return;
+            streaming += 1;
+            const rsi = computeRsi(buffers.current[market.symbol] || []);
+            const zone = rsi > 60 ? 'overbought' : rsi < 40 ? 'oversold' : 'neutral';
+            lines.push(
+                `[AI] ${market.symbol} @ ${quote.price.toFixed(quote.price < 10 ? 5 : 2)} | ` +
+                    `${quote.changePercent >= 0 ? '+' : ''}${quote.changePercent.toFixed(2)}% | ` +
+                    `RSI ${rsi.toFixed(1)} (${zone})`
+            );
+        });
+        lines.push(`[AI] ${streaming}/${DISPLAY_MARKETS.length} markets streaming live data.`);
+        lines.push(
+            `[AI] ${markets.filter(market => market.confidence >= 75).length} high-confidence setup(s) at ${riskLevel} risk.`
+        );
+
+        let index = 0;
+        const timer = setInterval(() => {
+            if (index < lines.length) {
+                const line = lines[index];
+                index += 1;
+                setAnalysisLog(prev => [...prev, line]);
             } else {
-                clearInterval(interval);
+                clearInterval(timer);
                 setIsAnalyzing(false);
-                refreshData();
             }
-        }, 300);
-    }, [refreshData]);
+        }, 250);
+    }, [markets, quotes, riskLevel]);
 
-    const totalProfit = bots.reduce((sum, bot) => sum + bot.profit, 0);
-    const runningBots = bots.filter(b => b.status === 'running').length;
-    const avgWinRate = bots.length > 0 ? bots.reduce((sum, b) => sum + b.winRate, 0) / bots.length : 0;
+    const runningBots = isEngineRunning ? 1 : 0;
+    const avgWinRate = winRate;
 
     return (
         <div className="ai-trading-hub">
@@ -312,11 +329,16 @@ const AITradingHub = observer(() => {
                     <p>Autonomous AI-powered trading across all live markets</p>
                 </div>
                 <div className="hub-controls">
+                    <div className="engine-status">
+                        <span className={`engine-dot ${isEngineRunning ? 'on' : 'off'}`} />
+                        {isEngineRunning ? 'Engine running' : 'Engine idle'}
+                        {!isLoggedIn && <span className="engine-login">· log in to trade</span>}
+                    </div>
                     <div className="auto-trade-toggle">
                         <span>Auto Trading</span>
                         <button
                             className={`toggle-btn ${autoTradeEnabled ? 'active' : ''}`}
-                            onClick={() => setAutoTradeEnabled(!autoTradeEnabled)}
+                            onClick={toggleAutoTrade}
                         >
                             <span className="toggle-slider" />
                         </button>
@@ -408,7 +430,11 @@ const AITradingHub = observer(() => {
                                                 <span className="opp-confidence">{market.confidence}% confidence</span>
                                             </div>
                                             <div className="opp-price">
-                                                <span>{market.price.toFixed(market.price < 10 ? 5 : 2)}</span>
+                                                <span>
+                                                    {market.price === null
+                                                        ? '—'
+                                                        : market.price.toFixed(market.price < 10 ? 5 : 2)}
+                                                </span>
                                                 <span className={market.change >= 0 ? 'positive' : 'negative'}>
                                                     {market.change >= 0 ? '+' : ''}{market.changePercent.toFixed(2)}%
                                                 </span>
@@ -434,7 +460,11 @@ const AITradingHub = observer(() => {
                             {markets.map(market => (
                                 <div key={market.symbol} className="table-row">
                                     <span className="cell-symbol">{market.symbol}</span>
-                                    <span className="cell-price">{market.price.toFixed(market.price < 10 ? 5 : 2)}</span>
+                                    <span className="cell-price">
+                                        {market.price === null
+                                            ? '—'
+                                            : market.price.toFixed(market.price < 10 ? 5 : 2)}
+                                    </span>
                                     <span className={`cell-change ${market.change >= 0 ? 'positive' : 'negative'}`}>
                                         {market.change >= 0 ? '+' : ''}{market.changePercent.toFixed(2)}%
                                     </span>
@@ -487,10 +517,20 @@ const AITradingHub = observer(() => {
                                         )}
                                     </div>
                                     <div className="bot-actions">
-                                        <button className={`action-btn ${bot.status === 'running' ? 'pause' : 'start'}`}>
-                                            {bot.status === 'running' ? 'Pause' : 'Start'}
+                                        <button
+                                            className={`action-btn ${isEngineRunning ? 'pause' : 'start'}`}
+                                            onClick={startEngine}
+                                            disabled={isEngineRunning}
+                                        >
+                                            {isEngineRunning ? 'Running' : 'Start'}
                                         </button>
-                                        <button className="action-btn stop">Stop</button>
+                                        <button
+                                            className="action-btn stop"
+                                            onClick={stopEngine}
+                                            disabled={!isEngineRunning}
+                                        >
+                                            Stop
+                                        </button>
                                     </div>
                                 </div>
                             ))}
@@ -549,7 +589,9 @@ const AITradingHub = observer(() => {
                                             <span className="metric-value">{strategy.avgReturn}%</span>
                                         </div>
                                     </div>
-                                    <button className="deploy-btn">Deploy Bot</button>
+                                    <button className="deploy-btn" onClick={startEngine} disabled={isEngineRunning}>
+                                        {isEngineRunning ? 'Bot Running' : 'Deploy Bot'}
+                                    </button>
                                 </div>
                             ))}
                         </div>

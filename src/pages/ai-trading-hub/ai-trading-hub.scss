@@ -40,6 +40,37 @@
     flex-wrap: wrap;
 }
 
+.engine-status {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 1.2rem;
+    color: var(--text-general, #c2c2c2);
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--border-normal, #323738);
+    border-radius: 6px;
+
+    .engine-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--text-general, #c2c2c2);
+
+        &.on {
+            background: var(--text-profit-success, #00a79e);
+            box-shadow: 0 0 8px var(--text-profit-success, #00a79e);
+        }
+
+        &.off {
+            background: var(--text-loss-risk, #ff444f);
+        }
+    }
+
+    .engine-login {
+        color: var(--brand-warning, #ffad3a);
+    }
+}
+
 .auto-trade-toggle {
     display: flex;
     align-items: center;
@@ -519,6 +550,11 @@
     cursor: pointer;
     transition: all 0.3s;
 
+    &:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+
     &.start {
         border-color: var(--text-profit-success, #00a79e);
         color: var(--text-profit-success, #00a79e);
@@ -650,6 +686,13 @@
     &:hover {
         transform: translateY(-2px);
         box-shadow: 0 4px 12px rgba(255, 68, 79, 0.4);
+    }
+
+    &:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
     }
 }
 

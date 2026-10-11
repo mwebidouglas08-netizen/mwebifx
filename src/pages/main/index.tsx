@@ -24,7 +24,16 @@ const Main = observer(() => {
                         Dashboard
                     </button>
                 </div>
-                {activeView === 'ai-hub' ? <AITradingHub /> : <AppWrapper />}
+                {activeView === 'ai-hub' ? <AITradingHub /> : null}
+                {/* The bot engine stays mounted (hidden on the hub) so the
+                    Blockly workspace and run-panel store are live — the hub's
+                    Start/Stop buttons drive the same engine as the dashboard. */}
+                <div
+                    style={{ display: activeView === 'dashboard' ? 'block' : 'none' }}
+                    aria-hidden={activeView !== 'dashboard'}
+                >
+                    <AppWrapper />
+                </div>
             </main>
         </div>
     );
