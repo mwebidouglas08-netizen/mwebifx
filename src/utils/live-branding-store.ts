@@ -24,5 +24,10 @@ export const subscribePreviewAppName = (listener: Listener) => subscribe('previe
 
 export const getPreviewShowAppName = (): boolean => localStorage.getItem('preview_show_app_name') === 'true';
 
+export const setPreviewShowAppName = (show: boolean) => {
+    localStorage.setItem('preview_show_app_name', String(show));
+    notify('preview_show_app_name', show);
+};
+
 export const subscribePreviewShowAppName = (listener: Listener) =>
     subscribe('preview_show_app_name', listener);

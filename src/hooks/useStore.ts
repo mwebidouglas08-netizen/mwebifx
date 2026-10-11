@@ -1,1 +1,1 @@
-export { useStore, StoreProvider, rootStore } from '@/stores';
+export { useStore, StoreProvider, rootStore, mockStore } from '@/stores';

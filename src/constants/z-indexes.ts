@@ -1,5 +1,7 @@
-export const popover_zindex = {
-    RUN_PANEL: 100,
-    FLYOUT: 200,
-    MODAL: 300,
-};
+export const popover_zindex = Object.freeze({
+    QUICK_STRATEGY: 99999,
+    TOOLBAR: 100,
+    TRANSACTION: 10,
+    SUMMARY_TOOLTIPS: 5,
+    RUN_PANEL: 6,
+});

@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
 import { observer } from 'mobx-react-lite';
-import Header from '@/components/layout/header/header';
-import Footer from '@/components/layout/footer';
 import RunPanel from '@/components/run-panel/run-panel';
 import AITradingHub from '@/pages/ai-trading-hub';
 import './main.scss';
@@ -11,7 +9,6 @@ const Main = observer(() => {
 
     return (
         <div className='main-dashboard'>
-            <Header />
             <main className='main-content'>
                 <div className='view-toggle'>
                     <button
@@ -29,7 +26,6 @@ const Main = observer(() => {
                 </div>
                 {activeView === 'ai-hub' ? <AITradingHub /> : <RunPanel />}
             </main>
-            <Footer />
         </div>
     );
 });

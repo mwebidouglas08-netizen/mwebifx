@@ -1,5 +1,5 @@
-export const save_types = {
+export const save_types = Object.freeze({
     UNSAVED: 'unsaved',
     LOCAL: 'local',
-    GOOGLE_DRIVE: 'google_drive',
-};
+    GOOGLE_DRIVE: 'google drive',
+});

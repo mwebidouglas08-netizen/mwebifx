@@ -1,52 +1,46 @@
-import React from 'react';
+import React, { CSSProperties, HTMLProps } from 'react';
+import classNames from 'classnames';
+import { isEmptyObject } from '@/components/shared';
 
-interface TextProps {
-    children: React.ReactNode;
-    as?: 'span' | 'p' | 'div' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
-    className?: string;
-    size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl';
-    weight?: 'normal' | 'bold' | 'bolder' | 'lighter';
-    color?: string;
-    align?: 'left' | 'center' | 'right' | 'justify';
-    id?: string;
-    onClick?: () => void;
-    style?: React.CSSProperties;
-}
+type TTextProps = Omit<HTMLProps<HTMLElement>, 'size'> & {
+    align?: string;
+    weight?: string;
+    lineHeight?: string;
+    styles?: CSSProperties;
+    size?: string;
+};
 
-const Text: React.FC<TextProps> = ({
+const Text = ({
     children,
-    as: Tag = 'span',
-    className = '',
-    size,
-    weight,
-    color,
-    align,
-    id,
-    onClick,
-    style,
-}) => {
-    const sizeMap: Record<string, string> = {
-        xs: '0.75rem',
-        sm: '0.875rem',
-        md: '1rem',
-        lg: '1.25rem',
-        xl: '1.5rem',
-        xxl: '2rem',
+    size = 's',
+    color = 'general',
+    align = 'left',
+    weight = 'normal',
+    lineHeight = 'm',
+    as,
+    className,
+    styles,
+    ...props
+}: TTextProps) => {
+    const class_styles = {
+        '--text-size': `var(--text-size-${size})`,
+        '--text-color': `var(--text-${color})`,
+        '--text-lh': `var(--text-lh-${lineHeight})`,
+        '--text-weight': `var(--text-weight-${weight})`,
+        '--text-align': `var(--text-align-${align})`,
     };
-
-    const computedStyle: React.CSSProperties = {
-        ...style,
-        ...(size ? { fontSize: sizeMap[size] } : {}),
-        ...(weight ? { fontWeight: weight } : {}),
-        ...(color ? { color } : {}),
-        ...(align ? { textAlign: align } : {}),
-    };
-
-    return (
-        <Tag id={id} className={className} style={computedStyle} onClick={onClick}>
-            {children}
-        </Tag>
-    );
+    const [style, setStyle] = React.useState(class_styles);
+    React.useEffect(() => {
+        if (!isEmptyObject(styles)) {
+            const combined_style = { ...class_styles, ...styles };
+            setStyle(combined_style);
+        } else {
+            setStyle(class_styles);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [size, color, lineHeight, weight, align]);
+    const class_names = classNames('dc-text', className);
+    return React.createElement(as || 'span', { className: class_names, style, ...props }, children);
 };
 
 export default Text;
