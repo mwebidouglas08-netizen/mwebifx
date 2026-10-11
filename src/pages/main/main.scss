@@ -782,6 +782,11 @@
     }
 }
 
+/* Keeps the hub's market WebSocket and RSI buffers alive while the engine shows. */
+.main-hub {
+    min-width: 0;
+}
+
 .view-toggle {
     display: flex;
     gap: 0.4rem;

@@ -39,7 +39,16 @@ const Main = observer(() => {
                         Bot Dashboard
                     </button>
                 </div>
-                {activeView === 'ai-hub' ? <AITradingHub onOpenDashboard={() => setActiveView('dashboard')} /> : null}
+                {/* Both views stay mounted. Unmounting the hub on switch would
+                    drop its market WebSocket and wipe the RSI buffers, so the
+                    user would stare at empty prices for several seconds. */}
+                <div
+                    className='main-hub'
+                    style={{ display: activeView === 'ai-hub' ? 'block' : 'none' }}
+                    aria-hidden={activeView !== 'ai-hub'}
+                >
+                    <AITradingHub onOpenDashboard={() => setActiveView('dashboard')} />
+                </div>
                 <div
                     className='main-dashboard__engine'
                     style={{ display: activeView === 'dashboard' ? 'block' : 'none' }}
