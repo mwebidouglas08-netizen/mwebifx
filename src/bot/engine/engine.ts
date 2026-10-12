@@ -33,7 +33,7 @@ import { TickFeed, SymbolSeries } from '../deriv/ticks';
 import {
     OverUnderRequest,
     applySettlementToRecord,
-    executeBuy,
+    executeBuyFresh,
     monitorUntilSettled,
     requestQuote,
     ProposalQuote,
@@ -529,15 +529,16 @@ export class OUBotEngine {
     private async execute(opp: ContractOpportunity, stake: number) {
         const cfg = this.state.config;
         const active = cfg.mode === 'active';
-        this.setStatus('proposing', `Requesting quote: ${opp.displayName} ${opp.direction} ${opp.barrier}`);
-        const { quote, error } = await requestQuote({
+        const quoteReq: OverUnderRequest = {
             symbol: opp.symbol,
             direction: opp.direction,
             barrier: opp.barrier,
             amount: stake,
             duration: cfg.duration,
             durationUnit: cfg.durationUnit,
-        });
+        };
+        this.setStatus('proposing', `Requesting quote: ${opp.displayName} ${opp.direction} ${opp.barrier}`);
+        const { quote, error } = await requestQuote(quoteReq);
         if (error || !quote) {
             this.setStatus('scanning', `Quote failed: ${error || 'no quote'}`);
             this.logEvent('error', `Quote failed on ${opp.displayName}: ${error || 'no quote'}`);
@@ -573,7 +574,7 @@ export class OUBotEngine {
         };
         this.logEvent('quote', `Quote: ${opp.displayName} ${opp.direction} ${opp.barrier} — payout ${finalEdge.payoutRatio.toFixed(2)}× (stake ${stake.toFixed(2)} → ${quote.payout.toFixed(2)})`, { symbol: opp.symbol, direction: opp.direction, barrier: opp.barrier, stake, payout: quote.payout });
         this.setStatus('buying', `Submitting order: ${opp.direction} ${opp.barrier} on ${opp.displayName}`);
-        const buy = await executeBuy(quote, stake);
+        const buy = await executeBuyFresh(quote, stake, () => requestQuote(quoteReq));
         if (buy.error || buy.contractId === undefined) {
             this.update({
                 trades: [{ ...record, stage: 'rejected', error: buy.error, closedAt: Date.now() }, ...this.state.trades],

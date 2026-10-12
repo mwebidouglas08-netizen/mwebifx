@@ -101,7 +101,7 @@ export const detectSupportedFamilies = (contractsAvailable: any[]): ContractFami
     if (types.has('CALL') || types.has('PUT')) families.push('rise_fall');
     if (types.has('DIGITEVEN') || types.has('DIGITODD')) families.push('even_odd');
     if (types.has('DIGITOVER') || types.has('DIGITUNDER')) families.push('over_under');
-    if (types.has('DIGITMATCH') || types.has('DIGITDIFFER')) families.push('match_differ');
+    if (types.has('DIGITMATCH') || types.has('DIGITDIFF') || types.has('DIGITDIFFER')) families.push('match_differ');
     return families;
 };
 

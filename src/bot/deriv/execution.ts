@@ -1,6 +1,6 @@
 import { Direction, TradeRecord } from '../core/types';
 import { SignalAction, ContractFamily, ACTION_CONTRACT_TYPE } from '../core/signal-types';
-import { buyContract, getOpenContract, getProposal, accountCurrency } from './api';
+import { buyContract, getOpenContract, getProposal, accountCurrency, ApiResult } from './api';
 
 export interface OverUnderRequest {
     symbol: string;
@@ -48,6 +48,65 @@ export const buildProposalParams = (req: OverUnderRequest): Record<string, unkno
     barrier: String(req.barrier),
 });
 
+const sleep = (ms: number): Promise<void> => new Promise<void>(r => setTimeout(r, ms));
+
+// Deriv draws `proposal`, `buy` and `proposal_open_contract` from ONE shared
+// budget (360/min, 14400/hour - developers.deriv.com/docs/limits). Proposals are
+// serialised through a pacing queue and retried once after a backoff when the
+// budget is hit, so scanning can never starve the buy/polling calls.
+const PROPOSAL_MIN_GAP_MS = 250;
+const PROPOSAL_WINDOW_MS = 60000;
+const PROPOSAL_MAX_PER_WINDOW = 300;
+const RATE_LIMIT_BACKOFF_MS = 4000;
+let lastProposalAt = 0;
+let proposalStamps: number[] = [];
+let proposalChain: Promise<unknown> = Promise.resolve();
+
+const errorText = (err?: { code?: string; message?: string }): string =>
+    `${err?.code || ''} ${err?.message || ''}`;
+
+/** Human-readable detail for UI/logs - keeps the Deriv code visible (`[PriceMoved]`). */
+const detailText = (err?: { code?: string; message?: string }): string => {
+    const parts = [err?.message, err?.code ? `[${err.code}]` : ''].filter(Boolean);
+    return parts.length ? parts.join(' ') : '';
+};
+
+const isShapeError = (err?: { code?: string; message?: string }): boolean =>
+    /Input validation failed|field is not allowed|symbol,\s*underlying_symbol/i.test(errorText(err));
+
+const isRateLimitError = (err?: { code?: string; message?: string }): boolean =>
+    /rate limit/i.test(errorText(err));
+
+const acquireProposalSlot = (): Promise<void> => {
+    const run = async (): Promise<void> => {
+        const now = Date.now();
+        proposalStamps = proposalStamps.filter(t => now - t < PROPOSAL_WINDOW_MS);
+        if (proposalStamps.length >= PROPOSAL_MAX_PER_WINDOW) {
+            const wait = PROPOSAL_WINDOW_MS - (now - proposalStamps[0]) + 100;
+            await sleep(Math.max(wait, 200));
+            proposalStamps = proposalStamps.filter(t => Date.now() - t < PROPOSAL_WINDOW_MS);
+        }
+        const gap = PROPOSAL_MIN_GAP_MS - (Date.now() - lastProposalAt);
+        if (gap > 0) await sleep(gap);
+        lastProposalAt = Date.now();
+        proposalStamps.push(lastProposalAt);
+    };
+    const next = proposalChain.then(run, run);
+    proposalChain = next.catch(() => undefined);
+    return next;
+};
+
+const sendProposal = async (params: Record<string, unknown>): Promise<ApiResult<any>> => {
+    await acquireProposalSlot();
+    let res = await getProposal(params);
+    if (res.error && isRateLimitError(res.error)) {
+        await sleep(RATE_LIMIT_BACKOFF_MS);
+        await acquireProposalSlot();
+        res = await getProposal(params);
+    }
+    return res;
+};
+
 const parseQuote = (response: any): ProposalQuote | null => {
     const p = response?.proposal;
     if (!p) return null;
@@ -67,24 +126,44 @@ const parseQuote = (response: any): ProposalQuote | null => {
     };
 };
 
-export const requestQuote = async (req: OverUnderRequest): Promise<{ quote?: ProposalQuote; error?: string }> => {
-    const params = buildProposalParams(req);
-    const first = await getProposal(params);
+/**
+ * Request a proposal on both API shapes and report the meaningful failure.
+ *
+ * The classic/authenticated socket accepts `symbol`; the trading/v1 socket
+ * requires `underlying_symbol` and rejects `symbol` outright. When both shapes
+ * fail, the second (the shape the socket actually wants) wins - reporting the
+ * expected field-validation error of the first would mask the real reason
+ * (rate limit, duration not offered, stake below minimum, ...).
+ */
+const requestProposal = async (
+    params: Record<string, unknown>
+): Promise<{ quote?: ProposalQuote; error?: string }> => {
+    const first = await sendProposal(params);
     if (!first.error && first.data) {
         const quote = parseQuote(first.data);
         if (quote) return { quote };
+        return { error: 'Malformed proposal response' };
     }
     const fallbackParams = { ...params };
     delete (fallbackParams as any).symbol;
-    (fallbackParams as any).underlying_symbol = req.symbol;
-    const second = await getProposal(fallbackParams);
+    (fallbackParams as any).underlying_symbol = params.symbol;
+    const second = await sendProposal(fallbackParams);
     if (!second.error && second.data) {
         const quote = parseQuote(second.data);
         if (quote) return { quote };
+        return { error: 'Malformed proposal response' };
     }
-    const err = first.error || second.error;
-    return { error: err?.message || err?.code || 'Proposal failed' };
+    const winner =
+        second.error && !isShapeError(second.error)
+            ? second.error
+            : first.error && !isShapeError(first.error)
+              ? first.error
+              : second.error || first.error;
+    return { error: detailText(winner) || 'Proposal failed' };
 };
+
+export const requestQuote = async (req: OverUnderRequest): Promise<{ quote?: ProposalQuote; error?: string }> =>
+    requestProposal(buildProposalParams(req));
 
 const buildContractParams = (req: ContractRequest): Record<string, unknown> => {
     const params: Record<string, unknown> = {
@@ -105,24 +184,7 @@ const buildContractParams = (req: ContractRequest): Record<string, unknown> => {
 
 export const requestContractQuote = async (
     req: ContractRequest
-): Promise<{ quote?: ProposalQuote; error?: string }> => {
-    const params = buildContractParams(req);
-    const first = await getProposal(params);
-    if (!first.error && first.data) {
-        const quote = parseQuote(first.data);
-        if (quote) return { quote };
-    }
-    const fallbackParams = { ...params };
-    delete (fallbackParams as any).symbol;
-    (fallbackParams as any).underlying_symbol = req.symbol;
-    const second = await getProposal(fallbackParams);
-    if (!second.error && second.data) {
-        const quote = parseQuote(second.data);
-        if (quote) return { quote };
-    }
-    const err = first.error || second.error;
-    return { error: err?.message || err?.code || 'Proposal failed' };
-};
+): Promise<{ quote?: ProposalQuote; error?: string }> => requestProposal(buildContractParams(req));
 
 export interface SimpleContractRequest {
     symbol: string;
@@ -157,21 +219,7 @@ export const requestSimpleQuote = async (
     if (req.barrier !== undefined && needsBarrier(req.contractType)) {
         params.barrier = String(req.barrier);
     }
-    const first = await getProposal(params);
-    if (!first.error && first.data) {
-        const quote = parseQuote(first.data);
-        if (quote) return { quote };
-    }
-    const fallbackParams = { ...params };
-    delete (fallbackParams as any).symbol;
-    (fallbackParams as any).underlying_symbol = req.symbol;
-    const second = await getProposal(fallbackParams);
-    if (!second.error && second.data) {
-        const quote = parseQuote(second.data);
-        if (quote) return { quote };
-    }
-    const err = first.error || second.error;
-    return { error: err?.message || err?.code || 'Proposal failed' };
+    return requestProposal(params);
 };
 
 export interface BuyResult {
@@ -181,8 +229,23 @@ export interface BuyResult {
     error?: string;
 }
 export const executeBuy = async (quote: ProposalQuote, amount: number): Promise<BuyResult> => {
-    const { data, error } = await buyContract(quote.id, amount);
-    if (error) return { error: error.message || error.code || 'Buy failed' };
+    // Buy at the price Deriv just quoted (basis is always `stake`, so ask_price
+    // is the stake). Passing a stale/recomputed number is what triggers
+    // PriceMoved rejections; Deriv's guidance is to buy against a fresh
+    // proposal and pass that quote's price as the maximum.
+    const price = Number.isFinite(quote.askPrice) && quote.askPrice > 0 ? quote.askPrice : amount;
+    if (quote.minStake !== undefined && price + 1e-9 < quote.minStake) {
+        return { error: `Stake ${price} is below the ${quote.minStake} minimum for this market` };
+    }
+    if (quote.maxStake !== undefined && price - 1e-9 > quote.maxStake) {
+        return { error: `Stake ${price} is above the ${quote.maxStake} maximum for this market` };
+    }
+    const currency = accountCurrency();
+    if (quote.currency && currency && quote.currency !== currency) {
+        return { error: `Quote currency ${quote.currency} does not match account currency ${currency}` };
+    }
+    const { data, error } = await buyContract(quote.id, price);
+    if (error) return { error: detailText(error) || 'Buy failed' };
     const b = data?.buy;
     if (!b) return { error: 'Empty buy response' };
     const contractId = Number(b.contract_id);
@@ -190,6 +253,44 @@ export const executeBuy = async (quote: ProposalQuote, amount: number): Promise<
     const buyPrice = Number(b.buy_price);
     if (!Number.isFinite(contractId)) return { error: 'No contract_id in buy response' };
     return { contractId, transactionId, buyPrice };
+};
+
+const RETRYABLE_BUY_RE = /price\s*moved|proposal\s*(expired|not\s*found|invalid)|proposal.*expired|rate\s*limit/i;
+
+/** True when the rejection is caused by a stale quote and a fresh one can fix it. */
+export const isRetryableBuyError = (message: string): boolean => RETRYABLE_BUY_RE.test(message || '');
+
+/**
+ * True when the market/contract cannot be traded with the current settings at
+ * all (duration not offered, asset not tradable, contract type unknown). These
+ * never resolve by retrying, so the market is parked instead of re-failed on
+ * every scan.
+ */
+export const isMarketUnavailableError = (message: string): boolean =>
+    /TradingDurationNotAllowed|InvalidInputAsset|InvalidContractType|MarketIsClosed|market is closed/i.test(
+        message || ''
+    );
+
+/**
+ * Buy against a fresh quote. If Deriv rejects the quote as stale/moved,
+ * refresh it through `refetch` (which issues a brand new proposal) and retry
+ * once - bots cache quotes for EV previews, and a cached id is exactly what
+ * Deriv refuses.
+ */
+export const executeBuyFresh = async (
+    quote: ProposalQuote,
+    amount: number,
+    refetch: () => Promise<{ quote?: ProposalQuote; error?: string }>
+): Promise<BuyResult> => {
+    const first = await executeBuy(quote, amount);
+    if (!first.error || !isRetryableBuyError(first.error)) return first;
+    const fresh = await refetch();
+    if (!fresh.quote) {
+        return { error: `${first.error} (refresh failed: ${fresh.error || 'no quote'})` };
+    }
+    const second = await executeBuy(fresh.quote, amount);
+    if (!second.error) return second;
+    return { error: `${second.error}` };
 };
 
 export interface Settlement {

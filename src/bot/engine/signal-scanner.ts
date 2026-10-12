@@ -40,7 +40,8 @@ import {
     ContractRequest,
     ProposalQuote,
     applySettlementToRecord,
-    executeBuy,
+    executeBuyFresh,
+    isMarketUnavailableError,
     monitorUntilSettled,
     requestContractQuote,
 } from '../deriv/execution';
@@ -92,14 +93,8 @@ export const DEFAULT_SIGNAL_CONFIG: SignalScannerConfig = {
     martingaleMaxSteps: 3,
 };
 
-const QUOTE_TTL_MS = 12000;
 const EVENT_CAP = 240;
 const PROBE_CONCURRENCY = 8;
-
-interface CachedQuote {
-    quote: ProposalQuote;
-    at: number;
-}
 
 const theoreticalOver = (barrier: number) => ((9 - barrier) / 10) * 100;
 const theoreticalUnder = (barrier: number) => ((barrier + 1) / 10) * 100;
@@ -115,7 +110,7 @@ export class SignalScannerEngine {
     private scanTimer: ReturnType<typeof setInterval> | null = null;
     private symbols: SyntheticSymbol[] = [];
     private familiesBySymbol = new Map<string, ContractFamily[]>();
-    private quoteCache = new Map<string, CachedQuote>();
+    private quoteBlocked = new Set<string>();
     private busy = false;
     private running = false;
     private lastTradeAt = 0;
@@ -461,6 +456,7 @@ export class SignalScannerEngine {
                 if (!scan) continue;
                 markets.push(scan);
                 if (this.familiesBySymbol.get(s.symbol)?.length === 0) continue;
+                if (this.quoteBlocked.has(s.symbol)) continue;
                 signals.push(...this.signalsFromMarket(scan));
             }
             signals.sort((a, b) => b.confidence * b.strength - a.confidence * a.strength);
@@ -506,20 +502,11 @@ export class SignalScannerEngine {
         }
     }
 
-    private async getQuoteCached(req: ContractRequest): Promise<ProposalQuote | null> {
-        const key = `${req.symbol}|${req.action}|${req.barrier ?? ''}|${req.duration}${req.durationUnit}`;
-        const cached = this.quoteCache.get(key);
-        if (cached && Date.now() - cached.at < QUOTE_TTL_MS) return cached.quote;
-        const { quote, error } = await requestContractQuote(req);
-        if (error || !quote) return null;
-        this.quoteCache.set(key, { quote, at: Date.now() });
-        return quote;
-    }
-
     private async execute(signal: Signal, stake: number) {
         const cfg = this.state.config;
-        this.setStatus('proposing', `Requesting quote: ${signal.displayName} ${ACTION_LABEL[signal.action]}`);
-        const quote = await this.getQuoteCached({
+        // A brand-new proposal per order: Deriv refuses cached/stale proposal
+        // ids by the time the buy lands (prices are short-lived).
+        const quoteReq: ContractRequest = {
             symbol: signal.symbol,
             family: signal.family,
             action: signal.action,
@@ -527,10 +514,23 @@ export class SignalScannerEngine {
             amount: stake,
             duration: cfg.duration,
             durationUnit: cfg.durationUnit,
-        });
+        };
+        this.setStatus('proposing', `Requesting quote: ${signal.displayName} ${ACTION_LABEL[signal.action]}`);
+        const { quote, error } = await requestContractQuote(quoteReq);
         if (!quote) {
-            this.setStatus('scanning', 'Quote failed. Skipping.');
-            this.logEvent('error', `Quote failed on ${signal.displayName} ${signal.action}`);
+            const detail = error || 'no quote';
+            this.setStatus('scanning', `Quote failed: ${detail}. Skipping.`);
+            this.logEvent('error', `Quote failed on ${signal.displayName} ${signal.action}: ${detail}`, {
+                symbol: signal.symbol,
+            });
+            if (isMarketUnavailableError(detail)) {
+                this.quoteBlocked.add(signal.symbol);
+                this.logEvent(
+                    'error',
+                    `${signal.displayName} does not offer ${cfg.duration}${cfg.durationUnit} contracts - removing it from the scan.`,
+                    { symbol: signal.symbol }
+                );
+            }
             return;
         }
         this.logEvent('quote', `Quote: ${signal.displayName} ${ACTION_LABEL[signal.action]} — payout ${quote.payout.toFixed(2)} (stake ${stake.toFixed(2)})`, { symbol: signal.symbol, action: signal.action });
@@ -557,7 +557,7 @@ export class SignalScannerEngine {
         };
 
         this.setStatus('buying', `Submitting order: ${signal.displayName} ${ACTION_LABEL[signal.action]}`);
-        const buy = await executeBuy(quote, stake);
+        const buy = await executeBuyFresh(quote, stake, () => requestContractQuote(quoteReq));
         if (buy.error || buy.contractId === undefined) {
             this.update({ trades: [{ ...record, stage: 'rejected', error: buy.error, closedAt: Date.now() }, ...this.state.trades] });
             this.setStatus('scanning', `Order rejected: ${buy.error}`);

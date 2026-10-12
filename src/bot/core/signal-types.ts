@@ -30,7 +30,7 @@ export const ACTION_CONTRACT_TYPE: Record<SignalAction, string> = {
     OVER: 'DIGITOVER',
     UNDER: 'DIGITUNDER',
     MATCH: 'DIGITMATCH',
-    DIFFER: 'DIGITDIFFER',
+    DIFFER: 'DIGITDIFF',
 };
 
 export interface Signal {

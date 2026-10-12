@@ -27,7 +27,8 @@ import { SymbolSeries, TickFeed } from '../deriv/ticks';
 import {
     ProposalQuote,
     applySettlementToRecord,
-    executeBuy,
+    executeBuyFresh,
+    isMarketUnavailableError,
     monitorUntilSettled,
     requestSimpleQuote,
 } from '../deriv/execution';
@@ -124,13 +125,7 @@ export const DEFAULT_AI_BOT_CONFIG: AIBotConfig = {
 };
 
 const EVENT_CAP = 240;
-const QUOTE_TAIL_MS = 8000;
 const PROBE_CONCURRENCY = 8;
-
-interface CachedQuote {
-    quote: ProposalQuote;
-    at: number;
-}
 
 export class AIBotEngine {
     private listeners = new Set<AIBotListener>();
@@ -138,7 +133,7 @@ export class AIBotEngine {
     private scanTimer: ReturnType<typeof setInterval> | null = null;
     private symbols: SyntheticSymbol[] = [];
     private familiesBySymbol = new Map<string, ContractFamily[]>();
-    private quoteCache = new Map<string, CachedQuote>();
+    private quoteBlocked = new Set<string>();
     private busy = false;
     private running = false;
     private eventSeq = 0;
@@ -439,7 +434,7 @@ export class AIBotEngine {
                     contractType: cfg.contractType,
                     prediction: cfg.prediction,
                 });
-                if (match && this.familySupported(s.symbol, match.contractType)) {
+                if (match && this.familySupported(s.symbol, match.contractType) && !this.quoteBlocked.has(s.symbol)) {
                     chosen = { analysis, match };
                 }
             }
@@ -558,32 +553,37 @@ export class AIBotEngine {
         }
     }
 
-    private async getQuoteCached(symbol: string, ct: PurchaseType, barrier: number | undefined, amount: number, cfg: AIBotConfig): Promise<ProposalQuote | null> {
-        const key = `${symbol}|${ct}|${barrier ?? ''}|${amount}|${cfg.duration}${cfg.durationUnit}`;
-        const cached = this.quoteCache.get(key);
-        if (cached && Date.now() - cached.at < QUOTE_TAIL_MS) return cached.quote;
-        const { quote, error } = await requestSimpleQuote({
-            symbol,
-            contractType: ct,
-            barrier,
-            amount,
-            duration: cfg.duration,
-            durationUnit: cfg.durationUnit,
-        });
-        if (error || !quote) return null;
-        this.quoteCache.set(key, { quote, at: Date.now() });
-        return quote;
-    }
-
     private async execute(analysis: MarketAnalysis, match: RuleMatch, prediction: number, stake: number) {
         const cfg = this.state.config;
         const ct = match.contractType;
         const meta = this.symbols.find(s => s.symbol === analysis.symbol);
+        // A brand-new proposal per order: Deriv refuses cached proposal ids
+        // (the price has moved by the time we buy), which showed up as
+        // "Order rejected" on every attempt.
+        const quoteReq = {
+            symbol: analysis.symbol,
+            contractType: ct,
+            barrier: prediction,
+            amount: stake,
+            duration: cfg.duration,
+            durationUnit: cfg.durationUnit,
+        };
         this.setStatus('proposing', `Quote: ${analysis.displayName} ${ct}`);
-        const quote = await this.getQuoteCached(analysis.symbol, ct, prediction, stake, cfg);
+        const { quote, error } = await requestSimpleQuote(quoteReq);
         if (!quote) {
-            this.setStatus('scanning', 'Quote failed. Skipping.');
-            this.logEvent('error', `Quote failed on ${analysis.displayName} ${ct}`);
+            const detail = error || 'no quote';
+            this.setStatus('scanning', `Quote failed: ${detail}. Skipping.`);
+            this.logEvent('error', `Quote failed on ${analysis.displayName} ${ct}: ${detail}`, {
+                symbol: analysis.symbol,
+            });
+            if (isMarketUnavailableError(detail)) {
+                this.quoteBlocked.add(analysis.symbol);
+                this.logEvent(
+                    'error',
+                    `${analysis.displayName} does not offer ${cfg.duration}${cfg.durationUnit} ${ct} contracts - removing it from the scan.`,
+                    { symbol: analysis.symbol }
+                );
+            }
             return;
         }
         this.logEvent('quote', `Quote: ${analysis.displayName} ${ct}${prediction !== undefined ? `(${prediction})` : ''} — payout ${quote.payout.toFixed(2)} (stake ${stake.toFixed(2)})`, { symbol: analysis.symbol, contractType: ct });
@@ -612,7 +612,7 @@ export class AIBotEngine {
         };
 
         this.setStatus('buying', `Submitting: ${analysis.displayName} ${ct}`);
-        const buy = await executeBuy(quote, stake);
+        const buy = await executeBuyFresh(quote, stake, () => requestSimpleQuote(quoteReq));
         if (buy.error || buy.contractId === undefined) {
             this.update({ trades: [{ ...record, stage: 'rejected', error: buy.error, closedAt: Date.now() }, ...this.state.trades] });
             this.setStatus('scanning', `Order rejected: ${buy.error}`);
