@@ -1,8 +1,11 @@
 import {
+    BotMode,
     ContractOpportunity,
     DigitStats,
     EngineConfig,
+    EngineEvent,
     EngineStatus,
+    EventType,
     RiskState,
     SyntheticSymbol,
     TickPoint,
@@ -52,6 +55,7 @@ export interface EngineState {
     accountIsDemo: boolean;
     liveTrading: boolean;
     dryRun: boolean;
+    events: EngineEvent[];
 }
 
 export type EngineListener = (state: EngineState) => void;
@@ -69,6 +73,8 @@ const DEFAULT_CONFIG: EngineConfig = {
     scanIntervalMs: 3000,
     minTicksForAnalysis: 300,
     allowLiveTrading: false,
+    mode: 'edge',
+    activeIntervalMs: 12000,
 };
 
 const QUOTE_TTL_MS = 12000;
@@ -107,6 +113,8 @@ export class OUBotEngine {
     private lastProposalAt = 0;
     private busy = false;
     private running = false;
+    private lastActiveTradeAt = 0;
+    private eventSeq = 0;
     private state: EngineState;
 
     constructor() {
@@ -124,6 +132,7 @@ export class OUBotEngine {
             accountIsDemo: true,
             liveTrading: false,
             dryRun: true,
+            events: [],
         };
     }
 
@@ -142,6 +151,23 @@ export class OUBotEngine {
 
     private setStatus(status: EngineStatus, message: string) {
         this.update({ status, message });
+    }
+
+    logEvent(type: EventType, message: string, extra: Partial<EngineEvent> = {}) {
+        const event: EngineEvent = {
+            id: `e${++this.eventSeq}-${Date.now()}`,
+            at: Date.now(),
+            type,
+            message,
+            ...extra,
+        };
+        const events = [event, ...this.state.events].slice(0, 240);
+        this.update({ events });
+    }
+
+    setMode(mode: BotMode) {
+        this.configure({ mode });
+        this.logEvent('status', mode === 'active' ? 'Mode: Active (demo practice) — trades on a cadence regardless of edge.' : 'Mode: Edge (disciplined) — trades only on positive expected value.');
     }
 
     configure(config: Partial<EngineConfig>) {
@@ -163,6 +189,7 @@ export class OUBotEngine {
             message: 'Emergency stop engaged',
             openTrade: null,
         });
+        this.logEvent('risk', 'Emergency stop engaged — all activity halted.');
     }
 
     async start(config?: Partial<EngineConfig>): Promise<void> {
@@ -171,10 +198,12 @@ export class OUBotEngine {
 
         if (!isApiReady()) {
             this.setStatus('error', 'Not connected to Deriv. Please log in first.');
+            this.logEvent('error', 'Not connected to Deriv. Please log in first.');
             return;
         }
         if (!isAuthorized()) {
             this.setStatus('error', 'Not authorized. Please log in to your Deriv account.');
+            this.logEvent('error', 'Not authorized. Please log in to your Deriv account.');
             return;
         }
 
@@ -184,11 +213,17 @@ export class OUBotEngine {
         if (!accountIsDemo && !cfg.allowLiveTrading) {
             this.update({ accountIsDemo, dryRun: true });
             this.setStatus('suspended', 'Live trading disabled on a real account. Enable Live Trading to place real orders.');
+            this.logEvent('risk', 'Real account: enable Live Trading to place real orders.');
             return;
         }
 
         this.running = true;
+        this.lastActiveTradeAt = 0;
         this.update({ accountIsDemo, dryRun: !cfg.allowLiveTrading, equity: accountBalance() });
+        this.logEvent(
+            'status',
+            `Engine starting on ${accountIsDemo ? 'DEMO' : 'REAL'} account (${loginid}) — mode: ${cfg.mode === 'active' ? 'Active (demo practice)' : 'Edge (disciplined)'}.`
+        );
 
         this.setStatus('discovering', 'Discovering synthetic markets…');
         try {
@@ -196,11 +231,13 @@ export class OUBotEngine {
         } catch (e: any) {
             this.running = false;
             this.setStatus('error', e?.message || 'Market discovery failed');
+            this.logEvent('error', e?.message || 'Market discovery failed');
             return;
         }
 
         this.setStatus('warming', `Warming up ${this.symbols.length} markets…`);
         await this.bootstrapDigits();
+        this.logEvent('discover', `Discovered ${this.symbols.length} synthetic markets. Digit buffers warmed.`);
 
         this.feed = new TickFeed({
             onTick: (symbol, point, series) => this.onTick(symbol, point, series),
@@ -214,12 +251,13 @@ export class OUBotEngine {
         this.feed.start();
 
         this.update({ equity: accountBalance(), risk: initialRiskState(accountBalance()) });
-        this.setStatus('scanning', 'Scanning markets for statistically defensible edges…');
+        this.setStatus('scanning', cfg.mode === 'active' ? 'Active practice: placing trades on a cadence…' : 'Scanning for statistically defensible edges…');
         this.scanTimer = setInterval(() => this.scan(), cfg.scanIntervalMs);
         this.scan();
     }
 
     stop() {
+        const wasRunning = this.running;
         this.running = false;
         if (this.scanTimer) clearInterval(this.scanTimer);
         this.scanTimer = null;
@@ -228,6 +266,7 @@ export class OUBotEngine {
         if (this.state.status !== 'stopped') {
             this.setStatus('idle', 'Stopped');
         }
+        if (wasRunning) this.logEvent('status', 'Engine stopped.');
     }
 
     resumeAfterSuspend() {
@@ -364,6 +403,7 @@ export class OUBotEngine {
                 }
             }
             const opportunities: ContractOpportunity[] = [];
+            const active = cfg.mode === 'active';
             const seriesList = Array.from(seriesMap.entries());
             for (const [symbol, series] of seriesList) {
                 const meta = this.symbols.find(x => x.symbol === symbol);
@@ -385,34 +425,54 @@ export class OUBotEngine {
                         });
                         if (!quote) continue;
                         const opp = this.buildOpportunity(meta, series, direction, barrier, quote, stats);
-                        if (opp.expectedValue > 0 && opp.confidence > 0) opportunities.push(opp);
+                        // Edge mode only keeps genuinely profitable setups; Active mode
+                        // keeps every quoted contract so there is always a candidate to
+                        // demonstrate the live pipeline (ranked by confidence).
+                        if (active || (opp.expectedValue > 0 && opp.confidence > 0)) opportunities.push(opp);
                     }
                 }
             }
-            opportunities.sort(
-                (a, b) => b.expectedValuePct * b.confidence - a.expectedValuePct * a.confidence
+            opportunities.sort((a, b) =>
+                active
+                    ? b.confidence - a.confidence || b.expectedValuePct - a.expectedValuePct
+                    : b.expectedValuePct * b.confidence - a.expectedValuePct * a.confidence
             );
             const top = opportunities.slice(0, MAX_CANDIDATES_PER_SCAN);
             this.update({ opportunities: top });
 
-            if (this.state.dryRun || !this.running) return;
+            if (!this.running) return;
             if (this.state.risk.suspended) return;
 
             const best = top[0];
-            if (!best) return;
-            const verdict = evaluateOpportunity(
-                best,
-                this.state.risk,
-                cfg.limits,
-                accountBalance()
-            );
-            if (!verdict.allowed) {
-                this.setStatus('scanning', `Holding: ${verdict.reason}`);
+            if (!best) {
+                if (!this.state.dryRun) this.setStatus('scanning', active ? 'Waiting for a tradable contract…' : 'No edge clears the gates. Holding.');
                 return;
             }
-            await this.execute(best, verdict.stake);
+
+            if (active) {
+                const now = Date.now();
+                if (now - this.lastActiveTradeAt < cfg.activeIntervalMs) return;
+                if (this.state.dryRun) return;
+                this.lastActiveTradeAt = now;
+                const verdict = evaluateOpportunity(best, this.state.risk, cfg.limits, accountBalance(), now, { skipEdgeGates: true });
+                if (!verdict.allowed) {
+                    this.setStatus('scanning', `Holding: ${verdict.reason}`);
+                    this.logEvent('risk', `Holding: ${verdict.reason}`);
+                    return;
+                }
+                await this.execute(best, verdict.stake);
+            } else {
+                if (this.state.dryRun) return;
+                const verdict = evaluateOpportunity(best, this.state.risk, cfg.limits, accountBalance());
+                if (!verdict.allowed) {
+                    this.setStatus('scanning', `Holding: ${verdict.reason}`);
+                    return;
+                }
+                await this.execute(best, verdict.stake);
+            }
         } catch (e: any) {
             this.setStatus('error', e?.message || 'Scan error');
+            this.logEvent('error', e?.message || 'Scan error');
         } finally {
             this.busy = false;
         }
@@ -437,6 +497,7 @@ export class OUBotEngine {
 
     private async execute(opp: ContractOpportunity, stake: number) {
         const cfg = this.state.config;
+        const active = cfg.mode === 'active';
         this.setStatus('proposing', `Requesting quote: ${opp.displayName} ${opp.direction} ${opp.barrier}`);
         const { quote, error } = await requestQuote({
             symbol: opp.symbol,
@@ -448,10 +509,13 @@ export class OUBotEngine {
         });
         if (error || !quote) {
             this.setStatus('scanning', `Quote failed: ${error || 'no quote'}`);
+            this.logEvent('error', `Quote failed on ${opp.displayName}: ${error || 'no quote'}`);
             return;
         }
         const finalEdge = assessEdge(opp.empiricalProb, quote.payout, stake, cfg.limits.minExpectedValue);
-        if (finalEdge.expectedValuePct < cfg.limits.minExpectedValue || finalEdge.payoutRatio < cfg.limits.minPayoutRatio) {
+        // Edge mode re-checks EV against the live payout; Active (demo practice)
+        // mode deliberately proceeds regardless so the pipeline stays visible.
+        if (!active && (finalEdge.expectedValuePct < cfg.limits.minExpectedValue || finalEdge.payoutRatio < cfg.limits.minPayoutRatio)) {
             this.setStatus('scanning', 'Quote no longer meets EV threshold. Skipping.');
             return;
         }
@@ -476,6 +540,7 @@ export class OUBotEngine {
             openedAt: Date.now(),
             simulated: false,
         };
+        this.logEvent('quote', `Quote: ${opp.displayName} ${opp.direction} ${opp.barrier} — payout ${finalEdge.payoutRatio.toFixed(2)}× (stake ${stake.toFixed(2)} → ${quote.payout.toFixed(2)})`, { symbol: opp.symbol, direction: opp.direction, barrier: opp.barrier, stake, payout: quote.payout });
         this.setStatus('buying', `Submitting order: ${opp.direction} ${opp.barrier} on ${opp.displayName}`);
         const buy = await executeBuy(quote, stake);
         if (buy.error || buy.contractId === undefined) {
@@ -483,6 +548,7 @@ export class OUBotEngine {
                 trades: [{ ...record, stage: 'rejected', error: buy.error, closedAt: Date.now() }, ...this.state.trades],
             });
             this.setStatus('scanning', `Order rejected: ${buy.error}`);
+            this.logEvent('error', `Order rejected: ${buy.error}`, { symbol: opp.symbol });
             return;
         }
         const confirmed: TradeRecord = {
@@ -497,12 +563,14 @@ export class OUBotEngine {
             openTrade: confirmed,
             risk: { ...this.state.risk, openPositions: this.state.risk.openPositions + 1, tradesThisSession: this.state.risk.tradesThisSession + 1 },
         });
+        this.logEvent('purchase', `Purchased contract #${buy.contractId}: ${opp.displayName} ${opp.direction} ${opp.barrier} @ ${opp.duration}${opp.durationUnit}`, { symbol: opp.symbol, contractId: buy.contractId, direction: opp.direction, barrier: opp.barrier, stake: confirmed.stake, payout: quote.payout });
         this.setStatus('monitoring', `Monitoring contract #${buy.contractId}…`);
 
         const meta = this.symbols.find(x => x.symbol === opp.symbol);
         const settlement = await monitorUntilSettled(buy.contractId, meta?.pipSize ?? 2);
         if ('error' in settlement) {
             this.setStatus('scanning', `Settlement pending: ${settlement.error}`);
+            this.logEvent('error', `Settlement pending for #${buy.contractId}: ${settlement.error}`, { contractId: buy.contractId });
             return;
         }
         const settled = applySettlementToRecord(confirmed, settlement);
@@ -511,8 +579,14 @@ export class OUBotEngine {
         const equity = accountBalance();
         const risk = applySettlement(this.state.risk, settled, equity, cfg.limits);
         this.update({ trades, openTrade: null, equity, risk });
+        this.logEvent(
+            'settlement',
+            `${settled.result === 'win' ? 'WIN' : 'LOSS'}: #${buy.contractId} ${opp.displayName} ${opp.direction} ${opp.barrier} — exit digit ${settled.exitDigit ?? '—'}, ${settled.profit >= 0 ? '+' : ''}${settled.profit.toFixed(2)}`,
+            { symbol: opp.symbol, contractId: buy.contractId, direction: opp.direction, barrier: opp.barrier, result: settled.result, profit: settled.profit, exitDigit: settled.exitDigit, payout: quote.payout }
+        );
         if (risk.suspended) {
             this.setStatus('suspended', risk.suspensionReason || 'Risk limit reached');
+            this.logEvent('risk', `Suspended: ${risk.suspensionReason}`);
         } else {
             this.setStatus('scanning', `Settled ${settled.result}: ${settled.profit?.toFixed(2)}. Reassessing market…`);
         }

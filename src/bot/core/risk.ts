@@ -56,7 +56,8 @@ export const evaluateOpportunity = (
     state: RiskState,
     limits: RiskLimits,
     equity: number,
-    now = Date.now()
+    now = Date.now(),
+    opts: { skipEdgeGates?: boolean } = {}
 ): RiskVerdict => {
     if (state.suspended) {
         return { allowed: false, gate: 'suspended', reason: state.suspensionReason || 'Trading suspended', stake: 0 };
@@ -114,37 +115,39 @@ export const evaluateOpportunity = (
             stake: 0,
         };
     }
-    if (opp.confidence < limits.minConfidence) {
-        return {
-            allowed: false,
-            gate: 'low_confidence',
-            reason: `Confidence ${opp.confidence.toFixed(2)} below ${limits.minConfidence}`,
-            stake: 0,
-        };
-    }
-    if (opp.sampleSize < limits.minSampleSize) {
-        return {
-            allowed: false,
-            gate: 'small_sample',
-            reason: `Sample ${opp.sampleSize} below ${limits.minSampleSize}`,
-            stake: 0,
-        };
-    }
-    if (opp.expectedValuePct < limits.minExpectedValue) {
-        return {
-            allowed: false,
-            gate: 'low_ev',
-            reason: `EV ${opp.expectedValuePct.toFixed(3)} below ${limits.minExpectedValue}`,
-            stake: 0,
-        };
-    }
-    if (opp.payoutRatio < limits.minPayoutRatio) {
-        return {
-            allowed: false,
-            gate: 'low_payout',
-            reason: `Payout ratio ${opp.payoutRatio.toFixed(2)} below ${limits.minPayoutRatio}`,
-            stake: 0,
-        };
+    if (!opts.skipEdgeGates) {
+        if (opp.confidence < limits.minConfidence) {
+            return {
+                allowed: false,
+                gate: 'low_confidence',
+                reason: `Confidence ${opp.confidence.toFixed(2)} below ${limits.minConfidence}`,
+                stake: 0,
+            };
+        }
+        if (opp.sampleSize < limits.minSampleSize) {
+            return {
+                allowed: false,
+                gate: 'small_sample',
+                reason: `Sample ${opp.sampleSize} below ${limits.minSampleSize}`,
+                stake: 0,
+            };
+        }
+        if (opp.expectedValuePct < limits.minExpectedValue) {
+            return {
+                allowed: false,
+                gate: 'low_ev',
+                reason: `EV ${opp.expectedValuePct.toFixed(3)} below ${limits.minExpectedValue}`,
+                stake: 0,
+            };
+        }
+        if (opp.payoutRatio < limits.minPayoutRatio) {
+            return {
+                allowed: false,
+                gate: 'low_payout',
+                reason: `Payout ratio ${opp.payoutRatio.toFixed(2)} below ${limits.minPayoutRatio}`,
+                stake: 0,
+            };
+        }
     }
 
     const stake = Math.min(opp.stake, limits.maxStake, equity * limits.maxStakePctEquity);

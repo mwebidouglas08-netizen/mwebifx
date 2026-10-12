@@ -178,8 +178,57 @@
         h2 { color: var(--text-prominent); }
     }
 
+    &__mode { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+    &__mode-label { font-size: 1.05rem; font-weight: 600; color: var(--text-general); }
+    &__mode-hint { font-size: 1rem; color: var(--text-general); max-width: 40ch; }
+
+    &__mode-seg { display: inline-flex; border: 1px solid var(--border-normal); border-radius: 8px; overflow: hidden; }
+    &__mode-btn {
+        padding: 0.5rem 0.9rem;
+        background: var(--general-main-1);
+        color: var(--text-general);
+        font-size: 1.05rem;
+        font-weight: 600;
+        cursor: pointer;
+        border: none;
+        &--on { background: var(--brand-primary); color: var(--general-section-1); }
+    }
+
+    &__feed {
+        max-height: 320px;
+        overflow-y: auto;
+        border: 1px solid var(--border-normal);
+        border-radius: 8px;
+        background: var(--general-main-1);
+        padding: 0.4rem 0;
+    }
+
+    &__event {
+        display: flex;
+        gap: 0.7rem;
+        align-items: baseline;
+        padding: 0.35rem 0.8rem;
+        font-size: 1.05rem;
+        border-bottom: 1px solid color-mix(in srgb, var(--border-normal) 55%, transparent);
+
+        &:last-child { border-bottom: none; }
+
+        &--info .ou-bot__event-type { color: var(--brand-primary); }
+        &--muted .ou-bot__event-type { color: var(--text-general); }
+        &--buy .ou-bot__event-type { color: var(--brand-primary); font-weight: 700; }
+        &--settle .ou-bot__event-type { color: var(--brand-success, #4bb4b3); font-weight: 700; }
+        &--warn .ou-bot__event-type { color: #e0a800; font-weight: 700; }
+        &--err .ou-bot__event-type { color: var(--brand-danger, #e34444); font-weight: 700; }
+    }
+
+    &__event-time { color: var(--text-general); font-size: 0.95rem; min-width: 7.5ch; font-variant-numeric: tabular-nums; }
+    &__event-type { font-size: 0.95rem; font-weight: 600; min-width: 6.5ch; }
+    &__event-msg { color: var(--text-prominent); word-break: break-word; }
+
     @media (max-width: 768px) {
         padding: 1rem;
         &__head { flex-direction: column; }
+        &__mode { flex-direction: column; align-items: flex-start; }
+        &__feed { max-height: 240px; }
     }
 }

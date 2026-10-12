@@ -5,6 +5,7 @@ import { isDemoAccount } from '@/utils/account-helpers';
 import { ouBotEngine } from '@/bot/engine/engine';
 import { useOUBotEngine, useOUPerformance } from '@/bot/use-engine';
 import { DEFAULT_RISK_LIMITS } from '@/bot/core/risk';
+import type { BotMode, EventType } from '@/bot/core/types';
 import './ou-bot.scss';
 
 const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
@@ -18,6 +19,33 @@ const STAGE_LABEL: Record<string, string> = {
     settled: 'Settled',
     rejected: 'Rejected',
 };
+
+const EVENT_LABEL: Record<EventType, string> = {
+    status: 'Status',
+    discover: 'Discover',
+    scan: 'Scan',
+    opportunity: 'Edge',
+    quote: 'Quote',
+    purchase: 'Bought',
+    settlement: 'Settled',
+    risk: 'Risk',
+    error: 'Error',
+};
+
+const EVENT_TONE: Record<EventType, string> = {
+    status: 'info',
+    discover: 'info',
+    scan: 'muted',
+    opportunity: 'info',
+    quote: 'info',
+    purchase: 'buy',
+    settlement: 'settle',
+    risk: 'warn',
+    error: 'err',
+};
+
+const timeAt = (ms: number) =>
+    new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
 const OUBotPage = observer(() => {
     const state = useOUBotEngine();
@@ -33,6 +61,8 @@ const OUBotPage = observer(() => {
     const [maxConsec, setMaxConsec] = useState(state.config.limits.maxConsecutiveLosses);
     const [barriersOver, setBarriersOver] = useState(state.config.barriersOver.join(','));
     const [barriersUnder, setBarriersUnder] = useState(state.config.barriersUnder.join(','));
+    const [mode, setMode] = useState<BotMode>(state.config.mode);
+    const [activeEvery, setActiveEvery] = useState(state.config.activeIntervalMs / 1000);
 
     const isRunning = state.status !== 'idle' && state.status !== 'stopped' && state.status !== 'error';
     const isLoggedIn = Boolean(client?.is_logged_in);
@@ -42,6 +72,8 @@ const OUBotPage = observer(() => {
     const applyConfig = () => {
         ouBotEngine.configure({
             stake: Number(stake) || 1,
+            mode,
+            activeIntervalMs: Math.max(5, Number(activeEvery) || 12) * 1000,
             barriersOver: barriersOver.split(',').map(s => Number(s.trim())).filter(n => Number.isInteger(n) && n >= 0 && n <= 8),
             barriersUnder: barriersUnder.split(',').map(s => Number(s.trim())).filter(n => Number.isInteger(n) && n >= 1 && n <= 9),
             limits: {
@@ -54,6 +86,18 @@ const OUBotPage = observer(() => {
                 maxConsecutiveLosses: Number(maxConsec) || 3,
             },
         });
+    };
+
+    const onModeChange = (m: BotMode) => {
+        if (m === 'active' && !isDemo) {
+            const ok = window.confirm(
+                'Active mode places trades on a cadence regardless of edge. On a REAL account this means real money is used. Continue?'
+            );
+            if (!ok) return;
+        }
+        setMode(m);
+        applyConfig();
+        ouBotEngine.setMode(m);
     };
 
     const onStart = async () => {
@@ -113,6 +157,30 @@ const OUBotPage = observer(() => {
             </div>
 
             <section className='ou-bot__controls'>
+                <div className='ou-bot__mode'>
+                    <span className='ou-bot__mode-label'>Strategy</span>
+                    <div className='ou-bot__mode-seg'>
+                        <button
+                            type='button'
+                            className={`ou-bot__mode-btn ${mode === 'edge' ? 'ou-bot__mode-btn--on' : ''}`}
+                            onClick={() => onModeChange('edge')}
+                        >
+                            Edge (disciplined)
+                        </button>
+                        <button
+                            type='button'
+                            className={`ou-bot__mode-btn ${mode === 'active' ? 'ou-bot__mode-btn--on' : ''}`}
+                            onClick={() => onModeChange('active')}
+                        >
+                            Active (demo practice)
+                        </button>
+                    </div>
+                    <span className='ou-bot__mode-hint'>
+                        {mode === 'edge'
+                            ? 'Trades only when a positive expected-value edge clears every gate.'
+                            : 'Places a trade on a cadence regardless of edge so you can watch the live pipeline. Risk gates still apply.'}
+                    </span>
+                </div>
                 <div className='ou-bot__ctrl-group'>
                     <button
                         type='button'
@@ -147,6 +215,25 @@ const OUBotPage = observer(() => {
                 </div>
             )}
 
+            <section className='ou-bot__section ou-bot__activity' aria-live='polite'>
+                <h3>
+                    Live activity <em>({state.events.length} events)</em>
+                </h3>
+                {state.events.length === 0 ? (
+                    <p className='ou-bot__empty-row'>No activity yet — start the engine to see quotes, purchases, and settlements stream in.</p>
+                ) : (
+                    <div className='ou-bot__feed'>
+                        {state.events.map(ev => (
+                            <div key={ev.id} className={`ou-bot__event ou-bot__event--${EVENT_TONE[ev.type]}`}>
+                                <span className='ou-bot__event-time'>{timeAt(ev.at)}</span>
+                                <span className='ou-bot__event-type'>{EVENT_LABEL[ev.type]}</span>
+                                <span className='ou-bot__event-msg'>{ev.message}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </section>
+
             <div className='ou-bot__grid ou-bot__grid--stats'>
                 <Stat label='Trades' value={perf.totalTrades} />
                 <Stat label='Win rate' value={pct(perf.winRate)} />
@@ -166,6 +253,9 @@ const OUBotPage = observer(() => {
                 <Field label='Min sample size' value={minSample} onChange={v => setMinSample(Number(v))} />
                 <Field label='Max daily loss' value={maxDailyLoss} onChange={v => setMaxDailyLoss(Number(v))} />
                 <Field label='Max consec. losses' value={maxConsec} onChange={v => setMaxConsec(Number(v))} />
+                {mode === 'active' && (
+                    <Field label='Active trade every (s)' value={activeEvery} onChange={v => setActiveEvery(Number(v))} />
+                )}
                 <Field label='Over barriers' value={barriersOver} onChange={setBarriersOver} />
                 <Field label='Under barriers' value={barriersUnder} onChange={setBarriersUnder} />
             </div>

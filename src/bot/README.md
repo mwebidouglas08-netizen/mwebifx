@@ -51,6 +51,25 @@ opportunities without placing orders.
 - Stage, simulated/live, and every metric shown in the dashboard come from real broker
   responses or real local computation — no fabricated win rates or confidence scores.
 
+## Operating modes
+
+The bot has two selectable modes (strategy selector on the dashboard):
+
+- **Edge (disciplined)** — the default and the honest strategy. It only places a trade when
+  the measured edge clears every gate: confidence, sample size, EV, payout ratio, and all
+  risk limits. On uniform digits it correctly **does nothing**, which can mean long periods
+  of inactivity. This is correct behaviour, not a bug.
+- **Active (demo practice)** — places a trade on a configurable cadence (default every 12s),
+  ranked by confidence, **regardless of expected value**, so you can watch the full live
+  pipeline (quote → buy → settlement → win/loss) stream in real time. **Risk safety gates
+  still apply** (suspension, open positions, daily-loss, drawdown, consecutive losses,
+  cooldown, stake cap). This mode is intended for a **demo account** to demonstrate the
+  execution path; on a real account it requires an explicit confirmation dialog and uses
+  real funds at a negative long-run EV.
+
+Both modes stream a timestamped **live activity feed** (quotes, purchases, settlements with
+win/loss and payout) so you can see exactly what the engine is doing.
+
 ## Implemented strategies
 
 The single strategy is **Empirical Over/Under EV**:

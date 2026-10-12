@@ -174,6 +174,37 @@ export interface EngineConfig {
     scanIntervalMs: number;
     minTicksForAnalysis: number;
     allowLiveTrading: boolean;
+    mode: BotMode;
+    activeIntervalMs: number;
+}
+
+export type BotMode = 'edge' | 'active';
+
+export type EventType =
+    | 'status'
+    | 'discover'
+    | 'scan'
+    | 'opportunity'
+    | 'quote'
+    | 'purchase'
+    | 'settlement'
+    | 'risk'
+    | 'error';
+
+export interface EngineEvent {
+    id: string;
+    at: number;
+    type: EventType;
+    message: string;
+    symbol?: string;
+    contractId?: number;
+    direction?: Direction;
+    barrier?: number;
+    payout?: number;
+    stake?: number;
+    profit?: number;
+    result?: 'win' | 'loss';
+    exitDigit?: number;
 }
 
 export interface Opportunity {
