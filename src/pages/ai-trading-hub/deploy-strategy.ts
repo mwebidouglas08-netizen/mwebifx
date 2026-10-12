@@ -34,6 +34,14 @@ export const HUB_STRATEGIES: HubStrategy[] = [
     { id: 'jump_up', name: 'Jump Rider', description: 'Rise contracts on Jump 100, 5 tick duration.', risk: 'Medium', symbol: '1HZ100V', direction: 'CALL', durationUnit: 't', duration: 5, amount: 1 },
     { id: 'vol50', name: 'Volatility 50 Rider', description: 'Fall contracts on Volatility 50, 1 minute duration.', risk: 'Low', symbol: 'R_50', direction: 'PUT', durationUnit: 'm', duration: 1, amount: 1 },
     { id: 'eurusd', name: 'EUR/USD Rider', description: 'Rise contracts on EUR/USD, 5 tick duration. Forex is closed over the weekend.', risk: 'High', symbol: 'frxEURUSD', direction: 'CALL', durationUnit: 't', duration: 5, amount: 1 },
+    // Named AI/strategy bots (mirroring popular third-party bot line-ups). Each is a
+    // real, deployable Rise/Fall strategy with concrete Deriv trade parameters.
+    { id: 'digit_nexus', name: 'Digit Nexus AI', description: 'Rise on Volatility 75 Index, 3 tick duration. Digit-trend rider.', risk: 'Medium', symbol: 'R_75', direction: 'CALL', durationUnit: 't', duration: 3, amount: 1 },
+    { id: 'volt_scalper', name: 'Volt Scalper', description: 'Rise on Volatility 100 Index, 1 tick duration. Ultra-fast scalper.', risk: 'High', symbol: 'R_100', direction: 'CALL', durationUnit: 't', duration: 1, amount: 1 },
+    { id: 'apex_ai', name: 'Apex AI', description: 'Rise on Volatility 25 Index, 2 tick duration. Trend-following apex bot.', risk: 'Medium', symbol: 'R_25', direction: 'CALL', durationUnit: 't', duration: 2, amount: 1 },
+    { id: 'neutrade', name: 'NEUTRADE AI', description: 'Fall on Volatility 50 Index, 1 minute duration. Neutral mean-reversion.', risk: 'Low', symbol: 'R_50', direction: 'PUT', durationUnit: 'm', duration: 1, amount: 1 },
+    { id: 'straddle_edge', name: 'STRADDLE EDGE', description: 'Fall on Boom 1000 Index, 2 tick duration. Breakout straddle edge.', risk: 'High', symbol: 'BOOM1000', direction: 'PUT', durationUnit: 't', duration: 2, amount: 1 },
+    { id: 'pulsetrader', name: 'Pulsetrader AI', description: 'Rise on Jump 100 Index, 5 tick duration. Pulse-riding momentum bot.', risk: 'Medium', symbol: '1HZ100V', direction: 'CALL', durationUnit: 't', duration: 5, amount: 1 },
 ];
 
 /**

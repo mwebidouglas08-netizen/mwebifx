@@ -3,6 +3,7 @@ import { observer } from 'mobx-react-lite';
 import ErrorBoundary from '@/components/error-component/error-boundary';
 import ErrorComponent from '@/components/error-component/error-component';
 import ChunkLoader from '@/components/loader/chunk-loader';
+import BootSplash from '@/components/boot-splash';
 import { api_base } from '@/external/bot-skeleton';
 import { useStore } from '@/hooks/useStore';
 import { localize } from '@deriv-com/translations';
@@ -36,6 +37,7 @@ const AppRoot = () => {
     const store = useStore();
     const api_base_initialized = useRef(false);
     const [is_api_initialized, setIsApiInitialized] = useState(false);
+    const [booted, setBooted] = useState(false);
 
     // Initialize API
     useEffect(() => {
@@ -64,13 +66,21 @@ const AppRoot = () => {
         return () => clearTimeout(timeoutId);
     }, []);
 
-    if (!store || !is_api_initialized) return <AppRootLoader />;
+    if (!store || !is_api_initialized) return (
+        <>
+            {!booted && <BootSplash onDone={() => setBooted(true)} />}
+            <AppRootLoader />
+        </>
+    );
 
     return (
-        <ErrorBoundary root_store={store}>
-            <ErrorComponentWrapper />
-            <AppContent />
-        </ErrorBoundary>
+        <>
+            {!booted && <BootSplash onDone={() => setBooted(true)} />}
+            <ErrorBoundary root_store={store}>
+                <ErrorComponentWrapper />
+                <AppContent />
+            </ErrorBoundary>
+        </>
     );
 };
 
