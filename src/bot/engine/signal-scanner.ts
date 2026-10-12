@@ -94,6 +94,7 @@ export const DEFAULT_SIGNAL_CONFIG: SignalScannerConfig = {
 
 const QUOTE_TTL_MS = 12000;
 const EVENT_CAP = 240;
+const PROBE_CONCURRENCY = 8;
 
 interface CachedQuote {
     quote: ProposalQuote;
@@ -118,6 +119,7 @@ export class SignalScannerEngine {
     private busy = false;
     private running = false;
     private lastTradeAt = 0;
+    private authWarned = false;
     private eventSeq = 0;
     private martingaleStep = 0;
     private state: SignalScannerState;
@@ -193,20 +195,18 @@ export class SignalScannerEngine {
         if (config) this.configure(config);
 
         if (!isApiReady()) {
-            this.setStatus('error', 'Not connected to Deriv. Please log in first.');
-            this.logEvent('error', 'Not connected to Deriv. Please log in first.');
-            return;
-        }
-        if (!isAuthorized()) {
-            this.setStatus('error', 'Not authorized. Please log in to your Deriv account.');
-            this.logEvent('error', 'Not authorized. Please log in to your Deriv account.');
+            this.setStatus('error', 'Connecting to Deriv market data… try again in a moment.');
+            this.logEvent('error', 'Not connected to Deriv yet. Log in (or wait for the connection) and try again.');
             return;
         }
 
-        const loginid = currentLoginId();
-        const accountIsDemo = isDemoAccount(loginid);
+        // Discovery, signals and quotes run on public endpoints (no login required).
+        // Auto-trade execution is gated on authorization at buy time.
+        const authorized = isAuthorized();
+        const loginid = authorized ? currentLoginId() : '';
+        const accountIsDemo = authorized ? isDemoAccount(loginid) : false;
         const cfg = this.state.config;
-        if (!accountIsDemo && !cfg.allowLiveTrading) {
+        if (authorized && !accountIsDemo && !cfg.allowLiveTrading) {
             this.update({ accountIsDemo, liveTrading: false });
             this.setStatus('suspended', 'Live trading disabled on a real account. Enable Live trading to place real orders.');
             this.logEvent('risk', 'Real account: enable Live trading to place real orders.');
@@ -216,8 +216,14 @@ export class SignalScannerEngine {
         this.running = true;
         this.lastTradeAt = 0;
         this.martingaleStep = 0;
-        this.update({ accountIsDemo, liveTrading: cfg.allowLiveTrading, equity: accountBalance() });
-        this.logEvent('status', `Scanner starting on ${accountIsDemo ? 'DEMO' : 'REAL'} account (${loginid}).`);
+        this.authWarned = false;
+        this.update({ accountIsDemo, liveTrading: authorized ? cfg.allowLiveTrading : false, equity: accountBalance() });
+        this.logEvent(
+            'status',
+            authorized
+                ? `Scanner starting on ${accountIsDemo ? 'DEMO' : 'REAL'} account (${loginid}).`
+                : 'Scanner starting in signals-only mode. Log in to your Deriv account to enable auto-trade.'
+        );
 
         this.setStatus('discovering', 'Discovering synthetic markets…');
         let symbols: SyntheticSymbol[];
@@ -229,25 +235,51 @@ export class SignalScannerEngine {
             this.logEvent('error', e?.message || 'Market discovery failed');
             return;
         }
-        symbols = symbols.filter(s => !s.isSuspended && s.exchangeIsOpen).slice(0, 30);
-        this.symbols = symbols;
-        this.update({ symbols });
+        symbols = symbols.filter(s => !s.isSuspended && s.exchangeIsOpen).slice(0, 40);
 
-        this.setStatus('warming', `Warming up ${symbols.length} markets…`);
+        // Probe contract availability before choosing scan targets. Symbols are sorted
+        // by category, so the first entries are Boom/Crash indices that often expose only
+        // accumulator/multiplier contracts. Keep markets that can actually trade at least
+        // one configured family, otherwise the scanner watches markets it can never signal.
+        const neededFamilies = new Set(cfg.families);
+        const candidates = symbols;
+        const probed: { s: SyntheticSymbol; fams: ContractFamily[] }[] = [];
+        for (let i = 0; i < candidates.length; i += PROBE_CONCURRENCY) {
+            const batch = candidates.slice(i, i + PROBE_CONCURRENCY);
+            const resolved = await Promise.all(
+                batch.map(async s => {
+                    let fams: ContractFamily[] = [];
+                    try {
+                        fams = detectSupportedFamilies(await getContractsFor(s.symbol));
+                    } catch {
+                        fams = [];
+                    }
+                    this.familiesBySymbol.set(s.symbol, fams);
+                    return { s, fams };
+                })
+            );
+            probed.push(...resolved);
+        }
+        const watch = probed.filter(p => p.fams.some(f => neededFamilies.has(f))).map(p => p.s);
+        if (!watch.length) {
+            this.running = false;
+            const fams = [...neededFamilies].join(', ') || 'configured';
+            this.setStatus('error', `No market offers ${fams} contracts. Adjust the families or symbols.`);
+            this.logEvent('error', `Market discovery found no market offering ${fams} contracts.`);
+            return;
+        }
+        this.symbols = watch;
+        this.update({ symbols: watch });
+
+        this.setStatus('warming', `Warming up ${watch.length} markets…`);
         this.feed = new TickFeed({
             onTick: (symbol, _point, series) => this.onTick(symbol, series),
         });
-        this.feed.setSymbols(symbols.map(s => s.symbol));
+        this.feed.setSymbols(watch.map(s => s.symbol));
 
-        // Detect supported families + seed digit history in parallel.
+        // Seed digit history in parallel (family availability was resolved above).
         await Promise.all(
-            symbols.map(async s => {
-                try {
-                    const available = await getContractsFor(s.symbol);
-                    this.familiesBySymbol.set(s.symbol, detectSupportedFamilies(available));
-                } catch {
-                    this.familiesBySymbol.set(s.symbol, []);
-                }
+            watch.map(async s => {
                 try {
                     const hist = await getTicksHistory(s.symbol, Math.max(cfg.sampleSize, cfg.minTicks) + 20);
                     const prices: number[] = hist?.history?.prices?.map((p: any) => Number(p)) || [];
@@ -261,7 +293,7 @@ export class SignalScannerEngine {
         this.feed.start();
         this.update({ equity: accountBalance(), risk: initialRiskState(accountBalance()) });
         const famCount = new Set([...this.familiesBySymbol.values()].flat()).size;
-        this.logEvent('discover', `Scanning ${symbols.length} markets across ${famCount || cfg.families.length} contract families.`);
+        this.logEvent('discover', `Scanning ${watch.length} markets across ${famCount || cfg.families.length} contract families.`);
         this.setStatus('scanning', 'Scanning markets for signals…');
         this.scanTimer = setInterval(() => this.scan(), cfg.scanIntervalMs);
         this.scan();
@@ -442,6 +474,13 @@ export class SignalScannerEngine {
 
             if (!this.running) return;
             if (!cfg.autoTrade) return;
+            if (!isAuthorized()) {
+                if (!this.authWarned) {
+                    this.authWarned = true;
+                    this.logEvent('decision', 'Auto-trade is on — log in to your Deriv account to place orders.');
+                }
+                return;
+            }
             if (this.state.risk.suspended) return;
             if (this.state.liveTrading === false && !this.state.accountIsDemo) return;
 

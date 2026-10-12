@@ -118,22 +118,19 @@ const OUBotPage = observer(() => {
 
     const markets = useMemo(() => ouBotEngine.getMarketsAnalysis(), [state.series, state.symbols, state.status]);
 
-    if (!isLoggedIn) {
-        return (
-            <div className='ou-bot'>
-                <div className='ou-bot__empty'>
-                    <h2>Over / Under Bot</h2>
-                    <p>Log in to your Deriv account to connect the analysis engine and view live synthetic markets.</p>
-                    <button type='button' className='ou-bot__btn ou-bot__btn--primary' onClick={() => run_panel?.showLoginDialog?.()}>
-                        Log in to trade
-                    </button>
-                </div>
-            </div>
-        );
-    }
-
+    // Analysis, digit statistics and quotes run on Deriv public data, so the bot is
+    // usable before login. Order placement requires an authorized session, which the
+    // engine enforces — surfaced here as a notice rather than blocking the page.
     return (
         <div className='ou-bot'>
+            {!isLoggedIn && (
+                <div className='ou-bot__notice ou-bot__notice--login' role='note'>
+                    Not logged in — running analysis on Deriv&apos;s public markets. Orders are disabled until you log in.{' '}
+                    <button type='button' className='ou-bot__btn' onClick={() => run_panel?.showLoginDialog?.()}>
+                        Log in to enable trading
+                    </button>
+                </div>
+            )}
             <header className='ou-bot__head'>
                 <div>
                     <h2>Over / Under Bot</h2>
@@ -145,7 +142,7 @@ const OUBotPage = observer(() => {
                 <div className='ou-bot__status'>
                     <span className={`ou-bot__badge ou-bot__badge--${state.status}`}>{state.status}</span>
                     <span className={`ou-bot__acct ${isDemo ? 'ou-bot__acct--demo' : ''}`}>
-                        {isDemo ? 'Demo' : 'Real'} · {activeLoginid}
+                        {!isLoggedIn ? 'Guest · analysis only' : `${isDemo ? 'Demo' : 'Real'} · ${activeLoginid}`}
                     </span>
                     <span className='ou-bot__equity'>Equity {money(state.equity)}</span>
                 </div>
@@ -203,8 +200,15 @@ const OUBotPage = observer(() => {
                     )}
                 </div>
                 <label className='ou-bot__toggle'>
-                    <input type='checkbox' checked={state.liveTrading} onChange={e => onToggleLive(e.target.checked)} />
-                    <span>Live trading {isDemo ? '(demo orders)' : '(REAL funds)'}</span>
+                    <input
+                        type='checkbox'
+                        disabled={!isLoggedIn}
+                        checked={state.liveTrading && isLoggedIn}
+                        onChange={e => onToggleLive(e.target.checked)}
+                    />
+                    <span>
+                        Live trading {!isLoggedIn ? '(log in first)' : isDemo ? '(demo orders)' : '(REAL funds)'}
+                    </span>
                 </label>
             </section>
 

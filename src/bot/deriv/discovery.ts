@@ -14,13 +14,37 @@ const computePipSize = (pip: unknown, quote?: unknown): number => {
     return 2;
 };
 
+// The Deriv `active_symbols` payload has two shapes depending on endpoint/version.
+// Classic responses carry `symbol` + `display_name` with `submarket: 'synthetic_index'`;
+// the /trading/v1 options endpoint returns `underlying_symbol` + `underlying_symbol_name`
+// with the top-level `market: 'synthetic_index'` and a granular submarket
+// (random_index, crash_index, …). Normalize both so discovery never misses markets.
+const symbolOf = (s: { symbol?: string; underlying_symbol?: string }): string =>
+    s.symbol || s.underlying_symbol || '';
+
+const displayNameOf = (s: { display_name?: string; underlying_symbol_name?: string; symbol?: string }): string =>
+    s.display_name || s.underlying_symbol_name || s.symbol || '';
+
+// Submarkets that only ever contain synthetic (synthetic-index) instruments.
+const SYNTHETIC_SUBMARKETS = new Set([
+    'synthetic_index',
+    'random_index',
+    'random_daily',
+    'crash_index',
+    'jump_index',
+    'range_index',
+    'step_index',
+]);
+
 export const categorizeSymbol = (s: {
     symbol?: string;
+    underlying_symbol?: string;
     display_name?: string;
+    underlying_symbol_name?: string;
     submarket?: string;
     subgroup?: string;
 }): MarketCategory => {
-    const haystack = `${s.display_name || ''} ${s.subgroup || ''} ${s.symbol || ''}`.toLowerCase();
+    const haystack = `${displayNameOf(s)} ${s.subgroup || ''} ${symbolOf(s)}`.toLowerCase();
     if (/crash/.test(haystack)) return 'crash';
     if (/boom/.test(haystack)) return 'boom';
     if (/jump/.test(haystack)) return 'jump';
@@ -31,9 +55,15 @@ export const categorizeSymbol = (s: {
     return 'other';
 };
 
-const isSynthetic = (s: { submarket?: string; display_name?: string; symbol_type?: string }): boolean => {
-    if (s.submarket === 'synthetic_index') return true;
-    const d = (s.display_name || '').toLowerCase();
+const isSynthetic = (s: {
+    market?: string;
+    submarket?: string;
+    display_name?: string;
+    underlying_symbol_name?: string;
+}): boolean => {
+    if (s.market === 'synthetic_index' || s.submarket === 'synthetic_index') return true;
+    if (s.submarket && SYNTHETIC_SUBMARKETS.has(s.submarket)) return true;
+    const d = displayNameOf(s).toLowerCase();
     return /volatility|crash|boom|jump|step index|range break/.test(d);
 };
 
@@ -41,16 +71,18 @@ export const discoverSyntheticSymbols = async (): Promise<SyntheticSymbol[]> => 
     const raw = await getActiveSymbols();
     const out: SyntheticSymbol[] = [];
     for (const s of raw) {
+        const symbol = symbolOf(s);
+        if (!symbol) continue;
         if (!isSynthetic(s)) continue;
         const pip = s.pip ?? s.pip_size;
         out.push({
-            symbol: s.symbol,
-            displayName: s.display_name || s.symbol,
+            symbol,
+            displayName: displayNameOf(s) || symbol,
             market: s.market || 'synthetic_index',
             submarket: s.submarket || 'synthetic_index',
             category: categorizeSymbol(s),
             pip: typeof pip === 'number' ? pip : Number(pip) || 0,
-            pipSize: computePipSize(pip, s.spot),
+            pipSize: computePipSize(typeof pip === 'number' ? pip : Number(pip) || 0, s.spot),
             exchangeIsOpen: s.exchange_is_open === 1 || s.exchange_is_open === true,
             isSuspended: s.is_trading_suspended === 1 || s.is_trading_suspended === true,
         });

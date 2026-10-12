@@ -125,6 +125,7 @@ export const DEFAULT_AI_BOT_CONFIG: AIBotConfig = {
 
 const EVENT_CAP = 240;
 const QUOTE_TAIL_MS = 8000;
+const PROBE_CONCURRENCY = 8;
 
 interface CachedQuote {
     quote: ProposalQuote;
@@ -230,20 +231,19 @@ export class AIBotEngine {
         if (config) this.configure(config);
 
         if (!isApiReady()) {
-            this.setStatus('error', 'Not connected to Deriv. Please log in first.');
-            this.logEvent('error', 'Not connected to Deriv. Please log in first.');
-            return;
-        }
-        if (!isAuthorized()) {
-            this.setStatus('error', 'Not authorized. Please log in to your Deriv account.');
-            this.logEvent('error', 'Not authorized. Please log in to your Deriv account.');
+            this.setStatus('error', 'Connecting to Deriv market data… try again in a moment.');
+            this.logEvent('error', 'Not connected to Deriv yet. Log in (or wait for the connection) and try again.');
             return;
         }
 
-        const loginid = currentLoginId();
-        const accountIsDemo = isDemoAccount(loginid);
+        // Market discovery, signals and quotes all run on Deriv public endpoints and
+        // do not require a login. Only trade EXECUTION requires authorization, which is
+        // enforced at buy time — so scanning works immediately for every user.
+        const authorized = isAuthorized();
+        const loginid = authorized ? currentLoginId() : '';
+        const accountIsDemo = authorized ? isDemoAccount(loginid) : false;
         const cfg = this.state.config;
-        if (!accountIsDemo && !cfg.allowLiveTrading) {
+        if (authorized && !accountIsDemo && !cfg.allowLiveTrading) {
             this.update({ accountIsDemo, liveTrading: false });
             this.setStatus('suspended', 'Live trading disabled on a real account. Enable Live trading to place real orders.');
             this.logEvent('risk', 'Real account: enable Live trading to place real orders.');
@@ -258,13 +258,18 @@ export class AIBotEngine {
         this.lastTradeAt = 0;
         this.update({
             accountIsDemo,
-            liveTrading: cfg.allowLiveTrading,
+            liveTrading: authorized ? cfg.allowLiveTrading : false,
             equity: accountBalance(),
             usingRecovery: false,
             stats: { scans: 0, decisions: 0, trades: 0, wins: 0, losses: 0, netPnl: 0 },
             risk: initialRiskState(accountBalance()),
         });
-        this.logEvent('status', `AI Bot starting on ${accountIsDemo ? 'DEMO' : 'REAL'} account (${loginid}).`);
+        this.logEvent(
+            'status',
+            authorized
+                ? `AI Bot starting on ${accountIsDemo ? 'DEMO' : 'REAL'} account (${loginid}).`
+                : 'AI Bot starting in signals-only mode. Log in to your Deriv account to enable auto-trade.'
+        );
 
         this.setStatus('starting', 'Discovering markets…');
         let symbols: SyntheticSymbol[];
@@ -276,15 +281,54 @@ export class AIBotEngine {
             this.logEvent('error', e?.message || 'Market discovery failed');
             return;
         }
-        symbols = symbols.filter(s => !s.isSuspended && s.exchangeIsOpen).slice(0, 30);
-        this.symbols = symbols;
-        this.update({ symbols });
+        symbols = symbols.filter(s => !s.isSuspended && s.exchangeIsOpen).slice(0, 40);
 
-        // Prefer configured symbols, else watch a representative set.
+        // Probe contract availability before choosing watch markets. Many synthetic
+        // indices (Boom/Crash family) only expose accumulator + multiplier contracts and
+        // offer no digit contracts, so watching them could never produce a tradable
+        // signal — the rules would match and then be silently discarded. Only markets
+        // that can actually trade one of the configured rule families are warmed.
+        const neededFamilies = new Set(
+            (this.activeRules().map(r => FAMILY_OF[r.purchase]).filter(Boolean) as ContractFamily[])
+        );
         const configured = cfg.symbols.filter(s => symbols.some(x => x.symbol === s));
+        const ordered = [
+            ...symbols.filter(s => configured.includes(s.symbol)),
+            ...symbols.filter(s => !configured.includes(s.symbol)),
+        ];
+        const candidates = ordered;
+        const probed: { s: SyntheticSymbol; fams: ContractFamily[] }[] = [];
+        // Bounded concurrency so every candidate is probed without bursting the API.
+        for (let i = 0; i < candidates.length; i += PROBE_CONCURRENCY) {
+            const batch = candidates.slice(i, i + PROBE_CONCURRENCY);
+            const resolved = await Promise.all(
+                batch.map(async s => {
+                    let fams: ContractFamily[] = [];
+                    try {
+                        fams = detectSupportedFamilies(await getContractsFor(s.symbol));
+                    } catch {
+                        fams = [];
+                    }
+                    this.familiesBySymbol.set(s.symbol, fams);
+                    return { s, fams };
+                })
+            );
+            probed.push(...resolved);
+        }
+        const tradable = probed
+            .filter(p => p.fams.length > 0 && (!neededFamilies.size || p.fams.some(f => neededFamilies.has(f))))
+            .map(p => p.s);
+
         const watch = configured.length
-            ? symbols.filter(s => configured.includes(s.symbol))
-            : symbols.slice(0, 6);
+            ? tradable.filter(s => configured.includes(s.symbol))
+            : tradable.slice(0, 6);
+        if (!watch.length) {
+            this.running = false;
+            const fams = [...neededFamilies].join(', ') || 'digit';
+            this.setStatus('error', `No market offers ${fams} contracts. Choose different rules or symbols.`);
+            this.logEvent('error', `Market discovery found no market offering ${fams} contracts.`);
+            return;
+        }
         this.symbols = watch;
         this.update({ symbols: watch });
 
@@ -296,11 +340,12 @@ export class AIBotEngine {
 
         await Promise.all(
             watch.map(async s => {
-                try {
-                    const available = await getContractsFor(s.symbol);
-                    this.familiesBySymbol.set(s.symbol, detectSupportedFamilies(available));
-                } catch {
-                    this.familiesBySymbol.set(s.symbol, []);
+                if (!this.familiesBySymbol.has(s.symbol)) {
+                    try {
+                        this.familiesBySymbol.set(s.symbol, detectSupportedFamilies(await getContractsFor(s.symbol)));
+                    } catch {
+                        this.familiesBySymbol.set(s.symbol, []);
+                    }
                 }
                 try {
                     const hist = await getTicksHistory(s.symbol, Math.max(cfg.sampleSize, cfg.minTicks) + 20);
@@ -444,7 +489,9 @@ export class AIBotEngine {
                 reasons.push(limit);
             }
             if (this.state.openTrade) reasons.push('position open');
-            if (this.state.liveTrading === false && !this.state.accountIsDemo) reasons.push('live trading off');
+            // Execution requires an authorized Deriv session; scanning/signals do not.
+            if (!isAuthorized()) reasons.push('log in to auto-trade');
+            else if (this.state.liveTrading === false && !this.state.accountIsDemo) reasons.push('live trading off');
 
             if (reasons.length) {
                 if (!reasons.includes('auto-trade off')) {

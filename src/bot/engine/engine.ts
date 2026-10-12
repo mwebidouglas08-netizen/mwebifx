@@ -179,7 +179,8 @@ export class OUBotEngine {
     }
 
     setDryRun(enabled: boolean) {
-        this.update({ dryRun: enabled });
+        // Never leave dry-run off without an authorized Deriv session.
+        this.update({ dryRun: enabled || !isAuthorized() });
     }
 
     emergencyStop() {
@@ -197,20 +198,18 @@ export class OUBotEngine {
         if (config) this.configure(config);
 
         if (!isApiReady()) {
-            this.setStatus('error', 'Not connected to Deriv. Please log in first.');
-            this.logEvent('error', 'Not connected to Deriv. Please log in first.');
-            return;
-        }
-        if (!isAuthorized()) {
-            this.setStatus('error', 'Not authorized. Please log in to your Deriv account.');
-            this.logEvent('error', 'Not authorized. Please log in to your Deriv account.');
+            this.setStatus('error', 'Connecting to Deriv market data… try again in a moment.');
+            this.logEvent('error', 'Not connected to Deriv yet. Log in (or wait for the connection) and try again.');
             return;
         }
 
-        const loginid = currentLoginId();
-        const accountIsDemo = isDemoAccount(loginid);
+        // Discovery, analysis and quotes run on public endpoints (no login required);
+        // execution is gated on authorization when orders are placed.
+        const authorized = isAuthorized();
+        const loginid = authorized ? currentLoginId() : '';
+        const accountIsDemo = authorized ? isDemoAccount(loginid) : false;
         const cfg = this.state.config;
-        if (!accountIsDemo && !cfg.allowLiveTrading) {
+        if (authorized && !accountIsDemo && !cfg.allowLiveTrading) {
             this.update({ accountIsDemo, dryRun: true });
             this.setStatus('suspended', 'Live trading disabled on a real account. Enable Live Trading to place real orders.');
             this.logEvent('risk', 'Real account: enable Live Trading to place real orders.');
@@ -219,10 +218,12 @@ export class OUBotEngine {
 
         this.running = true;
         this.lastActiveTradeAt = 0;
-        this.update({ accountIsDemo, dryRun: !cfg.allowLiveTrading, equity: accountBalance() });
+        this.update({ accountIsDemo, dryRun: !cfg.allowLiveTrading || !authorized, equity: accountBalance() });
         this.logEvent(
             'status',
-            `Engine starting on ${accountIsDemo ? 'DEMO' : 'REAL'} account (${loginid}) — mode: ${cfg.mode === 'active' ? 'Active (demo practice)' : 'Edge (disciplined)'}.`
+            authorized
+                ? `Engine starting on ${accountIsDemo ? 'DEMO' : 'REAL'} account (${loginid}) — mode: ${cfg.mode === 'active' ? 'Active (demo practice)' : 'Edge (disciplined)'}.`
+                : 'Engine starting in signals-only mode. Log in to your Deriv account to place orders.'
         );
 
         this.setStatus('discovering', 'Discovering synthetic markets…');
@@ -236,9 +237,9 @@ export class OUBotEngine {
         }
 
         this.setStatus('warming', `Warming up ${this.symbols.length} markets…`);
-        await this.bootstrapDigits();
-        this.logEvent('discover', `Discovered ${this.symbols.length} synthetic markets. Digit buffers warmed.`);
 
+        // The feed must exist before warm-up: bootstrapDigits() writes into the series
+        // objects owned by the feed, and a null feed silently discarded the history.
         this.feed = new TickFeed({
             onTick: (symbol, point, series) => this.onTick(symbol, point, series),
             onStatus: (connected, error) => {
@@ -248,6 +249,10 @@ export class OUBotEngine {
             },
         });
         this.feed.setSymbols(this.symbols.map(s => s.symbol));
+
+        await this.bootstrapDigits();
+        this.logEvent('discover', `Discovered ${this.symbols.length} synthetic markets. Digit buffers warmed.`);
+
         this.feed.start();
 
         this.update({ equity: accountBalance(), risk: initialRiskState(accountBalance()) });
@@ -287,11 +292,24 @@ export class OUBotEngine {
         );
         this.symbols = filtered;
         this.digitContracts.clear();
-        for (const s of filtered) {
-            const contracts = await discoverDigitContracts(s.symbol);
-            const over = contracts.find(c => c.contractType === 'DIGITOVER')?.barriers ?? [];
-            const under = contracts.find(c => c.contractType === 'DIGITUNDER')?.barriers ?? [];
-            this.digitContracts.set(s.symbol, { over, under });
+        // Resolve digit-contract availability in small batches: a sequential loop over
+        // every synthetic index made start-up slow enough to time out on flaky links.
+        const CONCURRENCY = 8;
+        for (let i = 0; i < filtered.length; i += CONCURRENCY) {
+            const batch = filtered.slice(i, i + CONCURRENCY);
+            const resolved = await Promise.all(
+                batch.map(async s => {
+                    try {
+                        const contracts = await discoverDigitContracts(s.symbol);
+                        const over = contracts.find(c => c.contractType === 'DIGITOVER')?.barriers ?? [];
+                        const under = contracts.find(c => c.contractType === 'DIGITUNDER')?.barriers ?? [];
+                        return { symbol: s.symbol, over, under };
+                    } catch {
+                        return { symbol: s.symbol, over: [] as number[], under: [] as number[] };
+                    }
+                })
+            );
+            for (const r of resolved) this.digitContracts.set(r.symbol, { over: r.over, under: r.under });
         }
         this.update({
             symbols: filtered,
@@ -304,7 +322,10 @@ export class OUBotEngine {
         await Promise.all(
             this.symbols.map(async s => {
                 try {
-                    const hist = await getTicksHistory(s.symbol, cfg.minTicksForAnalysis);
+                    // Seed at least as many samples as the scan gate requires, otherwise
+                    // the bot idles waiting for live ticks to reach minSampleSize.
+                    const need = Math.max(cfg.minTicksForAnalysis, cfg.limits.minSampleSize) + 20;
+                    const hist = await getTicksHistory(s.symbol, need);
                     const history = (hist?.history?.prices ?? []) as string[];
                     const pipSize = s.pipSize;
                     const digits: number[] = [];
@@ -396,9 +417,19 @@ export class OUBotEngine {
             const cfg = this.state.config;
             this.proposalBudget = PROPOSALS_PER_SCAN;
             const seriesMap = new Map<string, SymbolSeries>();
+            const seriesStats: EngineState['series'] = {};
             for (const s of this.symbols) {
                 const series = this.feed?.getSeries(s.symbol);
-                if (series && series.digits.length >= cfg.limits.minSampleSize && !series.stale) {
+                if (!series) continue;
+                // Publish live digit stats for every watched market so the panel
+                // refreshes each scan (state.series was previously never populated).
+                seriesStats[s.symbol] = {
+                    ...this.statsFrom(series),
+                    sampleSize: series.digits.length,
+                    stale: series.stale,
+                    quote: series.quotes[series.quotes.length - 1] ?? 0,
+                };
+                if (series.digits.length >= cfg.limits.minSampleSize && !series.stale) {
                     seriesMap.set(s.symbol, series);
                 }
             }
@@ -438,7 +469,7 @@ export class OUBotEngine {
                     : b.expectedValuePct * b.confidence - a.expectedValuePct * a.confidence
             );
             const top = opportunities.slice(0, MAX_CANDIDATES_PER_SCAN);
-            this.update({ opportunities: top });
+            this.update({ opportunities: top, series: seriesStats });
 
             if (!this.running) return;
             if (this.state.risk.suspended) return;

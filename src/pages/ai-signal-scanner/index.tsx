@@ -110,22 +110,19 @@ const AISignalScannerPage = observer(() => {
 
     const markets = useMemo(() => state.markets, [state.markets]);
 
-    if (!isLoggedIn) {
-        return (
-            <div className='ai-scanner'>
-                <div className='ai-scanner__empty'>
-                    <h2>AI Signal Scanner</h2>
-                    <p>Log in to your Deriv account to connect the multi-market scanner and trade signals in real time.</p>
-                    <button type='button' className='ai-scanner__btn ai-scanner__btn--primary' onClick={() => run_panel?.showLoginDialog?.()}>
-                        Log in to trade
-                    </button>
-                </div>
-            </div>
-        );
-    }
-
+    // Signals run on Deriv public market data and need no session, so the scanner
+    // is always available. Only auto-trade / live orders require an authorized login,
+    // which the engine enforces — we surface that as a notice instead of a wall.
     return (
         <div className='ai-scanner'>
+            {!isLoggedIn && (
+                <div className='ai-scanner__notice ai-scanner__notice--login' role='note'>
+                    Not logged in — scanning Deriv&apos;s public markets for signals only.{' '}
+                    <button type='button' className='ai-scanner__btn' onClick={() => run_panel?.showLoginDialog?.()}>
+                        Log in to enable auto-trade
+                    </button>
+                </div>
+            )}
             <header className='ai-scanner__head'>
                 <div>
                     <h2>AI Signal Scanner</h2>
@@ -138,7 +135,7 @@ const AISignalScannerPage = observer(() => {
                 <div className='ai-scanner__status'>
                     <span className={`ai-scanner__badge ai-scanner__badge--${state.status}`}>{state.status}</span>
                     <span className={`ai-scanner__acct ${isDemo ? 'ai-scanner__acct--demo' : ''}`}>
-                        {isDemo ? 'Demo' : 'Real'} · {activeLoginid}
+                        {!isLoggedIn ? 'Guest · signals only' : `${isDemo ? 'Demo' : 'Real'} · ${activeLoginid}`}
                     </span>
                     <span className='ai-scanner__equity'>Equity {money(state.equity)}</span>
                 </div>
@@ -168,12 +165,24 @@ const AISignalScannerPage = observer(() => {
                     )}
                 </div>
                 <label className='ai-scanner__toggle'>
-                    <input type='checkbox' checked={state.liveTrading} onChange={e => onToggleLive(e.target.checked)} />
-                    <span>Live trading {isDemo ? '(demo orders)' : '(REAL funds)'}</span>
+                    <input
+                        type='checkbox'
+                        disabled={!isLoggedIn}
+                        checked={state.liveTrading}
+                        onChange={e => onToggleLive(e.target.checked)}
+                    />
+                    <span>
+                        Live trading {!isLoggedIn ? '(log in first)' : isDemo ? '(demo orders)' : '(REAL funds)'}
+                    </span>
                 </label>
                 <label className='ai-scanner__toggle'>
-                    <input type='checkbox' checked={autoTrade} onChange={e => setAutoTrade(e.target.checked)} />
-                    <span>Auto-trade signals</span>
+                    <input
+                        type='checkbox'
+                        disabled={!isLoggedIn}
+                        checked={autoTrade && isLoggedIn}
+                        onChange={e => setAutoTrade(e.target.checked)}
+                    />
+                    <span>Auto-trade signals {!isLoggedIn && '(log in first)'}</span>
                 </label>
             </section>
 
