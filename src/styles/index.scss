@@ -2,6 +2,20 @@
 // Removed IBM Plex Sans Google Font import - now using brand font from brand.config.json
 // Third-party developers can add their own font imports if needed
 
+/* The bundled SmartCharts stylesheet ships `body,html{touch-action:none;margin:0}`.
+   That reset is meant for a standalone chart, but here it lands on the whole
+   document and disables every touch scroll gesture on mobile — the page renders
+   fine and mouse-wheel works on desktop (wheel ignores touch-action), so the bug
+   only surfaces on real phones, where the app looks fixed and unscrollable.
+   Re-enable document-level touch scrolling. This does NOT affect the chart
+   (.ciq-chart) or the Blockly canvas (.injectionDiv), which declare their own
+   `touch-action:none` for drag gestures — a parent's `!important` never
+   overrides a child's own declaration. */
+html,
+body {
+    touch-action: pan-x pan-y pinch-zoom !important;
+}
+
 body {
     // Updated to use brand font variable from brand.config.json
     font-family: var(--brand-font-primary);

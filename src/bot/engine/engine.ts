@@ -73,6 +73,8 @@ const DEFAULT_CONFIG: EngineConfig = {
 
 const QUOTE_TTL_MS = 12000;
 const MAX_CANDIDATES_PER_SCAN = 12;
+const PROPOSAL_DELAY_MS = 200;
+const PROPOSALS_PER_SCAN = 20;
 
 interface CachedQuote {
     quote: ProposalQuote;
@@ -101,6 +103,8 @@ export class OUBotEngine {
     private symbols: SyntheticSymbol[] = [];
     private digitContracts = new Map<string, { over: number[]; under: number[] }>();
     private quoteCache = new Map<string, CachedQuote>();
+    private proposalBudget = PROPOSALS_PER_SCAN;
+    private lastProposalAt = 0;
     private busy = false;
     private running = false;
     private state: EngineState;
@@ -332,6 +336,13 @@ export class OUBotEngine {
         const key = `${req.symbol}|${req.direction}|${req.barrier}|${req.duration}${req.durationUnit}`;
         const cached = this.quoteCache.get(key);
         if (cached && Date.now() - cached.at < QUOTE_TTL_MS) return cached.quote;
+        if (this.proposalBudget <= 0) return null;
+        const sinceLast = Date.now() - this.lastProposalAt;
+        if (sinceLast < PROPOSAL_DELAY_MS) {
+            await new Promise(r => setTimeout(r, PROPOSAL_DELAY_MS - sinceLast));
+        }
+        this.proposalBudget -= 1;
+        this.lastProposalAt = Date.now();
         const { quote, error } = await requestQuote(req);
         if (error || !quote) return null;
         this.quoteCache.set(key, { quote, at: Date.now() });
@@ -344,6 +355,7 @@ export class OUBotEngine {
         this.busy = true;
         try {
             const cfg = this.state.config;
+            this.proposalBudget = PROPOSALS_PER_SCAN;
             const seriesMap = new Map<string, SymbolSeries>();
             for (const s of this.symbols) {
                 const series = this.feed?.getSeries(s.symbol);
