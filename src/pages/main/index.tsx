@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useStore } from '@/hooks/useStore';
 import AITradingHub from '@/pages/ai-trading-hub';
+import OUBotPage from '@/pages/ou-bot';
 import AppWrapper from './main';
 import './main.scss';
 
-type HubView = 'dashboard' | 'ai-hub';
+type HubView = 'dashboard' | 'ai-hub' | 'ou-bot';
 
 const Main = observer(() => {
     const { ui } = useStore() ?? {};
@@ -20,8 +21,8 @@ const Main = observer(() => {
     // fixed-height app shell the bot builder scrolls *inside*. The hub is a
     // normal document, so it needs that shell relaxed (see main.scss).
     useEffect(() => {
-        ui?.setActiveHubView?.(activeView);
-        const isHub = activeView === 'ai-hub';
+        ui?.setActiveHubView?.(activeView === 'dashboard' ? 'dashboard' : 'ai-hub');
+        const isHub = activeView !== 'dashboard';
         document.body.classList.toggle('hub-view', isHub);
         return () => document.body.classList.remove('hub-view');
     }, [activeView, ui]);
@@ -37,6 +38,14 @@ const Main = observer(() => {
                         onClick={() => setActiveView('ai-hub')}
                     >
                         AI Trading Hub
+                    </button>
+                    <button
+                        role='tab'
+                        aria-selected={activeView === 'ou-bot'}
+                        className={`view-btn ${activeView === 'ou-bot' ? 'active' : ''}`}
+                        onClick={() => setActiveView('ou-bot')}
+                    >
+                        Over / Under Bot
                     </button>
                     <button
                         role='tab'
@@ -56,6 +65,13 @@ const Main = observer(() => {
                     aria-hidden={activeView !== 'ai-hub'}
                 >
                     <AITradingHub onOpenDashboard={() => setActiveView('dashboard')} />
+                </div>
+                <div
+                    className='main-hub'
+                    style={{ display: activeView === 'ou-bot' ? 'block' : 'none' }}
+                    aria-hidden={activeView !== 'ou-bot'}
+                >
+                    <OUBotPage />
                 </div>
                 <div
                     className='main-dashboard__engine'
