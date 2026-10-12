@@ -124,13 +124,62 @@ export const requestContractQuote = async (
     return { error: err?.message || err?.code || 'Proposal failed' };
 };
 
+export interface SimpleContractRequest {
+    symbol: string;
+    /** Raw Deriv contract type, e.g. DIGITOVER, DIGITEVEN, CALL. */
+    contractType: string;
+    barrier?: number;
+    amount: number;
+    duration: number;
+    durationUnit: string;
+}
+
+const needsBarrier = (contractType: string): boolean =>
+    contractType.startsWith('DIGITOVER') ||
+    contractType.startsWith('DIGITUNDER') ||
+    contractType.startsWith('DIGITMATCH') ||
+    contractType.startsWith('DIGITDIFF');
+
+/** Request a proposal for any contract type (used by the AI Bot). */
+export const requestSimpleQuote = async (
+    req: SimpleContractRequest
+): Promise<{ quote?: ProposalQuote; error?: string }> => {
+    const params: Record<string, unknown> = {
+        proposal: 1,
+        amount: req.amount,
+        basis: 'stake',
+        contract_type: req.contractType,
+        currency: accountCurrency(),
+        duration: req.duration,
+        duration_unit: req.durationUnit,
+        symbol: req.symbol,
+    };
+    if (req.barrier !== undefined && needsBarrier(req.contractType)) {
+        params.barrier = String(req.barrier);
+    }
+    const first = await getProposal(params);
+    if (!first.error && first.data) {
+        const quote = parseQuote(first.data);
+        if (quote) return { quote };
+    }
+    const fallbackParams = { ...params };
+    delete (fallbackParams as any).symbol;
+    (fallbackParams as any).underlying_symbol = req.symbol;
+    const second = await getProposal(fallbackParams);
+    if (!second.error && second.data) {
+        const quote = parseQuote(second.data);
+        if (quote) return { quote };
+    }
+    const err = first.error || second.error;
+    return { error: err?.message || err?.code || 'Proposal failed' };
+};
+
 export interface BuyResult {
     contractId?: number;
     transactionId?: number;
     buyPrice?: number;
     error?: string;
 }
-
 export const executeBuy = async (quote: ProposalQuote, amount: number): Promise<BuyResult> => {
     const { data, error } = await buyContract(quote.id, amount);
     if (error) return { error: error.message || error.code || 'Buy failed' };

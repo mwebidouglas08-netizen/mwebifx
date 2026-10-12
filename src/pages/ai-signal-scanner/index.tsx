@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useStore } from '@/hooks/useStore';
 import { isDemoAccount } from '@/utils/account-helpers';
@@ -70,6 +70,26 @@ const AISignalScannerPage = observer(() => {
             autoTrade,
         });
     };
+
+    // Keep the engine in sync as settings change so toggling auto-trade (or any
+    // option) takes effect immediately — even while the scanner is running.
+    useEffect(() => {
+        applyConfig();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+        families,
+        sampleSize,
+        threshold,
+        overBarrier,
+        underBarrier,
+        matchDigit,
+        stake,
+        maxStake,
+        maxDailyLoss,
+        maxConsec,
+        martingale,
+        autoTrade,
+    ]);
 
     const onStart = async () => {
         applyConfig();

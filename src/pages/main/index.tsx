@@ -5,6 +5,7 @@ import AITradingHub from '@/pages/ai-trading-hub';
 import OUBotPage from '@/pages/ou-bot';
 import AISignalScannerPage from '@/pages/ai-signal-scanner';
 import BotDock from '@/components/bot-dock';
+import AIBotDock from '@/components/ai-bot';
 import AppWrapper from './main';
 import './main.scss';
 
@@ -99,6 +100,7 @@ const Main = observer(() => {
                 </div>
             </main>
             <BotDock onNavigate={(view) => setActiveView(view)} />
+            <AIBotDock />
         </div>
     );
 });

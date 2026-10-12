@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ouBotEngine, EngineState } from './engine/engine';
 import { signalScanner, SignalScannerState } from './engine/signal-scanner';
+import { aiBot, AIBotState } from './engine/ai-bot';
 
 export const useOUBotEngine = (): EngineState => {
     const [state, setState] = useState<EngineState>(() => ouBotEngine.getState());
@@ -31,6 +32,23 @@ export const useScannerPerformance = () => {
     const state = useSignalScanner();
     return useMemo(() => {
         const snapshot = signalScanner.getPerformance();
+        void state;
+        return snapshot;
+    }, [state.trades]);
+};
+
+export const useAIBot = (): AIBotState => {
+    const [state, setState] = useState<AIBotState>(() => aiBot.getState());
+
+    useEffect(() => aiBot.subscribe(setState), []);
+
+    return state;
+};
+
+export const useAIPerformance = () => {
+    const state = useAIBot();
+    return useMemo(() => {
+        const snapshot = aiBot.getPerformance();
         void state;
         return snapshot;
     }, [state.trades]);
