@@ -176,7 +176,11 @@ const buildContractParams = (req: ContractRequest): Record<string, unknown> => {
         duration_unit: req.durationUnit,
         symbol: req.symbol,
     };
-    if (req.family === 'over_under' || req.family === 'match_differ') {
+    if (
+        req.family === 'over_under' ||
+        req.family === 'match_differ' ||
+        req.family === 'mean_reversion'
+    ) {
         if (req.barrier !== undefined) params.barrier = String(req.barrier);
     }
     return params;

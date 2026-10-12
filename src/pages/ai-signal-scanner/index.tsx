@@ -14,7 +14,7 @@ import './ai-signal-scanner.scss';
 const pct = (n: number) => `${n.toFixed(1)}%`;
 const money = (n: number) => `${n.toFixed(2)}`;
 
-const ALL_FAMILIES: ContractFamily[] = ['rise_fall', 'even_odd', 'over_under', 'match_differ'];
+const ALL_FAMILIES: ContractFamily[] = ['rise_fall', 'even_odd', 'over_under', 'match_differ', 'mean_reversion'];
 
 const EVENT_LABEL: Record<string, string> = {
     status: 'Status',
@@ -272,6 +272,7 @@ const AISignalScannerPage = observer(() => {
                                     <th>Market</th><th>Quote</th><th>Even</th><th>Odd</th>
                                     <th>Over {state.config.overBarrier}</th><th>Under {state.config.underBarrier}</th>
                                     <th>Rise</th><th>Fall</th><th>Match {state.config.matchDigit}</th>
+                                    <th>MR pick</th>
                                     <th>Top digit</th><th>RSI</th><th>Trend</th>
                                 </tr>
                             </thead>
@@ -287,6 +288,11 @@ const AISignalScannerPage = observer(() => {
                                         <td className={m.rise >= m.fall ? 'pos' : ''}>{pct(m.rise)}</td>
                                         <td className={m.fall > m.rise ? 'pos' : ''}>{pct(m.fall)}</td>
                                         <td>{pct(m.match)}</td>
+                                        <td className={m.meanReversion ? 'pos' : ''}>
+                                            {m.meanReversion
+                                                ? `${m.meanReversion.kind} ${m.meanReversion.barrier} · ${m.meanReversion.strength}%${m.meanReversion.cluster ? ' (cluster)' : ''}`
+                                                : '—'}
+                                        </td>
                                         <td>{m.mostFreqDigit}</td>
                                         <td>{m.rsi.toFixed(0)}</td>
                                         <td>{m.trend}</td>

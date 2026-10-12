@@ -1,6 +1,7 @@
 import { MarketCategory } from './types';
+import type { MeanReversionPick } from './mean-reversion';
 
-export type ContractFamily = 'rise_fall' | 'even_odd' | 'over_under' | 'match_differ';
+export type ContractFamily = 'rise_fall' | 'even_odd' | 'over_under' | 'match_differ' | 'mean_reversion';
 
 export type SignalAction = 'CALL' | 'PUT' | 'EVEN' | 'ODD' | 'OVER' | 'UNDER' | 'MATCH' | 'DIFFER';
 
@@ -9,6 +10,7 @@ export const FAMILY_LABEL: Record<ContractFamily, string> = {
     even_odd: 'Even / Odd',
     over_under: 'Over / Under',
     match_differ: 'Match / Differ',
+    mean_reversion: 'Mean Reversion (Over / Under)',
 };
 
 export const ACTION_LABEL: Record<SignalAction, string> = {
@@ -129,4 +131,6 @@ export interface MarketScan {
     trend: string;
     strongest: number;
     stale: boolean;
+    /** Best mean-reversion pick for this market (null when nothing qualifies). */
+    meanReversion?: MeanReversionPick | null;
 }

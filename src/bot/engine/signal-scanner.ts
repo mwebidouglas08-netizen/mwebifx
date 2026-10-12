@@ -29,6 +29,11 @@ import {
 } from '../core/signal-analysis';
 import { computeRsi } from '../core/digit-stats';
 import {
+    MR_TRIGGER_THRESHOLD,
+    MeanReversionPick,
+    scanMeanReversion,
+} from '../core/mean-reversion';
+import {
     DEFAULT_RISK_LIMITS,
     applySettlement,
     initialRiskState,
@@ -71,7 +76,7 @@ export type ScannerListener = (state: SignalScannerState) => void;
 const clamp01 = (n: number): number => Math.max(0, Math.min(1, n));
 
 export const DEFAULT_SIGNAL_CONFIG: SignalScannerConfig = {
-    families: ['rise_fall', 'even_odd', 'over_under'],
+    families: ['rise_fall', 'even_odd', 'over_under', 'mean_reversion'],
     sampleSize: 100,
     threshold: 58,
     overBarrier: 5,
@@ -249,6 +254,9 @@ export class SignalScannerEngine {
                     } catch {
                         fams = [];
                     }
+                    // Mean reversion trades DIGITOVER / DIGITUNDER contracts, so
+                    // any market offering over/under can run the MR strategy.
+                    if (fams.includes('over_under')) fams = [...fams, 'mean_reversion'];
                     this.familiesBySymbol.set(s.symbol, fams);
                     return { s, fams };
                 })
@@ -345,7 +353,19 @@ export class SignalScannerEngine {
         const least = leastFrequentDigit(digits);
         const rsi = computeRsi(quotes, 14);
         const trend = trendDirection(quotes);
-        const strongest = Math.max(eo.even, eo.odd, ouOver.over, ouUnder.under, rf.rise, rf.fall);
+        // Mean-reversion pick (signaltraker-style): full 10-tick window, 8
+        // barriers, cluster override. Fires at >=85 strength (or the raised
+        // user threshold, whichever is stricter).
+        const mr = scanMeanReversion(digits, Math.max(cfg.threshold, MR_TRIGGER_THRESHOLD));
+        const strongest = Math.max(
+            eo.even,
+            eo.odd,
+            ouOver.over,
+            ouUnder.under,
+            rf.rise,
+            rf.fall,
+            mr?.strength ?? 0
+        );
         return {
             symbol,
             displayName: meta?.displayName || symbol,
@@ -368,6 +388,7 @@ export class SignalScannerEngine {
             trend,
             strongest,
             stale: series.stale,
+            meanReversion: mr,
         };
     }
 
@@ -413,6 +434,13 @@ export class SignalScannerEngine {
         if (enabled.has('over_under')) {
             mk('over_under', 'OVER', scan.over, theoreticalOver(cfg.overBarrier), cfg.overBarrier, `Over ${cfg.overBarrier} at ${scan.over}% (base ${theoreticalOver(cfg.overBarrier).toFixed(0)}%)`);
             mk('over_under', 'UNDER', scan.under, theoreticalUnder(cfg.underBarrier), cfg.underBarrier, `Under ${cfg.underBarrier} at ${scan.under}% (base ${theoreticalUnder(cfg.underBarrier).toFixed(0)}%)`);
+        }
+        if (enabled.has('mean_reversion')) {
+            const mr: MeanReversionPick | null | undefined = scan.meanReversion;
+            if (mr) {
+                const baseline = mr.kind === 'UNDER' ? theoreticalUnder(mr.barrier) : theoreticalOver(mr.barrier);
+                mk('mean_reversion', mr.kind, mr.strength, baseline, mr.barrier, mr.rationale);
+            }
         }
         if (enabled.has('match_differ')) {
             mk('match_differ', 'MATCH', scan.match, 10, cfg.matchDigit, `Match ${cfg.matchDigit} at ${scan.match}% (base 10%)`);
@@ -473,7 +501,7 @@ export class SignalScannerEngine {
             if (!isAuthorized()) {
                 if (!this.authWarned) {
                     this.authWarned = true;
-                    this.logEvent('decision', 'Auto-trade is on — log in to your Deriv account to place orders.');
+                    this.logEvent('status', 'Auto-trade is on — log in to your Deriv account to place orders.');
                 }
                 return;
             }
