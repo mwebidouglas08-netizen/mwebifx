@@ -759,9 +759,12 @@
 
 /* The hub is a normal scrolling document, but it is rendered inside the bot
    builder's app shell: `.layout` pins height to 100vh and `.bot-dashboard`
-   pins height to calc(100vh - 4.4rem) with overflow hidden, so anything taller
-   than the viewport was clipped with no scrollbar. Relax both while the hub
-   owns the screen; the bot dashboard view keeps the original fixed shell. */
+   pins height to calc(100vh - 4.4rem), so anything taller than the viewport
+   was clipped with no scrollbar. Letting the height grow is enough — the shell
+   only needs `height: auto`. `overflow` must stay `hidden`, not `visible`:
+   the hidden Bot Dashboard's Blockly canvas is sized to the viewport width
+   and would otherwise leak a few pixels of horizontal scroll into the hub.
+   The dashboard view keeps the original fixed shell. */
 body.hub-view {
     .layout {
         height: auto;
@@ -771,7 +774,6 @@ body.hub-view {
     .bot-dashboard {
         height: auto;
         min-height: calc(100vh - 4.4rem);
-        overflow: visible;
     }
 }
 
