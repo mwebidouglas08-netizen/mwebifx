@@ -83,6 +83,29 @@ This produces a static build in the `dist/` directory (Rsbuild output — there 
 `.next`/`out`). Serve the contents of `dist/` from any web server or static host.
 SmartCharts engine assets are copied into `dist/js/smartcharts/` during the build.
 
+## AI bots, scanner and Over/Under bot - login behaviour
+
+The **AI Signal Scanner**, **AI Bot** and **Over/Under Bot** run discovery, tick
+feeds, digit analysis and rule matching against Deriv's *public* WebSocket
+endpoints (`active_symbols`, `ticks_history`, `ticks`, `proposal`), so they start,
+scan and rank opportunities **before you log in** - the pages show a "signals
+only" notice while logged out instead of a login wall.
+
+Order placement (`buy`) is the only gated part: it requires an authorized Deriv
+session. Auto-trade stays off and its toggle is disabled until you log in, and
+every rule match is reported with a `log in to auto-trade` reason instead of
+firing an order.
+
+Two synthetic-market facts the engines code around:
+
+- `active_symbols` on the `trading/v1` options endpoint returns
+  `underlying_symbol` / `underlying_symbol_name` (plus `market`/`submarket`), not
+  the `symbol`/`display_name` shape.
+- Contracts differ per symbol: volatility and jump indices expose digit
+  contracts (`DIGITOVER`/`DIGITUNDER`), while boom/crash indices expose only
+  accumulator/multiplier contracts - so the engines probe contract availability
+  before warming a symbol.
+
 ## Google Drive integration (optional)
 
 Saving/loading strategies to Google Drive stays disabled unless `GD_CLIENT_ID`,
