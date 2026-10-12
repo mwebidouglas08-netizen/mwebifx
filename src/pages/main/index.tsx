@@ -3,10 +3,11 @@ import { observer } from 'mobx-react-lite';
 import { useStore } from '@/hooks/useStore';
 import AITradingHub from '@/pages/ai-trading-hub';
 import OUBotPage from '@/pages/ou-bot';
+import AISignalScannerPage from '@/pages/ai-signal-scanner';
 import AppWrapper from './main';
 import './main.scss';
 
-type HubView = 'dashboard' | 'ai-hub' | 'ou-bot';
+type HubView = 'dashboard' | 'ai-hub' | 'ai-scanner' | 'ou-bot';
 
 const Main = observer(() => {
     const { ui } = useStore() ?? {};
@@ -49,6 +50,14 @@ const Main = observer(() => {
                     </button>
                     <button
                         role='tab'
+                        aria-selected={activeView === 'ai-scanner'}
+                        className={`view-btn ${activeView === 'ai-scanner' ? 'active' : ''}`}
+                        onClick={() => setActiveView('ai-scanner')}
+                    >
+                        AI Signal Scanner
+                    </button>
+                    <button
+                        role='tab'
                         aria-selected={activeView === 'dashboard'}
                         className={`view-btn ${activeView === 'dashboard' ? 'active' : ''}`}
                         onClick={() => setActiveView('dashboard')}
@@ -72,6 +81,13 @@ const Main = observer(() => {
                     aria-hidden={activeView !== 'ou-bot'}
                 >
                     <OUBotPage />
+                </div>
+                <div
+                    className='main-hub'
+                    style={{ display: activeView === 'ai-scanner' ? 'block' : 'none' }}
+                    aria-hidden={activeView !== 'ai-scanner'}
+                >
+                    <AISignalScannerPage />
                 </div>
                 <div
                     className='main-dashboard__engine'

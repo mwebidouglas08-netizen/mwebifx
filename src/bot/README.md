@@ -70,6 +70,39 @@ The bot has two selectable modes (strategy selector on the dashboard):
 Both modes stream a timestamped **live activity feed** (quotes, purchases, settlements with
 win/loss and payout) so you can see exactly what the engine is doing.
 
+## AI Signal Scanner
+
+A separate multi-market scanner (`engine/signal-scanner.ts`, dashboard tab **AI Signal
+Scanner**) that mirrors the approach used by mainstream Deriv "AI scanner" bots but stays
+honest about what it measures.
+
+**What it does**
+1. Discovers all synthetic markets and, per symbol, detects which contract families the
+   broker actually offers (Rise/Fall, Even/Odd, Over/Under, Match/Differ).
+2. Streams live ticks for every market in parallel (dedicated WebSocket) and warms each
+   with `ticks_history`.
+3. Computes the same analysis "skills" those bots expose (`core/signal-analysis.ts`):
+   digit frequency (most/least frequent), **even/odd %**, **over/under %**, **rise/fall %**,
+   **match/differ %**, RSI, and an EMA trend — all over a configurable sample window.
+4. Emits a **signal** for a market/family/action when the measured percentage crosses your
+   threshold. Confidence is how far the strength sits above its theoretical (random)
+   baseline, so only above-random readings rank highly.
+5. **Auto-trade**: takes the single strongest signal per cadence window, requests a real
+   `proposal`, `buy`s it, polls to settlement, and records the real win/loss — across all
+   four contract families.
+6. Tracks **accuracy** (win rate, net P/L, profit factor, drawdown) from real settlements,
+   plus counts of signals seen vs. executed. An optional, capped **Martingale** stake
+   recovery is off by default and clearly labelled as risky.
+
+**Honesty**
+- Signals are *measurements of the recent distribution*, not predictions. Digit and
+  rise/fall outcomes are engineered to be near-random, so most entries carry a negative
+  expected value against the broker payout — the scanner exists to make that pipeline
+  visible and measurable, not to promise profit.
+- It is **demo-first**: real-account trading requires enabling **Live trading** plus an
+  explicit confirmation, and all risk gates (daily loss, consecutive losses, open
+  positions, stake cap, suspension) still apply.
+
 ## Implemented strategies
 
 The single strategy is **Empirical Over/Under EV**:

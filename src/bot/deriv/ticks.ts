@@ -71,6 +71,32 @@ export class TickFeed {
         return this.series.get(symbol);
     }
 
+    seed(symbol: string, pipSize: number, quotes: number[]) {
+        let series = this.series.get(symbol);
+        if (!series) {
+            series = {
+                symbol,
+                pipSize: pipSize || 2,
+                digits: [],
+                quotes: [],
+                lastEpoch: 0,
+                lastTickAt: 0,
+                tickCount: 0,
+                stale: false,
+            };
+            this.series.set(symbol, series);
+        }
+        if (typeof pipSize === 'number' && pipSize >= 0) series.pipSize = pipSize;
+        for (const q of quotes) {
+            if (!Number.isFinite(q)) continue;
+            series.digits.push(lastDigitOf(q, series.pipSize));
+            series.quotes.push(q);
+        }
+        if (series.digits.length > MAX_DIGITS) series.digits = series.digits.slice(-MAX_DIGITS);
+        if (series.quotes.length > MAX_QUOTES) series.quotes = series.quotes.slice(-MAX_QUOTES);
+        if (!series.lastTickAt) series.lastTickAt = Date.now();
+    }
+
     getAll(): SymbolSeries[] {
         return Array.from(this.series.values());
     }

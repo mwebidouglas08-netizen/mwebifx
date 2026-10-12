@@ -1,4 +1,5 @@
 import { AvailableContract, MarketCategory, SyntheticSymbol } from '../core/types';
+import { ContractFamily } from '../core/signal-types';
 import { getActiveSymbols, getContractsFor } from './api';
 
 const computePipSize = (pip: unknown, quote?: unknown): number => {
@@ -58,6 +59,19 @@ export const discoverSyntheticSymbols = async (): Promise<SyntheticSymbol[]> => 
 };
 
 const DIGIT_TYPES = new Set(['DIGITOVER', 'DIGITUNDER']);
+
+export const detectSupportedFamilies = (contractsAvailable: any[]): ContractFamily[] => {
+    const types = new Set<string>();
+    for (const c of contractsAvailable) {
+        if (c?.contract_type) types.add(String(c.contract_type));
+    }
+    const families: ContractFamily[] = [];
+    if (types.has('CALL') || types.has('PUT')) families.push('rise_fall');
+    if (types.has('DIGITEVEN') || types.has('DIGITODD')) families.push('even_odd');
+    if (types.has('DIGITOVER') || types.has('DIGITUNDER')) families.push('over_under');
+    if (types.has('DIGITMATCH') || types.has('DIGITDIFFER')) families.push('match_differ');
+    return families;
+};
 
 export const extractDigitContracts = (contractsAvailable: any[]): AvailableContract[] => {
     const out: AvailableContract[] = [];

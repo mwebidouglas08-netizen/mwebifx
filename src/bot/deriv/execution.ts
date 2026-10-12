@@ -1,10 +1,21 @@
 import { Direction, TradeRecord } from '../core/types';
+import { SignalAction, ContractFamily, ACTION_CONTRACT_TYPE } from '../core/signal-types';
 import { buyContract, getOpenContract, getProposal, accountCurrency } from './api';
 
 export interface OverUnderRequest {
     symbol: string;
     direction: Direction;
     barrier: number;
+    amount: number;
+    duration: number;
+    durationUnit: string;
+}
+
+export interface ContractRequest {
+    symbol: string;
+    family: ContractFamily;
+    action: SignalAction;
+    barrier?: number;
     amount: number;
     duration: number;
     durationUnit: string;
@@ -58,6 +69,44 @@ const parseQuote = (response: any): ProposalQuote | null => {
 
 export const requestQuote = async (req: OverUnderRequest): Promise<{ quote?: ProposalQuote; error?: string }> => {
     const params = buildProposalParams(req);
+    const first = await getProposal(params);
+    if (!first.error && first.data) {
+        const quote = parseQuote(first.data);
+        if (quote) return { quote };
+    }
+    const fallbackParams = { ...params };
+    delete (fallbackParams as any).symbol;
+    (fallbackParams as any).underlying_symbol = req.symbol;
+    const second = await getProposal(fallbackParams);
+    if (!second.error && second.data) {
+        const quote = parseQuote(second.data);
+        if (quote) return { quote };
+    }
+    const err = first.error || second.error;
+    return { error: err?.message || err?.code || 'Proposal failed' };
+};
+
+const buildContractParams = (req: ContractRequest): Record<string, unknown> => {
+    const params: Record<string, unknown> = {
+        proposal: 1,
+        amount: req.amount,
+        basis: 'stake',
+        contract_type: ACTION_CONTRACT_TYPE[req.action],
+        currency: accountCurrency(),
+        duration: req.duration,
+        duration_unit: req.durationUnit,
+        symbol: req.symbol,
+    };
+    if (req.family === 'over_under' || req.family === 'match_differ') {
+        if (req.barrier !== undefined) params.barrier = String(req.barrier);
+    }
+    return params;
+};
+
+export const requestContractQuote = async (
+    req: ContractRequest
+): Promise<{ quote?: ProposalQuote; error?: string }> => {
+    const params = buildContractParams(req);
     const first = await getProposal(params);
     if (!first.error && first.data) {
         const quote = parseQuote(first.data);
