@@ -92,6 +92,84 @@ export const getContractsFor = async (symbol: string): Promise<any[]> => {
 export const getProposal = async (params: Record<string, unknown>): Promise<ApiResult<any>> =>
     request<any>({ ...params, proposal: 1 }, 12000);
 
+export interface LiveRequest {
+    data?: any;
+    error?: { code: string; message: string };
+    /** Detach from the live stream; the server forgets the subscription. */
+    release: () => void;
+}
+
+/**
+ * Request that must keep its server-side subscription alive (proposals).
+ *
+ * On the trading/v1 socket a one-shot `proposal` id is not purchasable by the
+ * time `buy` is issued - the server answers "Unknown contract proposal"
+ * (InvalidContractProposal) even for a brand-new id on the same connection.
+ * Deriv's own bots buy against a SUBSCRIBED proposal (`subscribe: 1`): the id
+ * then stays valid and the stream refreshes `ask_price` until we let go. The
+ * deriv-api client manages that stream through `api.subscribe()` and forgets
+ * the subscription when the last observer detaches.
+ */
+export const requestLive = async (
+    payload: Record<string, unknown>,
+    timeoutMs = 12000
+): Promise<LiveRequest> => {
+    const api = api_base.api as any;
+    if (!api) {
+        return {
+            error: { code: 'NoConnection', message: 'No Deriv API connection' },
+            release: () => undefined,
+        };
+    }
+    if (typeof api.subscribe !== 'function') {
+        const res = await request<any>(payload, timeoutMs);
+        return { ...res, release: () => undefined };
+    }
+    return new Promise<LiveRequest>(resolve => {
+        let settled = false;
+        let observer: { unsubscribe?: () => void } | null = null;
+        let released = false;
+        const release = () => {
+            if (released) return;
+            released = true;
+            try {
+                observer?.unsubscribe?.();
+            } catch {
+                /* observer already torn down */
+            }
+        };
+        const done = (outcome: { data?: any; error?: { code: string; message: string } }) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            resolve({ ...outcome, release });
+        };
+        const timer = setTimeout(() => {
+            release();
+            done({ error: { code: 'RequestTimeout', message: 'Request timeout' } });
+        }, timeoutMs);
+        try {
+            observer = api.subscribe(payload).subscribe({
+                next: (msg: any) => {
+                    if (settled) return;
+                    if (msg?.error) {
+                        release();
+                        done({ error: msg.error });
+                        return;
+                    }
+                    done({ data: msg });
+                },
+                error: (err: any) => {
+                    release();
+                    done({ error: extractError(err) });
+                },
+            });
+        } catch (e: any) {
+            done({ error: extractError(e) });
+        }
+    });
+};
+
 export const buyContract = async (proposalId: string, price: number): Promise<ApiResult<any>> =>
     request<any>({ buy: proposalId, price }, 15000);
 

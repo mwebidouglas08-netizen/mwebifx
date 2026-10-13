@@ -35,6 +35,7 @@ import {
     applySettlementToRecord,
     executeBuyFresh,
     monitorUntilSettled,
+    releaseQuote,
     requestQuote,
     ProposalQuote,
 } from '../deriv/execution';
@@ -407,8 +408,19 @@ export class OUBotEngine {
         this.lastProposalAt = Date.now();
         const { quote, error } = await requestQuote(req);
         if (error || !quote) return null;
+        const previous = this.quoteCache.get(key);
+        if (previous) releaseQuote(previous.quote);
         this.quoteCache.set(key, { quote, at: Date.now() });
         return quote;
+    }
+
+    /**
+     * Preview quotes exist only to rank opportunities; the buy path re-quotes.
+     * Detach their live proposal streams once the scan is done so no stream
+     * keeps refreshing (and spending the shared proposal budget) unseen.
+     */
+    private releaseCachedQuoteStreams(): void {
+        this.quoteCache.forEach(entry => releaseQuote(entry.quote));
     }
 
     private async scan() {
@@ -507,6 +519,7 @@ export class OUBotEngine {
             this.setStatus('error', e?.message || 'Scan error');
             this.logEvent('error', e?.message || 'Scan error');
         } finally {
+            this.releaseCachedQuoteStreams();
             this.busy = false;
         }
     }
@@ -550,6 +563,7 @@ export class OUBotEngine {
         // Edge mode re-checks EV against the live payout; Active (demo practice)
         // mode deliberately proceeds regardless so the pipeline stays visible.
         if (!active && (finalEdge.expectedValuePct < cfg.limits.minExpectedValue || finalEdge.payoutRatio < cfg.limits.minPayoutRatio)) {
+            releaseQuote(quote);
             if (this.running) this.setStatus('scanning', 'Quote no longer meets EV threshold. Skipping.');
             return;
         }

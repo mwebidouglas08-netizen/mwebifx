@@ -3,7 +3,7 @@ import { SignalAction, ContractFamily, ACTION_CONTRACT_TYPE } from '../core/sign
 import {
     buyContract,
     getOpenContract,
-    getProposal,
+    requestLive,
     accountCurrency,
     accountBalance,
     currentSocket,
@@ -41,6 +41,8 @@ export interface ProposalQuote {
     maxStake?: number;
     /** Socket the proposal was issued on — ids cannot be bought across sockets. */
     socket?: unknown;
+    /** Detach from the live proposal stream (server forgets the subscription). */
+    release?: () => void;
 }
 
 const contractTypeFor = (direction: Direction): string =>
@@ -89,6 +91,7 @@ const isRateLimitError = (err?: { code?: string; message?: string }): boolean =>
 
 const acquireProposalSlot = (): Promise<void> => {
     const run = async (): Promise<void> => {
+        sweepLiveQuotes();
         const now = Date.now();
         proposalStamps = proposalStamps.filter(t => now - t < PROPOSAL_WINDOW_MS);
         if (proposalStamps.length >= PROPOSAL_MAX_PER_WINDOW) {
@@ -106,13 +109,42 @@ const acquireProposalSlot = (): Promise<void> => {
     return next;
 };
 
-const sendProposal = async (params: Record<string, unknown>): Promise<ApiResult<any>> => {
+// Live proposal subscriptions must not outlive their buy: every quote is
+// released explicitly after the buy attempt, and this janitor catches the
+// remaining paths (aborted signals, EV rejections) so no stream keeps
+// ticking in the background.
+const QUOTE_MAX_LIVE_MS = 45000;
+const liveQuotes = new Set<{ at: number; q: ProposalQuote }>();
+
+const sweepLiveQuotes = (): void => {
+    const cutoff = Date.now() - QUOTE_MAX_LIVE_MS;
+    liveQuotes.forEach(entry => {
+        if (entry.at >= cutoff) return;
+        liveQuotes.delete(entry);
+        releaseQuote(entry.q);
+    });
+};
+
+/** Idempotently detach a quote from its live proposal stream. */
+export const releaseQuote = (q?: ProposalQuote | null): void => {
+    const rel = q?.release;
+    if (!rel) return;
+    if (q) q.release = undefined;
+    try {
+        rel();
+    } catch {
+        /* stream already gone */
+    }
+};
+
+const sendProposal = async (params: Record<string, unknown>): Promise<ApiResult<any> & { release?: () => void }> => {
     await acquireProposalSlot();
-    let res = await getProposal(params);
+    let res = await requestLive({ ...params, proposal: 1 });
     if (res.error && isRateLimitError(res.error)) {
+        res.release?.();
         await sleep(RATE_LIMIT_BACKOFF_MS);
         await acquireProposalSlot();
-        res = await getProposal(params);
+        res = await requestLive({ ...params, proposal: 1 });
     }
     return res;
 };
@@ -152,11 +184,20 @@ const impossibleBarrierError = (params: Record<string, unknown>): string | null 
 };
 
 /** Parse, stamp the issuing socket and drop quotes that cannot profit. */
-const finalizeQuote = (response: any): { quote?: ProposalQuote; error?: string } => {
+const finalizeQuote = (
+    response: any,
+    release: () => void = () => undefined
+): { quote?: ProposalQuote; error?: string } => {
     const quote = parseQuote(response);
-    if (!quote) return { error: 'Malformed proposal response' };
+    if (!quote) {
+        release();
+        return { error: 'Malformed proposal response' };
+    }
     quote.socket = currentSocket();
+    quote.release = release;
+    liveQuotes.add({ at: Date.now(), q: quote });
     if (quote.payout <= quote.askPrice + 1e-9) {
+        releaseQuote(quote);
         return {
             error: `No return: payout ${quote.payout.toFixed(2)} never exceeds the ${quote.askPrice.toFixed(2)} stake`,
         };
@@ -179,12 +220,14 @@ const requestProposal = async (
     const blocked = impossibleBarrierError(params);
     if (blocked) return { error: blocked };
     const first = await sendProposal(params);
-    if (!first.error && first.data) return finalizeQuote(first.data);
+    if (!first.error && first.data) return finalizeQuote(first.data, first.release);
+    first.release?.();
     const fallbackParams = { ...params };
     delete (fallbackParams as any).symbol;
     (fallbackParams as any).underlying_symbol = params.symbol;
     const second = await sendProposal(fallbackParams);
-    if (!second.error && second.data) return finalizeQuote(second.data);
+    if (!second.error && second.data) return finalizeQuote(second.data, second.release);
+    second.release?.();
     const winner =
         second.error && !isShapeError(second.error)
             ? second.error
@@ -313,7 +356,7 @@ const explainBuyFailure = (error: string, amount: number): string => {
         return `${error} — balance ${balance.toFixed(2)} ${currency} is below the ${amount.toFixed(2)} ${currency} stake: top up the account or lower the stake`;
     }
     if (balance > 0) {
-        return `${error} — balance ${balance.toFixed(2)} ${currency} covers the stake; a fresh quote was retried and the id was still refused (stale quote or connection reset)`;
+        return `${error} — balance ${balance.toFixed(2)} ${currency} covers the stake; a live proposal was re-subscribed and the id was still refused (connection reset mid-trade)`;
     }
     return `${error} — a fresh quote was retried; check the account balance and WebSocket connection`;
 };
@@ -340,6 +383,16 @@ export const executeBuyFresh = async (
     amount: number,
     refetch: () => Promise<{ quote?: ProposalQuote; error?: string }>
 ): Promise<BuyResult> => {
+    // Buy and always detach the live proposal stream afterwards — a kept-alive
+    // subscription would keep streaming (and count against the shared budget)
+    // long after the trade decision was made.
+    const buyOnce = async (q: ProposalQuote): Promise<BuyResult> => {
+        try {
+            return await executeBuy(q, amount);
+        } finally {
+            releaseQuote(q);
+        }
+    };
     let attempt = quote;
     // Proposal ids belong to the socket that issued them. If the connection was
     // regenerated since the quote (account switch, visibility refresh), the old
@@ -348,6 +401,7 @@ export const executeBuyFresh = async (
     if (quote.socket !== undefined && quote.socket !== currentSocket()) {
         const fresh = await refetch();
         if (!fresh.quote) {
+            releaseQuote(quote);
             return {
                 error: explainBuyFailure(
                     `API connection changed during the quote (refresh failed: ${fresh.error || 'no quote'})`,
@@ -355,9 +409,10 @@ export const executeBuyFresh = async (
                 ),
             };
         }
+        releaseQuote(quote);
         attempt = fresh.quote;
     }
-    const first = await executeBuy(attempt, amount);
+    const first = await buyOnce(attempt);
     if (!first.error) return first;
     if (!isRetryableBuyError(first.error)) {
         return { error: explainBuyFailure(first.error, amount) };
@@ -371,7 +426,7 @@ export const executeBuyFresh = async (
             ),
         };
     }
-    const second = await executeBuy(fresh.quote, amount);
+    const second = await buyOnce(fresh.quote);
     if (!second.error) return second;
     return { error: explainBuyFailure(second.error, amount) };
 };
