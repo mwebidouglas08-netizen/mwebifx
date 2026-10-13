@@ -126,6 +126,8 @@ export const DEFAULT_AI_BOT_CONFIG: AIBotConfig = {
 
 const EVENT_CAP = 240;
 const PROBE_CONCURRENCY = 8;
+/** Deriv's minimum order stake — the equity cap never blocks a trade this small. */
+const MIN_ORDER_STAKE = 0.35;
 
 export class AIBotEngine {
     private listeners = new Set<AIBotListener>();
@@ -537,7 +539,13 @@ export class AIBotEngine {
         if (risk.suspended) return { ok: false, reason: risk.suspensionReason || 'Suspended' };
         if (risk.openPositions >= limits.maxOpenPositions) return { ok: false, reason: 'Open position in progress' };
         if (stake > limits.maxStake) stake = limits.maxStake;
-        if (stake > accountBalance() * limits.maxStakePctEquity) return { ok: false, reason: 'Stake exceeds equity cap' };
+        // Equity cap only applies when we know the balance, and never blocks Deriv's
+        // minimum stake — a pre-auth/zero balance must not block every trade.
+        const equity = accountBalance();
+        if (equity > 0) {
+            const cap = Math.max(equity * limits.maxStakePctEquity, MIN_ORDER_STAKE);
+            if (stake > cap) return { ok: false, reason: 'Stake exceeds equity cap' };
+        }
         return { ok: true };
     }
 

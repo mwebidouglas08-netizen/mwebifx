@@ -184,7 +184,7 @@ const AISignalScannerPage = observer(() => {
                         checked={paperTrading}
                         onChange={e => setPaperTrading(e.target.checked)}
                     />
-                    <span>Paper trading (live quotes, simulated fills — no real orders)</span>
+                    <span>Paper trading (simulated fills on real ticks — no real orders)</span>
                 </label>
                 <label className='ai-scanner__toggle'>
                     <input

@@ -101,6 +101,10 @@ export const DEFAULT_SIGNAL_CONFIG: SignalScannerConfig = {
 
 const EVENT_CAP = 240;
 const PROBE_CONCURRENCY = 8;
+/** Nominal bankroll used for paper trading (no real account balance). */
+const PAPER_START_EQUITY = 1000;
+/** Deriv's minimum order stake — the equity cap never blocks a trade this small. */
+const MIN_ORDER_STAKE = 0.35;
 
 const theoreticalOver = (barrier: number) => ((9 - barrier) / 10) * 100;
 const theoreticalUnder = (barrier: number) => ((barrier + 1) / 10) * 100;
@@ -219,12 +223,22 @@ export class SignalScannerEngine {
         this.lastTradeAt = 0;
         this.martingaleStep = 0;
         this.authWarned = false;
-        this.update({ accountIsDemo, liveTrading: authorized ? cfg.allowLiveTrading : false, equity: accountBalance() });
+        // Funded accounts use the real balance; paper mode (no login) uses a
+        // nominal bankroll so the equity cap and P/L tracking behave sensibly.
+        const startEquity = authorized ? accountBalance() : cfg.paperTrading ? PAPER_START_EQUITY : 0;
+        this.update({
+            accountIsDemo,
+            liveTrading: authorized ? cfg.allowLiveTrading : false,
+            equity: startEquity,
+            risk: initialRiskState(startEquity),
+        });
         this.logEvent(
             'status',
             authorized
                 ? `Scanner starting on ${accountIsDemo ? 'DEMO' : 'REAL'} account (${loginid}).`
-                : 'Scanner starting in signals-only mode. Log in to your Deriv account to enable auto-trade.'
+                : cfg.paperTrading
+                  ? `Scanner starting in PAPER-TRADING mode (simulated fills settled on real ticks, ${PAPER_START_EQUITY} virtual bankroll).`
+                  : 'Scanner starting in signals-only mode. Log in (or enable Paper trading) to auto-trade.'
         );
 
         this.setStatus('discovering', 'Discovering synthetic markets…');
@@ -296,7 +310,7 @@ export class SignalScannerEngine {
         );
 
         this.feed.start();
-        this.update({ equity: accountBalance(), risk: initialRiskState(accountBalance()) });
+        this.update({ equity: this.currentEquity(), risk: initialRiskState(this.currentEquity()) });
         const famCount = new Set([...this.familiesBySymbol.values()].flat()).size;
         this.logEvent('discover', `Scanning ${watch.length} markets across ${famCount || cfg.families.length} contract families.`);
         this.setStatus('scanning', 'Scanning markets for signals…');
@@ -322,9 +336,14 @@ export class SignalScannerEngine {
     }
 
     resumeAfterSuspend() {
-        this.update({ risk: initialRiskState(accountBalance()) });
+        this.update({ risk: initialRiskState(this.currentEquity()) });
         this.setStatus('scanning', 'Risk reset. Resumed.');
         this.logEvent('risk', 'Risk reset. Scanning resumed.');
+    }
+
+    /** Tracked equity (paper bankroll or last known), falling back to the live balance. */
+    private currentEquity(): number {
+        return this.state.equity > 0 ? this.state.equity : accountBalance();
     }
 
     private onTick(symbol: string, series: SymbolSeries) {
@@ -357,10 +376,19 @@ export class SignalScannerEngine {
 
     private currentStake(): number {
         const cfg = this.state.config;
-        if (!cfg.martingale) return cfg.stake;
         let stake = cfg.stake;
-        for (let i = 0; i < this.martingaleStep; i++) stake *= cfg.martingaleFactor;
-        return Math.min(stake, cfg.maxStake);
+        if (cfg.martingale) {
+            for (let i = 0; i < this.martingaleStep; i++) stake *= cfg.martingaleFactor;
+        }
+        stake = Math.min(stake, cfg.maxStake);
+        // Shrink the stake to fit the equity cap, but never below Deriv's minimum
+        // so small accounts still trade instead of being blocked outright.
+        const equity = this.currentEquity();
+        if (equity > 0) {
+            const cap = equity * DEFAULT_RISK_LIMITS.maxStakePctEquity;
+            stake = Math.min(stake, Math.max(cap, MIN_ORDER_STAKE));
+        }
+        return stake;
     }
 
     private buildMarketScan(symbol: string, series: SymbolSeries): MarketScan | null {
@@ -490,7 +518,16 @@ export class SignalScannerEngine {
         if (risk.dailyPnl <= -limits.maxDailyLoss) return { ok: false, reason: 'Daily loss limit' };
         if (risk.consecutiveLosses >= limits.maxConsecutiveLosses) return { ok: false, reason: 'Consecutive loss limit' };
         if (stake > limits.maxStake) stake = limits.maxStake;
-        if (stake > accountBalance() * limits.maxStakePctEquity) return { ok: false, reason: 'Stake exceeds equity cap' };
+        // Equity cap only applies when we actually know the equity, and never
+        // blocks Deriv's minimum stake. Paper/pre-auth states have no balance,
+        // so skip the cap there instead of blocking every trade.
+        const equity = this.currentEquity();
+        if (equity > 0) {
+            const cap = Math.max(equity * limits.maxStakePctEquity, MIN_ORDER_STAKE);
+            if (stake > cap) {
+                return { ok: false, reason: 'Stake exceeds equity cap' };
+            }
+        }
         return { ok: true };
     }
 
@@ -561,6 +598,22 @@ export class SignalScannerEngine {
 
     private async execute(signal: Signal, stake: number) {
         const cfg = this.state.config;
+
+        // Paper trading is a simulation: it settles on the next real tick using an
+        // estimated payout. It must NOT depend on a live broker quote, which
+        // requires an authorized session (unavailable in paper mode) and would
+        // otherwise fail on markets the public socket can't price.
+        if (cfg.paperTrading) {
+            const ratio = estimatePayoutRatio(signal.strength);
+            this.logEvent(
+                'quote',
+                `PAPER quote (estimated): ${signal.displayName} ${ACTION_LABEL[signal.action]} — ~${ratio.toFixed(2)}x (stake ${stake.toFixed(2)})`,
+                { symbol: signal.symbol, action: signal.action }
+            );
+            await this.executePaper(signal, stake, { payout: stake * ratio });
+            return;
+        }
+
         // A brand-new proposal per order: Deriv refuses cached/stale proposal
         // ids by the time the buy lands (prices are short-lived).
         const quoteReq: ContractRequest = {
@@ -591,11 +644,6 @@ export class SignalScannerEngine {
             return;
         }
         this.logEvent('quote', `Quote: ${signal.displayName} ${ACTION_LABEL[signal.action]} — payout ${quote.payout.toFixed(2)} (stake ${stake.toFixed(2)})`, { symbol: signal.symbol, action: signal.action });
-
-        if (cfg.paperTrading) {
-            await this.executePaper(signal, stake, quote);
-            return;
-        }
 
         const record: TradeRecord = {
             id: `sig-${Date.now()}`,
@@ -764,6 +812,13 @@ export class SignalScannerEngine {
         }
     }
 }
+
+/** Estimated payout ratio for a simulated (paper) digit trade. */
+const estimatePayoutRatio = (strengthPct: number): number => {
+    const p = Math.min(Math.max(strengthPct / 100, 0.1), 0.9);
+    // Deriv keeps a small edge on digit contracts; ~0.95 effective is typical.
+    return Math.min(Math.max(0.95 / p, 1.05), 2.0);
+};
 
 export const paperWon = (action: string, digit: number, barrier: number): boolean => {
     switch (action) {
