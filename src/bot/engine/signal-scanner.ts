@@ -80,8 +80,11 @@ export const DEFAULT_SIGNAL_CONFIG: SignalScannerConfig = {
     families: ['rise_fall', 'even_odd', 'over_under', 'mean_reversion'],
     sampleSize: 100,
     threshold: 58,
-    overBarrier: 5,
-    underBarrier: 4,
+    // Over 2 / Under 7 sit at a 70% theoretical base, so a >=58% reading is a
+    // genuine skew rather than noise — signals fire continuously across the
+    // watched markets instead of starving at near-impossible barriers.
+    overBarrier: 2,
+    underBarrier: 7,
     matchDigit: 7,
     stake: 1,
     duration: 1,
@@ -108,7 +111,8 @@ const PAPER_START_EQUITY = 1000;
 const MIN_ORDER_STAKE = 0.35;
 
 const theoreticalOver = (barrier: number) => ((9 - barrier) / 10) * 100;
-const theoreticalUnder = (barrier: number) => ((barrier + 1) / 10) * 100;
+// DIGITUNDER(barrier) wins on digits 0..barrier-1 — `barrier` buckets, not barrier+1.
+const theoreticalUnder = (barrier: number) => (barrier / 10) * 100;
 
 const confidenceAbove = (strength: number, baseline: number): number => {
     if (baseline >= 100) return 0;

@@ -62,7 +62,8 @@ const digitWins = (d: number, kind: MeanReversionKind, barrier: number): boolean
 
 /** Theoretical win rate of the barrier under a uniform digit distribution. */
 export const theoreticalRate = (kind: MeanReversionKind, barrier: number): number =>
-    kind === 'UNDER' ? ((barrier + 1) / 10) * 100 : ((9 - barrier) / 10) * 100;
+    // UNDER wins on digits 0..barrier-1 — same `digitWins` math as above.
+    kind === 'UNDER' ? (barrier / 10) * 100 : ((9 - barrier) / 10) * 100;
 
 export interface BarrierEvaluation {
     kind: MeanReversionKind;

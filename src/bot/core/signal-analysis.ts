@@ -69,8 +69,13 @@ export const evenOddPercent = (digits: number[]): EvenOdd => {
 export const overUnderPercent = (digits: number[], barrier: number): OverUnder => {
     const clean = digits.filter(d => d >= 0 && d <= 9);
     const total = clean.length;
+    // DIGITOVER(barrier) wins on digit > barrier; DIGITUNDER(barrier) wins on
+    // digit < barrier (the barrier digit itself loses both legs). Counting
+    // `under` as <= barrier overstated the win rate by a full digit bucket and
+    // made UNDER signals fire on losing distributions.
     const over = clean.filter(d => d > barrier).length;
-    return { over: pct(over, total), under: pct(total - over, total) };
+    const under = clean.filter(d => d < barrier).length;
+    return { over: pct(over, total), under: pct(under, total) };
 };
 
 export const riseFallPercent = (quotes: number[]): RiseFall => {

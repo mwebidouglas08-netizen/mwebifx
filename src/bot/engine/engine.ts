@@ -470,35 +470,37 @@ export class OUBotEngine {
                         });
                         if (!quote) continue;
                         const opp = this.buildOpportunity(meta, series, direction, barrier, quote, stats);
-                        // Edge mode only keeps genuinely profitable setups; Active mode
-                        // keeps every quoted contract so there is always a candidate to
-                        // demonstrate the live pipeline (ranked by confidence).
-                        if (active || (opp.expectedValue > 0 && opp.confidence > 0)) opportunities.push(opp);
+                        // Edge mode keeps setups with a real confidence reading (the
+                        // confidence gate below decides); Active mode keeps every
+                        // quoted contract so there is always a candidate.
+                        if (active || opp.confidence > 0) opportunities.push(opp);
                     }
                 }
             }
-            opportunities.sort((a, b) =>
-                active
-                    ? b.confidence - a.confidence || b.expectedValuePct - a.expectedValuePct
-                    : b.expectedValuePct * b.confidence - a.expectedValuePct * a.confidence
-            );
+            // High confidence first; EV breaks ties.
+            opportunities.sort((a, b) => b.confidence - a.confidence || b.expectedValuePct - a.expectedValuePct);
             const top = opportunities.slice(0, MAX_CANDIDATES_PER_SCAN);
             this.update({ opportunities: top, series: seriesStats });
 
             if (!this.running) return;
             if (this.state.risk.suspended) return;
-
-            const best = top[0];
-            if (!best) {
-                if (!this.state.dryRun) this.setStatus('scanning', active ? 'Waiting for a tradable contract…' : 'No edge clears the gates. Holding.');
+            if (this.state.dryRun) {
+                const why = isAuthorized()
+                    ? 'Holding: enable Live trading to place real orders'
+                    : 'Holding: log in to place orders';
+                if (this.state.message !== why) this.setStatus('scanning', why);
                 return;
             }
 
             if (active) {
                 const now = Date.now();
                 if (now - this.lastActiveTradeAt < cfg.activeIntervalMs) return;
-                if (this.state.dryRun) return;
                 this.lastActiveTradeAt = now;
+                const best = top[0];
+                if (!best) {
+                    this.setStatus('scanning', 'Waiting for a tradable contract…');
+                    return;
+                }
                 const verdict = evaluateOpportunity(best, this.state.risk, cfg.limits, accountBalance(), now, { skipEdgeGates: true });
                 if (!verdict.allowed) {
                     this.setStatus('scanning', `Holding: ${verdict.reason}`);
@@ -507,13 +509,34 @@ export class OUBotEngine {
                 }
                 await this.execute(best, verdict.stake);
             } else {
-                if (this.state.dryRun) return;
-                const verdict = evaluateOpportunity(best, this.state.risk, cfg.limits, accountBalance());
-                if (!verdict.allowed) {
-                    this.setStatus('scanning', `Holding: ${verdict.reason}`);
+                // Confidence-driven execution: walk the ranked candidates and trade
+                // the first setup whose confidence and sample clear the gates.
+                // Previously only top[0] was evaluated, so one failing best-ranked
+                // quote froze the bot even when a high-confidence runner-up existed.
+                let holdReason = 'No high-confidence setup yet';
+                for (const opp of top) {
+                    if (!this.running) return;
+                    if (opp.confidence < cfg.limits.minConfidence) {
+                        holdReason = `Confidence ${opp.confidence.toFixed(2)} below ${cfg.limits.minConfidence} on ${opp.displayName}`;
+                        continue;
+                    }
+                    if (opp.sampleSize < cfg.limits.minSampleSize) {
+                        holdReason = `Sample ${opp.sampleSize} below ${cfg.limits.minSampleSize} on ${opp.displayName}`;
+                        continue;
+                    }
+                    const verdict = evaluateOpportunity(opp, this.state.risk, cfg.limits, accountBalance(), Date.now(), { skipEdgeGates: true });
+                    if (!verdict.allowed) {
+                        holdReason = verdict.reason;
+                        if (this.state.risk.suspended) {
+                            this.logEvent('risk', `Holding: ${verdict.reason}`);
+                            return;
+                        }
+                        continue;
+                    }
+                    await this.execute(opp, verdict.stake);
                     return;
                 }
-                await this.execute(best, verdict.stake);
+                this.setStatus('scanning', `Holding: ${holdReason}`);
             }
         } catch (e: any) {
             this.setStatus('error', e?.message || 'Scan error');
@@ -560,9 +583,11 @@ export class OUBotEngine {
             return;
         }
         const finalEdge = assessEdge(opp.empiricalProb, quote.payout, stake, cfg.limits.minExpectedValue);
-        // Edge mode re-checks EV against the live payout; Active (demo practice)
-        // mode deliberately proceeds regardless so the pipeline stays visible.
-        if (!active && (finalEdge.expectedValuePct < cfg.limits.minExpectedValue || finalEdge.payoutRatio < cfg.limits.minPayoutRatio)) {
+        // The confidence gate at scan time already selected this setup; at buy
+        // time only refuse a live payout that is outright negative EV (the
+        // strict minEV floor belongs to ranking, not to blocking trades the
+        // confidence gate approved).
+        if (!active && finalEdge.expectedValuePct < 0) {
             releaseQuote(quote);
             if (this.running) this.setStatus('scanning', 'Quote no longer meets EV threshold. Skipping.');
             return;

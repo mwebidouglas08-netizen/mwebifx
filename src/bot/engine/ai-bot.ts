@@ -497,6 +497,9 @@ export class AIBotEngine {
             if (reasons.length) {
                 const held = reasons.find(r => r !== 'auto-trade off');
                 if (held) this.update({ message: `Holding: ${held}` });
+                else if (reasons.includes('auto-trade off')) {
+                    this.update({ message: 'Holding: auto-trade is off — enable Auto-trade to place orders' });
+                }
                 if (!reasons.includes('auto-trade off')) {
                     this.logEvent('decision', `${analysis.displayName}: ${match.rationale} — holding (${reasons[0]})`, {
                         symbol: analysis.symbol,
