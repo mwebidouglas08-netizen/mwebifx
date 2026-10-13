@@ -297,15 +297,19 @@ export class SignalScannerEngine {
         this.feed.setSymbols(watch.map(s => s.symbol));
 
         // Seed digit history in parallel (family availability was resolved above).
+        // Always apply the probed pipSize — even when history fails, the series must
+        // use the market's real pip size or digits go degenerate (e.g. pipSize 2
+        // on a 0.1-pip market yields a constant digit 0 → fake "Even 100%").
         await Promise.all(
             watch.map(async s => {
+                let prices: number[] = [];
                 try {
                     const hist = await getTicksHistory(s.symbol, Math.max(cfg.sampleSize, cfg.minTicks) + 20);
-                    const prices: number[] = hist?.history?.prices?.map((p: any) => Number(p)) || [];
-                    this.seedFromHistory(s.symbol, s.pipSize, prices.filter((p) => Number.isFinite(p)));
+                    prices = hist?.history?.prices?.map((p: any) => Number(p)) || [];
                 } catch {
                     // history warm-up is best-effort
                 }
+                this.seedFromHistory(s.symbol, s.pipSize, prices.filter((p) => Number.isFinite(p)));
             })
         );
 
@@ -447,7 +451,11 @@ export class SignalScannerEngine {
 
     private signalsFromMarket(scan: MarketScan): Signal[] {
         const cfg = this.state.config;
-        const enabled = new Set(cfg.families);
+        // Restrict to families THIS symbol actually offers (probed at start-up).
+        // Config families alone would signal e.g. Even/Odd on Step Index 200,
+        // which Deriv only sells CALL/PUT on — a signal that can never be bought.
+        const supported = this.familiesBySymbol.get(scan.symbol);
+        const enabled = new Set(supported && supported.length ? supported.filter(f => cfg.families.includes(f)) : cfg.families);
         const out: Signal[] = [];
         const mk = (
             family: ContractFamily,
@@ -576,8 +584,11 @@ export class SignalScannerEngine {
 
             const now = Date.now();
             if (now - this.lastTradeAt < cfg.scanIntervalMs) return;
-            const best = topSignals[0];
-            if (!best || best.confidence <= 0) return;
+            // Try the strongest signals in order: if one can't be quoted (market
+            // closed, contract unavailable), fall through to the next candidate
+            // instead of losing the whole scan cycle to a single failure.
+            const candidates = topSignals.filter(s => s.confidence > 0 && !this.quoteBlocked.has(s.symbol)).slice(0, 3);
+            if (!candidates.length) return;
 
             const stake = this.currentStake();
             const gate = this.riskAllows(stake);
@@ -587,7 +598,11 @@ export class SignalScannerEngine {
                 return;
             }
             this.lastTradeAt = now;
-            await this.execute(best, stake);
+            for (const candidate of candidates) {
+                const placed = await this.execute(candidate, stake);
+                if (placed) break;
+                if (this.state.risk.suspended) break;
+            }
         } catch (e: any) {
             this.setStatus('error', e?.message || 'Scan error');
             this.logEvent('error', e?.message || 'Scan error');
@@ -596,7 +611,8 @@ export class SignalScannerEngine {
         }
     }
 
-    private async execute(signal: Signal, stake: number) {
+    /** Returns true when an order (real or paper) was actually placed. */
+    private async execute(signal: Signal, stake: number): Promise<boolean> {
         const cfg = this.state.config;
 
         // Paper trading is a simulation: it settles on the next real tick using an
@@ -611,7 +627,7 @@ export class SignalScannerEngine {
                 { symbol: signal.symbol, action: signal.action }
             );
             await this.executePaper(signal, stake, { payout: stake * ratio });
-            return;
+            return true;
         }
 
         // A brand-new proposal per order: Deriv refuses cached/stale proposal
@@ -641,7 +657,7 @@ export class SignalScannerEngine {
                     { symbol: signal.symbol }
                 );
             }
-            return;
+            return false;
         }
         this.logEvent('quote', `Quote: ${signal.displayName} ${ACTION_LABEL[signal.action]} — payout ${quote.payout.toFixed(2)} (stake ${stake.toFixed(2)})`, { symbol: signal.symbol, action: signal.action });
 
@@ -672,7 +688,7 @@ export class SignalScannerEngine {
             this.update({ trades: [{ ...record, stage: 'rejected', error: buy.error, closedAt: Date.now() }, ...this.state.trades] });
             this.setStatus('scanning', `Order rejected: ${buy.error}`);
             this.logEvent('error', `Order rejected: ${buy.error}`, { symbol: signal.symbol });
-            return;
+            return false;
         }
         const confirmed: TradeRecord = {
             ...record,
@@ -695,7 +711,7 @@ export class SignalScannerEngine {
         if ('error' in settlement) {
             this.setStatus('scanning', `Settlement pending: ${settlement.error}`);
             this.logEvent('error', `Settlement pending for #${buy.contractId}: ${settlement.error}`, { contractId: buy.contractId });
-            return;
+            return true;
         }
         const settled = applySettlementToRecord(confirmed, settlement);
         const remaining = this.state.trades.filter(t => t.id !== confirmed.id);
@@ -725,6 +741,7 @@ export class SignalScannerEngine {
         } else {
             this.setStatus('scanning', `Settled ${settled.result}. Scanning…`);
         }
+        return true;
     }
 
     /** Paper trade: real live quote + real next-tick settlement, but no real order. */

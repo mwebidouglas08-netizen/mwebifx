@@ -120,9 +120,21 @@ const AISignalScannerPage = observer(() => {
         <div className='ai-scanner'>
             {!isLoggedIn && (
                 <div className='ai-scanner__notice ai-scanner__notice--login' role='note'>
-                    Not logged in — scanning Deriv&apos;s public markets for signals only.{' '}
+                    Not logged in — scanning Deriv&apos;s public markets for signals only, so auto-trade
+                    cannot place orders yet. Enable paper mode to run it risk-free on real ticks, or log
+                    in for demo/real orders.{' '}
+                    <button
+                        type='button'
+                        className='ai-scanner__btn ai-scanner__btn--primary'
+                        onClick={() => {
+                            setPaperTrading(true);
+                            setAutoTrade(true);
+                        }}
+                    >
+                        Enable paper auto-trade
+                    </button>{' '}
                     <button type='button' className='ai-scanner__btn' onClick={() => run_panel?.showLoginDialog?.()}>
-                        Log in to enable auto-trade
+                        Log in for demo/real orders
                     </button>
                 </div>
             )}
