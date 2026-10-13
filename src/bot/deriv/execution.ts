@@ -377,11 +377,17 @@ export const monitorUntilSettled = async (
         await new Promise(r => setTimeout(r, pollMs));
     }
     if (lastPoc) {
-        const settlement = settleFrom(lastPoc);
-        settlement.exitDigit = deriveExitDigit(settlement, pipSize);
-        return settlement;
+        const sold = lastPoc.is_sold === 1 || lastPoc.is_sold === true || lastPoc.is_expired === 1;
+        if (sold) {
+            const settlement = settleFrom(lastPoc);
+            settlement.exitDigit = deriveExitDigit(settlement, pipSize);
+            return settlement;
+        }
+        return {
+            error: `Settlement timeout: contract #${contractId} still open after ${timeoutMs}ms — do not record as settled`,
+        };
     }
-    return { error: 'Settlement timeout' };
+    return { error: 'Settlement timeout: no data received' };
 };
 
 export const applySettlementToRecord = (

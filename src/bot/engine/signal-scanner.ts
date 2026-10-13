@@ -91,8 +91,9 @@ export const DEFAULT_SIGNAL_CONFIG: SignalScannerConfig = {
     maxOpenPositions: 1,
     scanIntervalMs: 2000,
     minTicks: 60,
-    autoTrade: true,
+    autoTrade: false,
     allowLiveTrading: false,
+    paperTrading: false,
     martingale: false,
     martingaleFactor: 2,
     martingaleMaxSteps: 3,
@@ -122,6 +123,7 @@ export class SignalScannerEngine {
     private authWarned = false;
     private eventSeq = 0;
     private martingaleStep = 0;
+    private tickWaiters = new Map<string, Array<(digit: number, quote: number) => void>>();
     private state: SignalScannerState;
 
     constructor() {
@@ -326,8 +328,31 @@ export class SignalScannerEngine {
     }
 
     private onTick(symbol: string, series: SymbolSeries) {
-        void series;
-        void symbol;
+        const waiters = this.tickWaiters.get(symbol);
+        if (waiters && waiters.length) {
+            const last = series.digits[series.digits.length - 1];
+            const quote = series.quotes[series.quotes.length - 1];
+            this.tickWaiters.delete(symbol);
+            waiters.forEach(cb => cb(last, quote));
+        }
+    }
+
+    /** Resolve on the next real tick for `symbol`, or reject after `timeoutMs`. */
+    private waitForNextTick(symbol: string, timeoutMs = 10000): Promise<number> {
+        return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => {
+                const list = this.tickWaiters.get(symbol) || [];
+                this.tickWaiters.set(symbol, list.filter(cb => cb !== handler));
+                reject(new Error(`No tick for ${symbol} within ${timeoutMs}ms`));
+            }, timeoutMs);
+            const handler = (digit: number) => {
+                clearTimeout(timer);
+                resolve(digit);
+            };
+            const list = this.tickWaiters.get(symbol) || [];
+            list.push(handler);
+            this.tickWaiters.set(symbol, list);
+        });
     }
 
     private currentStake(): number {
@@ -498,15 +523,19 @@ export class SignalScannerEngine {
 
             if (!this.running) return;
             if (!cfg.autoTrade) return;
-            if (!isAuthorized()) {
+            const paper = cfg.paperTrading;
+            if (!paper && !isAuthorized()) {
                 if (!this.authWarned) {
                     this.authWarned = true;
-                    this.logEvent('status', 'Auto-trade is on — log in to your Deriv account to place orders.');
+                    this.logEvent(
+                        'status',
+                        'Auto-trade is on — log in to your Deriv account (or enable Paper trading) to place orders.'
+                    );
                 }
                 return;
             }
             if (this.state.risk.suspended) return;
-            if (this.state.liveTrading === false && !this.state.accountIsDemo) return;
+            if (!paper && this.state.liveTrading === false && !this.state.accountIsDemo) return;
 
             const now = Date.now();
             if (now - this.lastTradeAt < cfg.scanIntervalMs) return;
@@ -562,6 +591,11 @@ export class SignalScannerEngine {
             return;
         }
         this.logEvent('quote', `Quote: ${signal.displayName} ${ACTION_LABEL[signal.action]} — payout ${quote.payout.toFixed(2)} (stake ${stake.toFixed(2)})`, { symbol: signal.symbol, action: signal.action });
+
+        if (cfg.paperTrading) {
+            await this.executePaper(signal, stake, quote);
+            return;
+        }
 
         const record: TradeRecord = {
             id: `sig-${Date.now()}`,
@@ -644,6 +678,113 @@ export class SignalScannerEngine {
             this.setStatus('scanning', `Settled ${settled.result}. Scanning…`);
         }
     }
+
+    /** Paper trade: real live quote + real next-tick settlement, but no real order. */
+    private async executePaper(signal: Signal, stake: number, quote: { payout: number }) {
+        const cfg = this.state.config;
+        const id = `paper-${Date.now()}`;
+        const record: TradeRecord = {
+            id,
+            symbol: signal.symbol,
+            displayName: signal.displayName,
+            category: signal.category,
+            contractType: signal.contractType as any,
+            direction: signal.action === 'UNDER' || signal.action === 'PUT' ? 'under' : 'over',
+            barrier: signal.barrier ?? 0,
+            duration: 1,
+            durationUnit: 't',
+            stake,
+            payout: quote.payout,
+            payoutRatio: stake > 0 ? quote.payout / stake : 0,
+            empiricalProb: signal.strength / 100,
+            expectedValue: 0,
+            confidence: signal.confidence,
+            stage: 'confirmed',
+            openedAt: Date.now(),
+            simulated: true,
+        };
+        this.update({
+            trades: [record, ...this.state.trades],
+            openTrade: record,
+            signalsExecuted: this.state.signalsExecuted + 1,
+        });
+        this.logEvent(
+            'purchase',
+            `PAPER (no real order): ${signal.displayName} ${ACTION_LABEL[signal.action]} — awaiting next tick`,
+            { symbol: signal.symbol, action: signal.action }
+        );
+        this.setStatus('monitoring', `Paper trade open on ${signal.symbol} — waiting for next tick…`);
+
+        let digit: number;
+        try {
+            digit = await this.waitForNextTick(signal.symbol, 15000);
+        } catch (e: any) {
+            this.update({ openTrade: null });
+            this.setStatus('scanning', `Paper trade could not settle: ${e?.message}`);
+            this.logEvent('error', `PAPER settle failed: ${e?.message}`, { symbol: signal.symbol });
+            return;
+        }
+
+        const won = paperWon(signal.action, digit, signal.barrier ?? 0);
+        const profit = won ? stake * (record.payoutRatio - 1) : -stake;
+        const settled: TradeRecord = {
+            ...record,
+            stage: 'settled',
+            exitDigit: digit,
+            result: won ? 'win' : 'loss',
+            profit,
+            closedAt: Date.now(),
+        };
+        const remaining = this.state.trades.filter(t => t.id !== id);
+        // Paper equity is carried internally (no account balance involved).
+        const equity = this.state.equity + profit;
+        const limits: RiskLimits = {
+            ...DEFAULT_RISK_LIMITS,
+            maxStake: cfg.maxStake,
+            maxDailyLoss: cfg.maxDailyLoss,
+            maxConsecutiveLosses: cfg.maxConsecutiveLosses,
+            maxOpenPositions: cfg.maxOpenPositions,
+        };
+        const risk = applySettlement(this.state.risk, settled, equity, limits);
+        this.update({ trades: [settled, ...remaining], openTrade: null, equity, risk });
+        if (cfg.martingale) {
+            if (settled.result === 'loss') this.martingaleStep = Math.min(this.martingaleStep + 1, cfg.martingaleMaxSteps);
+            else this.martingaleStep = 0;
+        }
+        this.logEvent(
+            'settlement',
+            `PAPER ${settled.result === 'win' ? 'WIN' : 'LOSS'}: ${signal.displayName} ${ACTION_LABEL[signal.action]} — exit digit ${digit} — ${profit >= 0 ? '+' : ''}${profit.toFixed(2)} (simulated)`,
+            { symbol: signal.symbol, action: signal.action, result: settled.result, profit }
+        );
+        if (risk.suspended) {
+            this.setStatus('suspended', risk.suspensionReason || 'Risk limit reached');
+            this.logEvent('risk', `Suspended: ${risk.suspensionReason}`);
+        } else {
+            this.setStatus('scanning', `Paper settled ${settled.result}. Scanning…`);
+        }
+    }
 }
+
+export const paperWon = (action: string, digit: number, barrier: number): boolean => {
+    switch (action) {
+        case 'OVER':
+        case 'DIGITOVER':
+            return digit > barrier;
+        case 'UNDER':
+        case 'DIGITUNDER':
+            return digit < barrier;
+        case 'EVEN':
+            return digit % 2 === 0;
+        case 'ODD':
+            return digit % 2 === 1;
+        case 'MATCH':
+            return digit === barrier;
+        case 'DIFFER':
+            return digit !== barrier;
+        default:
+            // Rise/fall cannot be settled from a single digit — treat as no-win.
+            return false;
+    }
+};
 
 export const signalScanner = new SignalScannerEngine();

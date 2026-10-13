@@ -48,6 +48,7 @@ const AISignalScannerPage = observer(() => {
     const [maxConsec, setMaxConsec] = useState(state.config.maxConsecutiveLosses);
     const [martingale, setMartingale] = useState(state.config.martingale);
     const [autoTrade, setAutoTrade] = useState(state.config.autoTrade);
+    const [paperTrading, setPaperTrading] = useState(state.config.paperTrading);
 
     const isRunning = !['idle', 'stopped', 'error'].includes(state.status);
     const isLoggedIn = Boolean(client?.is_logged_in);
@@ -68,6 +69,7 @@ const AISignalScannerPage = observer(() => {
             maxConsecutiveLosses: Number(maxConsec) || 4,
             martingale,
             autoTrade,
+            paperTrading,
         });
     };
 
@@ -89,6 +91,7 @@ const AISignalScannerPage = observer(() => {
         maxConsec,
         martingale,
         autoTrade,
+        paperTrading,
     ]);
 
     const onStart = async () => {
@@ -178,11 +181,19 @@ const AISignalScannerPage = observer(() => {
                 <label className='ai-scanner__toggle'>
                     <input
                         type='checkbox'
-                        disabled={!isLoggedIn}
-                        checked={autoTrade && isLoggedIn}
+                        checked={paperTrading}
+                        onChange={e => setPaperTrading(e.target.checked)}
+                    />
+                    <span>Paper trading (live quotes, simulated fills — no real orders)</span>
+                </label>
+                <label className='ai-scanner__toggle'>
+                    <input
+                        type='checkbox'
+                        disabled={!isLoggedIn && !paperTrading}
+                        checked={autoTrade && (isLoggedIn || paperTrading)}
                         onChange={e => setAutoTrade(e.target.checked)}
                     />
-                    <span>Auto-trade signals {!isLoggedIn && '(log in first)'}</span>
+                    <span>Auto-trade signals {!isLoggedIn && !paperTrading && '(log in first or enable paper)'}</span>
                 </label>
             </section>
 

@@ -41,6 +41,7 @@ export class TickFeed {
     private series = new Map<string, SymbolSeries>();
     private disposed = false;
     private events: TickFeedEvents;
+    private reconnectAttempts = 0;
 
     constructor(events: TickFeedEvents = {}) {
         this.events = events;
@@ -125,6 +126,7 @@ export class TickFeed {
         }
         const ws = this.socket;
         ws.onopen = () => {
+            this.reconnectAttempts = 0;
             this.events.onStatus?.(true);
             this.resubscribe();
             if (!this.staleTimer) {
@@ -215,7 +217,9 @@ export class TickFeed {
     private scheduleReconnect() {
         if (this.disposed) return;
         if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-        this.reconnectTimer = setTimeout(() => this.open(), RECONNECT_MS);
+        const delay = Math.min(RECONNECT_MS * 2 ** this.reconnectAttempts, 30000);
+        this.reconnectAttempts = Math.min(this.reconnectAttempts + 1, 6);
+        this.reconnectTimer = setTimeout(() => this.open(), delay);
     }
 
     private teardown() {

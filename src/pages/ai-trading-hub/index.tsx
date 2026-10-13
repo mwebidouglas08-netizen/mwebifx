@@ -39,13 +39,14 @@ interface MarketData {
     low: number;
     rsi: number;
     signal: 'BUY' | 'SELL' | 'HOLD';
+    /** Heuristic signal-strength score (0–97), not a probability or win-rate. */
     confidence: number;
     trend: 'up' | 'down' | 'sideways';
 }
 
 const RISK_ORDER: Record<HubStrategy['risk'], number> = { 'Very Low': 0, Low: 1, Medium: 2, High: 3 };
 
-/** Minimum signal confidence before Auto Trading will place a trade. */
+/** Minimum signal strength before Auto Trading will place a trade. */
 const AUTO_TRADE_CONFIDENCE = 70;
 /** Minimum gap between automated deployments, in ms. */
 const AUTO_TRADE_COOLDOWN_MS = 60000;
@@ -272,7 +273,7 @@ const AITradingHub: React.FC<TProps> = observer(({ onOpenDashboard }) => {
             lines.push(
                 `[scan] ${market.symbol} @ ${market.price!.toFixed(market.price! < 10 ? 5 : 2)} | ` +
                     `${market.changePercent >= 0 ? '+' : ''}${market.changePercent.toFixed(2)}% | ` +
-                    `RSI ${market.rsi.toFixed(1)} (${zone}) → ${market.signal} ${market.confidence}%`
+                    `RSI ${market.rsi.toFixed(1)} (${zone}) → ${market.signal} ${market.confidence}% strength`
             );
         });
 
@@ -287,6 +288,33 @@ const AITradingHub: React.FC<TProps> = observer(({ onOpenDashboard }) => {
                     : 'Log in to let the engine place trades.')
         );
 
+        const top = actionable[0];
+
+        const fetchRationale = async (): Promise<string | null> => {
+            if (!top) return null;
+            try {
+                const res = await fetch('/api/ai-rationale', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        symbol: top.symbol,
+                        direction: top.signal,
+                        strength: top.confidence,
+                        rsi: top.rsi,
+                        changePercent: top.changePercent,
+                    }),
+                });
+                if (!res.ok) return null;
+                const data = await res.json();
+                if (typeof data?.rationale === 'string' && data.rationale) {
+                    return `[ai] ${data.rationale}`;
+                }
+                return null;
+            } catch {
+                return null;
+            }
+        };
+
         let index = 0;
         const timer = window.setInterval(() => {
             const line = lines[index];
@@ -295,7 +323,13 @@ const AITradingHub: React.FC<TProps> = observer(({ onOpenDashboard }) => {
                 index += 1;
             } else {
                 window.clearInterval(timer);
-                setIsAnalyzing(false);
+                // After the local scan log is revealed, optionally pull a genuine
+                // LLM rationale for the top setup from the serverless function.
+                // If it is unavailable we append nothing (no fabrication).
+                void fetchRationale().then(rationale => {
+                    if (rationale) setAnalysisLog(prev => [...prev, rationale]);
+                    setIsAnalyzing(false);
+                });
             }
         }, 220);
     }, [markets, streamingCount, riskLevel, isLoggedIn, isEngineRunning]);
@@ -332,7 +366,7 @@ const AITradingHub: React.FC<TProps> = observer(({ onOpenDashboard }) => {
                 await deployHubStrategy(strategy, window.Blockly?.derivWorkspace);
                 if (cancelled) return;
                 flashNotice(
-                    `Auto Trading: ${best.symbol} ${best.signal} at ${best.confidence}% confidence — running ${strategy.name}.`
+                    `Auto Trading: ${best.symbol} ${best.signal} at ${best.confidence}% signal strength — running ${strategy.name}.`
                 );
                 const result = runPanel?.onRunButtonClick?.();
                 Promise.resolve(result).catch((error: unknown) => {
@@ -553,7 +587,7 @@ const AITradingHub: React.FC<TProps> = observer(({ onOpenDashboard }) => {
                                             </div>
                                             <div className='opp-details'>
                                                 <span>{market.name}</span>
-                                                <span className='opp-confidence'>{market.confidence}% confidence</span>
+                                                <span className='opp-confidence'>{market.confidence}% signal strength</span>
                                             </div>
                                             <div className='opp-price'>
                                                 <span>{formatPrice(market.price)}</span>
@@ -598,7 +632,7 @@ const AITradingHub: React.FC<TProps> = observer(({ onOpenDashboard }) => {
                                 <span>Change</span>
                                 <span>RSI</span>
                                 <span>Signal</span>
-                                <span>Confidence</span>
+                                <span>Signal strength</span>
                             </div>
                             {visibleMarkets.length === 0 ? (
                                 <p className='empty-state'>No markets match that search.</p>

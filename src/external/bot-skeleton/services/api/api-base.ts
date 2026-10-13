@@ -246,6 +246,8 @@ class APIBase {
                 localStorage.removeItem('account_type');
                 localStorage.removeItem('accountsList');
                 localStorage.removeItem('clientAccounts');
+                localStorage.removeItem('auth_info');
+                localStorage.removeItem('deriv_accounts');
             }
 
             this.init(true);

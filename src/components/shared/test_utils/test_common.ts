@@ -13,5 +13,5 @@ const setURL = (url: string) => {
 module.exports = {
     expect,
     setURL,
-    getApiToken: () => 'hhh9bfrbq0G3dRf',
+    getApiToken: () => process.env.DERIV_TEST_API_TOKEN || '',
 };

@@ -69,6 +69,8 @@ export interface SignalScannerConfig {
     minTicks: number;
     autoTrade: boolean;
     allowLiveTrading: boolean;
+    /** Paper trading: real live quotes and real tick settlement, but no real orders. */
+    paperTrading: boolean;
     martingale: boolean;
     martingaleFactor: number;
     martingaleMaxSteps: number;

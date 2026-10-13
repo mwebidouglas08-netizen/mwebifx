@@ -4,12 +4,13 @@ import { useStore } from '@/hooks/useStore';
 import AITradingHub from '@/pages/ai-trading-hub';
 import OUBotPage from '@/pages/ou-bot';
 import AISignalScannerPage from '@/pages/ai-signal-scanner';
+import BacktestPage from '@/pages/backtest';
 import BotDock from '@/components/bot-dock';
 import AIBotDock from '@/components/ai-bot';
 import AppWrapper from './main';
 import './main.scss';
 
-type HubView = 'dashboard' | 'ai-hub' | 'ai-scanner' | 'ou-bot';
+type HubView = 'dashboard' | 'ai-hub' | 'ai-scanner' | 'ou-bot' | 'backtest';
 
 const Main = observer(() => {
     const { ui } = useStore() ?? {};
@@ -60,6 +61,14 @@ const Main = observer(() => {
                     </button>
                     <button
                         role='tab'
+                        aria-selected={activeView === 'backtest'}
+                        className={`view-btn ${activeView === 'backtest' ? 'active' : ''}`}
+                        onClick={() => setActiveView('backtest')}
+                    >
+                        Backtest
+                    </button>
+                    <button
+                        role='tab'
                         aria-selected={activeView === 'dashboard'}
                         className={`view-btn ${activeView === 'dashboard' ? 'active' : ''}`}
                         onClick={() => setActiveView('dashboard')}
@@ -90,6 +99,13 @@ const Main = observer(() => {
                     aria-hidden={activeView !== 'ai-scanner'}
                 >
                     <AISignalScannerPage />
+                </div>
+                <div
+                    className='main-hub'
+                    style={{ display: activeView === 'backtest' ? 'block' : 'none' }}
+                    aria-hidden={activeView !== 'backtest'}
+                >
+                    <BacktestPage />
                 </div>
                 <div
                     className='main-dashboard__engine'
