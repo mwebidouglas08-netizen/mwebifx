@@ -67,6 +67,7 @@ export interface SignalScannerState {
     accountIsDemo: boolean;
     liveTrading: boolean;
     events: ScannerEvent[];
+    autoTradeBlock: string | null;
     signalsGenerated: number;
     signalsExecuted: number;
 }
@@ -124,7 +125,6 @@ export class SignalScannerEngine {
     private busy = false;
     private running = false;
     private lastTradeAt = 0;
-    private authWarned = false;
     private eventSeq = 0;
     private martingaleStep = 0;
     private tickWaiters = new Map<string, Array<(digit: number, quote: number) => void>>();
@@ -145,6 +145,7 @@ export class SignalScannerEngine {
             accountIsDemo: true,
             liveTrading: false,
             events: [],
+            autoTradeBlock: null,
             signalsGenerated: 0,
             signalsExecuted: 0,
         };
@@ -177,6 +178,12 @@ export class SignalScannerEngine {
         };
         const events = [event, ...this.state.events].slice(0, EVENT_CAP);
         this.update({ events });
+    }
+
+    private setAutoTradeBlock(reason: string | null, logChange = true) {
+        if ((this.state.autoTradeBlock ?? null) === (reason ?? null)) return;
+        this.update({ autoTradeBlock: reason });
+        if (reason && logChange) this.logEvent('status', `Auto-trade paused — ${reason}`);
     }
 
     configure(config: Partial<SignalScannerConfig>) {
@@ -216,13 +223,14 @@ export class SignalScannerEngine {
             this.update({ accountIsDemo, liveTrading: false });
             this.setStatus('suspended', 'Live trading disabled on a real account. Enable Live trading to place real orders.');
             this.logEvent('risk', 'Real account: enable Live trading to place real orders.');
+            this.setAutoTradeBlock('live trading is off — switch on Live trading to place real orders', false);
             return;
         }
 
         this.running = true;
         this.lastTradeAt = 0;
         this.martingaleStep = 0;
-        this.authWarned = false;
+        this.setAutoTradeBlock(null);
         // Funded accounts use the real balance; paper mode (no login) uses a
         // nominal bankroll so the equity cap and P/L tracking behave sensibly.
         const startEquity = authorized ? accountBalance() : cfg.paperTrading ? PAPER_START_EQUITY : 0;
@@ -331,6 +339,7 @@ export class SignalScannerEngine {
         this.feed = null;
         if (this.state.status !== 'stopped') this.setStatus('idle', 'Stopped');
         if (wasRunning) this.logEvent('status', 'Scanner stopped.');
+        this.setAutoTradeBlock(null);
     }
 
     emergencyStop() {
@@ -343,6 +352,7 @@ export class SignalScannerEngine {
         this.update({ risk: initialRiskState(this.currentEquity()) });
         this.setStatus('scanning', 'Risk reset. Resumed.');
         this.logEvent('risk', 'Risk reset. Scanning resumed.');
+        this.setAutoTradeBlock(null);
     }
 
     /** Tracked equity (paper bankroll or last known), falling back to the live balance. */
@@ -541,7 +551,10 @@ export class SignalScannerEngine {
 
     private async scan() {
         if (!this.running || this.busy) return;
-        if (this.state.status === 'suspended') return;
+        if (this.state.status === 'suspended') {
+            if (this.state.config.autoTrade) this.setAutoTradeBlock(`suspended — ${this.state.message}`);
+            return;
+        }
         this.busy = true;
         try {
             const cfg = this.state.config;
@@ -567,20 +580,23 @@ export class SignalScannerEngine {
             });
 
             if (!this.running) return;
-            if (!cfg.autoTrade) return;
-            const paper = cfg.paperTrading;
-            if (!paper && !isAuthorized()) {
-                if (!this.authWarned) {
-                    this.authWarned = true;
-                    this.logEvent(
-                        'status',
-                        'Auto-trade is on — log in to your Deriv account (or enable Paper trading) to place orders.'
-                    );
-                }
+            if (!cfg.autoTrade) {
+                this.setAutoTradeBlock(null);
                 return;
             }
-            if (this.state.risk.suspended) return;
-            if (!paper && this.state.liveTrading === false && !this.state.accountIsDemo) return;
+            const paper = cfg.paperTrading;
+            if (!paper && !isAuthorized()) {
+                this.setAutoTradeBlock('not logged in — log in to your Deriv account, or enable Paper trading');
+                return;
+            }
+            if (this.state.risk.suspended) {
+                this.setAutoTradeBlock(`suspended — ${this.state.risk.suspensionReason || 'risk limit reached'}`);
+                return;
+            }
+            if (!paper && this.state.liveTrading === false && !this.state.accountIsDemo) {
+                this.setAutoTradeBlock('live trading is off — switch on Live trading to place real orders');
+                return;
+            }
 
             const now = Date.now();
             if (now - this.lastTradeAt < cfg.scanIntervalMs) return;
@@ -588,21 +604,34 @@ export class SignalScannerEngine {
             // closed, contract unavailable), fall through to the next candidate
             // instead of losing the whole scan cycle to a single failure.
             const candidates = topSignals.filter(s => s.confidence > 0 && !this.quoteBlocked.has(s.symbol)).slice(0, 3);
-            if (!candidates.length) return;
+            if (!candidates.length) {
+                if (topSignals.length) this.setAutoTradeBlock('signals shown, but none clear the confidence gate');
+                else this.setAutoTradeBlock(null);
+                return;
+            }
 
             const stake = this.currentStake();
             const gate = this.riskAllows(stake);
             if (!gate.ok) {
                 this.setStatus('scanning', `Holding: ${gate.reason}`);
                 this.logEvent('risk', `Holding: ${gate.reason}`);
+                this.setAutoTradeBlock(`holding — ${gate.reason}`, false);
                 return;
             }
             this.lastTradeAt = now;
+            let placedAny = false;
             for (const candidate of candidates) {
                 const placed = await this.execute(candidate, stake);
-                if (placed) break;
+                if (placed) {
+                    placedAny = true;
+                    break;
+                }
                 if (this.state.risk.suspended) break;
             }
+            if (placedAny) this.setAutoTradeBlock(null);
+            else if (this.state.risk.suspended) {
+                this.setAutoTradeBlock(`suspended — ${this.state.risk.suspensionReason || 'risk limit reached'}`);
+            } else this.setAutoTradeBlock('order attempts failed — check Live activity for quote/buy errors', false);
         } catch (e: any) {
             this.setStatus('error', e?.message || 'Scan error');
             this.logEvent('error', e?.message || 'Scan error');

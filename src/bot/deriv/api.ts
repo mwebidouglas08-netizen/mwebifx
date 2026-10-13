@@ -23,6 +23,26 @@ export const accountCurrency = (): string => {
     return info?.currency || 'USD';
 };
 
+const stringifyError = (value: unknown): string => {
+    try {
+        const json = JSON.stringify(value);
+        if (json && json !== '{}') return json;
+    } catch {
+        /* circular or non-serializable — fall through */
+    }
+    return String(value);
+};
+
+const extractError = (e: any): { code: string; message: string } => {
+    if (typeof e === 'string') return { code: 'RequestFailed', message: e };
+    if (e instanceof Error) return { code: (e as any).code || 'RequestFailed', message: e.message };
+    if (typeof e?.error === 'string') return { code: String(e?.code || 'RequestFailed'), message: e.error };
+    const inner = e?.error && typeof e.error === 'object' ? e.error : e?.data?.error && typeof e.data.error === 'object' ? e.data.error : e;
+    const code = inner?.code || e?.code || 'RequestFailed';
+    const message = inner?.message || e?.message || stringifyError(e);
+    return { code: String(code), message: String(message || 'Request failed') };
+};
+
 export const request = async <T = any>(
     payload: Record<string, unknown>,
     timeoutMs = 15000
@@ -46,9 +66,7 @@ export const request = async <T = any>(
         return { data: response };
     } catch (e: any) {
         if (timer) clearTimeout(timer);
-        return {
-            error: { code: e?.code || 'RequestFailed', message: e?.message || String(e) },
-        };
+        return { error: extractError(e) };
     }
 };
 

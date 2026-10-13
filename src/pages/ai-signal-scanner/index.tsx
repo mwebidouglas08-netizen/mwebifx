@@ -209,6 +209,20 @@ const AISignalScannerPage = observer(() => {
                 </label>
             </section>
 
+            {autoTrade && (
+                <div
+                    className={`ai-scanner__at-state ${state.autoTradeBlock ? 'ai-scanner__at-state--blocked' : ''}`}
+                    role='status'
+                    data-testid='auto-trade-state'
+                >
+                    {state.autoTradeBlock
+                        ? `Auto-trade paused — ${state.autoTradeBlock}`
+                        : isRunning
+                            ? 'Auto-trade active — waiting for signals above threshold'
+                            : 'Auto-trade armed — start the scanner'}
+                </div>
+            )}
+
             <p className='ai-scanner__msg' aria-live='polite'>{state.message}</p>
             {state.risk.suspended && (
                 <div className='ai-scanner__suspend' role='alert'>

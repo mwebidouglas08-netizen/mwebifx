@@ -92,6 +92,23 @@
         font-weight: 600;
     }
 
+    &__at-state {
+        margin: 0.5rem 0 0;
+        padding: 0.45rem 0.8rem;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        background: color-mix(in srgb, var(--brand-success, #4bb4b3) 14%, transparent);
+        border: 1px solid color-mix(in srgb, var(--brand-success, #4bb4b3) 55%, transparent);
+        color: var(--brand-success, #4bb4b3);
+
+        &--blocked {
+            background: color-mix(in srgb, var(--brand-warning, #f59e0b) 14%, transparent);
+            border-color: color-mix(in srgb, var(--brand-warning, #f59e0b) 60%, transparent);
+            color: var(--brand-warning, #f59e0b);
+        }
+    }
+
     &__grid {
         display: grid;
         gap: 0.8rem;
