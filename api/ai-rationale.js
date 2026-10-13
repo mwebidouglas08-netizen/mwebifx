@@ -1,14 +1,27 @@
 // Vercel serverless function: generates a short trading-signal rationale with
 // Gemini (free tier). The API key is read from the environment and never sent
 // to the browser. Falls back to an honest "reasoning unavailable" response if
-// the key is missing or the upstream call fails, so the UI never fabricates an
+// the key is missing or every upstream call fails, so the UI never fabricates an
 // LLM explanation that did not happen.
 //
 // Set GEMINI_API_KEY in your Vercel project (Settings → Environment Variables).
 // Free tier needs no credit card: https://aistudio.google.com/app/apikey
+//
+// Reliability notes (verified against the live API):
+//  - gemini-2.5-* models are retired for new keys; the current flash models are
+//    gemini-3.5-flash / gemini-flash-latest (gemini-3.8-flash is intermittently
+//    503 under load). We try them in order and fall through on failure.
+//  - Newer flash models spend output tokens on internal "thinking", which was
+//    truncating answers to ~30 chars. thinkingConfig.thinkingBudget = 0 disables
+//    that so maxOutputTokens is spent on the visible answer.
+//  - Free-tier 503 "high demand" spikes are transient, so we retry with backoff.
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+const MODELS = (process.env.GEMINI_MODELS || 'gemini-3.5-flash,gemini-flash-latest,gemini-3.8-flash')
+    .split(',')
+    .map(m => m.trim())
+    .filter(Boolean);
+
+const GEMINI_URL = model => `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
 const SYSTEM_PROMPT = [
     'You are a concise trading-signal explainer for binary-options (Over/Under digit) contracts.',
@@ -32,6 +45,36 @@ const buildUserPrompt = p => {
     return parts.join('\n');
 };
 
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Try one model, retrying transient 429/503 a couple of times.
+const callModel = async (apiKey, model, payload, attempts = 3) => {
+    let lastErr = 'unknown';
+    for (let i = 0; i < attempts; i += 1) {
+        try {
+            const upstream = await fetch(`${GEMINI_URL(model)}?key=${apiKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            if (upstream.ok) {
+                const data = await upstream.json();
+                const text = data?.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || '';
+                return { text: text.trim() };
+            }
+            lastErr = `HTTP ${upstream.status}`;
+            // Retry only on transient errors; stop on permanent ones (404, 400…).
+            if (upstream.status !== 429 && upstream.status !== 503) {
+                return { error: `${model}: ${lastErr}` };
+            }
+        } catch (e) {
+            lastErr = e?.message || 'network error';
+        }
+        if (i < attempts - 1) await sleep(400 * (i + 1));
+    }
+    return { error: `${model}: ${lastErr}` };
+};
+
 export default async function handler(req, res) {
     if (req.method !== 'POST') {
         res.setHeader('Allow', 'POST');
@@ -49,43 +92,30 @@ export default async function handler(req, res) {
         });
     }
 
-    try {
-        const upstream = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-                contents: [{ role: 'user', parts: [{ text: buildUserPrompt(input) }] }],
-                generationConfig: { maxOutputTokens: 200, temperature: 0.3 },
-            }),
-        });
+    const payload = {
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents: [{ role: 'user', parts: [{ text: buildUserPrompt(input) }] }],
+        generationConfig: {
+            maxOutputTokens: 400,
+            temperature: 0.3,
+            thinkingConfig: { thinkingBudget: 0 },
+        },
+    };
 
-        if (!upstream.ok) {
-            const detail = await upstream.text().catch(() => '');
-            return res.status(200).json({
-                rationale: null,
-                source: 'unavailable',
-                note: `Gemini request failed (${upstream.status}). ${detail.slice(0, 200)}`,
-            });
+    const failures = [];
+    for (const model of MODELS) {
+        const result = await callModel(apiKey, model, payload);
+        if (result.text) {
+            return res.status(200).json({ rationale: result.text, source: 'gemini', model });
         }
-
-        const data = await upstream.json();
-        const text = data?.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || '';
-        if (!text) {
-            return res.status(200).json({
-                rationale: null,
-                source: 'unavailable',
-                note: 'Gemini returned no text for this signal.',
-            });
-        }
-        return res.status(200).json({ rationale: text.trim(), source: 'gemini' });
-    } catch (e) {
-        return res.status(200).json({
-            rationale: null,
-            source: 'unavailable',
-            note: `AI rationale unavailable: ${e?.message || 'network error'}`,
-        });
+        failures.push(result.error || `${model}: empty`);
     }
+
+    return res.status(200).json({
+        rationale: null,
+        source: 'unavailable',
+        note: `AI rationale unavailable after trying ${MODELS.length} model(s): ${failures.join('; ')}`,
+    });
 }
 
 function safeParse(s) {
