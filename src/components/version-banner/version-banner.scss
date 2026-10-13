@@ -1,0 +1,31 @@
+.version-banner {
+    position: sticky;
+    top: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.9rem;
+    flex-wrap: wrap;
+    padding: 0.5rem 1rem;
+    background: var(--brand-warning, #f59e0b);
+    color: #221400;
+    font-size: 0.88rem;
+    font-weight: 700;
+    text-align: center;
+
+    &__btn {
+        border: 1px solid #221400;
+        background: #221400;
+        color: var(--brand-warning, #f59e0b);
+        border-radius: 6px;
+        padding: 0.3rem 0.9rem;
+        font-weight: 700;
+        font-size: 0.85rem;
+        cursor: pointer;
+
+        &:hover {
+            opacity: 0.88;
+        }
+    }
+}

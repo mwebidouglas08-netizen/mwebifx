@@ -209,7 +209,7 @@ const AISignalScannerPage = observer(() => {
                 </label>
             </section>
 
-            {autoTrade && (
+            {(autoTrade || state.config.autoTrade) && (
                 <div
                     className={`ai-scanner__at-state ${state.autoTradeBlock ? 'ai-scanner__at-state--blocked' : ''}`}
                     role='status'
@@ -344,7 +344,15 @@ const AISignalScannerPage = observer(() => {
             <section className='ai-scanner__section'>
                 <h3>Trade history</h3>
                 {state.trades.length === 0 ? (
-                    <p className='ai-scanner__empty-row'>No trades yet.</p>
+                    <p className='ai-scanner__empty-row' data-testid='empty-history'>
+                        {!state.config.autoTrade && !autoTrade
+                            ? 'No trades yet — Auto-trade is off. Turn on "Auto-trade signals" (enable Paper trading first, or log in) and start the scanner.'
+                            : state.autoTradeBlock
+                              ? `No trades yet — auto-trade paused: ${state.autoTradeBlock}.`
+                              : !isRunning
+                                ? 'No trades yet — start the scanner to begin trading.'
+                                : `No trades yet — waiting for a signal above ${state.config.threshold}% that clears risk limits. Every attempt is listed in Live activity.`}
+                    </p>
                 ) : (
                     <div className='ai-scanner__table-wrap'>
                         <table className='ai-scanner__table'>

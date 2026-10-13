@@ -7,6 +7,7 @@ import AISignalScannerPage from '@/pages/ai-signal-scanner';
 import BacktestPage from '@/pages/backtest';
 import BotDock from '@/components/bot-dock';
 import AIBotDock from '@/components/ai-bot';
+import VersionBanner from '@/components/version-banner';
 import AppWrapper from './main';
 import './main.scss';
 
@@ -33,6 +34,7 @@ const Main = observer(() => {
 
     return (
         <div className='main-dashboard'>
+            <VersionBanner />
             <main className='main-content'>
                 <div className='view-toggle' role='tablist' aria-label='Choose workspace'>
                     <button
