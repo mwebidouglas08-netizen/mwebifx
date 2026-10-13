@@ -15,25 +15,11 @@ const GTM = (() => {
         if (initialized) return;
         initialized = true;
 
-        function loadGTM() {
-            (function (w, d, s, l, i) {
-                w[l] = w[l] || [];
-                w[l].push({
-                    'gtm.start': new Date().getTime(),
-                    event: 'gtm.js',
-                });
-                const f = d.getElementsByTagName(s)[0],
-                    j = d.createElement(s),
-                    dl = l != 'dataLayer' ? '&l=' + l : '';
-                j.defer = true;
-                j.src = 'https://www.googletagmanager.com/gtm.js?id=' + i + dl;
-                f.parentNode.insertBefore(j, f);
-            })(window, document, 'script', 'dataLayer', 'GTM-NF7884S');
-        }
-
-        setTimeout(() => {
-            loadGTM();
-        }, 3000);
+        // Third-party ad/analytics trackers (GTM container -> match2one/taboola/
+        // doubleclick) are intentionally NOT loaded. They are unrelated to
+        // trading, add tracking surface, and generate CSP/console noise. The
+        // dataLayer API below is kept as a safe no-op so existing call sites
+        // (run-panel, flyout, toolbox) keep working without the external script.
 
         try {
             const { run_panel, transactions, client, common } = _root_store;
