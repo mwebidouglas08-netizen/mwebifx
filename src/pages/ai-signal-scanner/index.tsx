@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useStore } from '@/hooks/useStore';
 import { isDemoAccount } from '@/utils/account-helpers';
 import { signalScanner } from '@/bot/engine/signal-scanner';
-import { useScannerPerformance, useSignalScanner } from '@/bot/use-engine';
+import { useAIBot, useScannerPerformance, useSignalScanner } from '@/bot/use-engine';
 import {
     ACTION_LABEL,
     ContractFamily,
@@ -31,6 +31,16 @@ const EVENT_LABEL: Record<string, string> = {
 const timeAt = (ms: number) =>
     new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
+const INIT_STEPS = ['Discover markets', 'Warm tick buffers', 'Scan & trade'];
+
+const initStepState = (status: string, i: number): 'done' | 'active' | 'pending' => {
+    const stage = ['discovering', 'warming', 'scanning'].indexOf(status);
+    if (stage === -1) return 'done';
+    if (i < stage) return 'done';
+    if (i === stage) return 'active';
+    return 'pending';
+};
+
 const AISignalScannerPage = observer(() => {
     const state = useSignalScanner();
     const perf = useScannerPerformance();
@@ -47,8 +57,9 @@ const AISignalScannerPage = observer(() => {
     const [maxDailyLoss, setMaxDailyLoss] = useState(state.config.maxDailyLoss);
     const [maxConsec, setMaxConsec] = useState(state.config.maxConsecutiveLosses);
     const [martingale, setMartingale] = useState(state.config.martingale);
-    const [autoTrade, setAutoTrade] = useState(state.config.autoTrade);
-    const [paperTrading, setPaperTrading] = useState(state.config.paperTrading);
+    const aiBot = useAIBot();
+    const autoTrade = state.config.autoTrade;
+    const paperTrading = state.config.paperTrading;
 
     const isRunning = !['idle', 'stopped', 'error'].includes(state.status);
     const isLoggedIn = Boolean(client?.is_logged_in);
@@ -68,8 +79,6 @@ const AISignalScannerPage = observer(() => {
             maxDailyLoss: Number(maxDailyLoss) || 20,
             maxConsecutiveLosses: Number(maxConsec) || 4,
             martingale,
-            autoTrade,
-            paperTrading,
         });
     };
 
@@ -90,9 +99,21 @@ const AISignalScannerPage = observer(() => {
         maxDailyLoss,
         maxConsec,
         martingale,
-        autoTrade,
-        paperTrading,
     ]);
+
+    // The session can drop (expired token, forced logout) after the user armed
+    // auto-trade with live or paper mode. On that transition only, fall back to
+    // paper so their intent survives — never real orders without a login, and
+    // never a guest's deliberate paper-off being undone.
+    const prevLoggedIn = useRef(isLoggedIn);
+    useEffect(() => {
+        const dropped = prevLoggedIn.current && !isLoggedIn;
+        prevLoggedIn.current = isLoggedIn;
+        if (dropped && autoTrade && !paperTrading) {
+            signalScanner.configure({ paperTrading: true });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isLoggedIn]);
 
     const onStart = async () => {
         applyConfig();
@@ -126,10 +147,7 @@ const AISignalScannerPage = observer(() => {
                     <button
                         type='button'
                         className='ai-scanner__btn ai-scanner__btn--primary'
-                        onClick={() => {
-                            setPaperTrading(true);
-                            setAutoTrade(true);
-                        }}
+                        onClick={() => signalScanner.configure({ paperTrading: true, autoTrade: true })}
                     >
                         Enable paper auto-trade
                     </button>{' '}
@@ -140,7 +158,7 @@ const AISignalScannerPage = observer(() => {
             )}
             <header className='ai-scanner__head'>
                 <div>
-                    <h2>AI Signal Scanner</h2>
+                    <h2 className='ai-scanner__title'>AI Signal Scanner</h2>
                     <p className='ai-scanner__sub'>
                         Continuously scans multiple synthetic markets, measures digit and price statistics
                         (even/odd, over/under, rise/fall, match/differ, RSI, trend), and auto-trades the
@@ -148,6 +166,7 @@ const AISignalScannerPage = observer(() => {
                     </p>
                 </div>
                 <div className='ai-scanner__status'>
+                    {isRunning && <span className='ai-scanner__radar' aria-hidden='true' />}
                     <span className={`ai-scanner__badge ai-scanner__badge--${state.status}`}>{state.status}</span>
                     <span className={`ai-scanner__acct ${isDemo ? 'ai-scanner__acct--demo' : ''}`}>
                         {!isLoggedIn ? 'Guest · signals only' : `${isDemo ? 'Demo' : 'Real'} · ${activeLoginid}`}
@@ -155,6 +174,17 @@ const AISignalScannerPage = observer(() => {
                     <span className='ai-scanner__equity'>Equity {money(state.equity)}</span>
                 </div>
             </header>
+
+            {isRunning && state.status !== 'suspended' && (
+                <div className='ai-scanner__pipeline' role='status' aria-label='Scanner startup sequence'>
+                    {INIT_STEPS.map((label, i) => (
+                        <span key={label} className={`ai-scanner__step ai-scanner__step--${initStepState(state.status, i)}`}>
+                            <span className='ai-scanner__step-dot' aria-hidden='true' />
+                            {label}
+                        </span>
+                    ))}
+                </div>
+            )}
 
             <div className='ai-scanner__notice' role='note'>
                 Signals are statistical measurements of the recent distribution, not predictions. Digit and
@@ -179,7 +209,15 @@ const AISignalScannerPage = observer(() => {
                         </button>
                     )}
                 </div>
-                <label className='ai-scanner__toggle'>
+                <label
+                    className='ai-scanner__toggle'
+                    onClick={e => {
+                        if (!isLoggedIn) {
+                            e.preventDefault();
+                            run_panel?.showLoginDialog?.();
+                        }
+                    }}
+                >
                     <input
                         type='checkbox'
                         disabled={!isLoggedIn}
@@ -194,22 +232,33 @@ const AISignalScannerPage = observer(() => {
                     <input
                         type='checkbox'
                         checked={paperTrading}
-                        onChange={e => setPaperTrading(e.target.checked)}
+                        onChange={e => signalScanner.configure({ paperTrading: e.target.checked })}
                     />
                     <span>Paper trading (simulated fills on real ticks — no real orders)</span>
                 </label>
-                <label className='ai-scanner__toggle'>
+                <label
+                    className='ai-scanner__toggle'
+                    onClick={e => {
+                        if (!isLoggedIn && !paperTrading) {
+                            e.preventDefault();
+                            signalScanner.configure({ paperTrading: true, autoTrade: true });
+                        }
+                    }}
+                >
                     <input
                         type='checkbox'
                         disabled={!isLoggedIn && !paperTrading}
                         checked={autoTrade && (isLoggedIn || paperTrading)}
-                        onChange={e => setAutoTrade(e.target.checked)}
+                        onChange={e => signalScanner.configure({ autoTrade: e.target.checked })}
                     />
-                    <span>Auto-trade signals {!isLoggedIn && !paperTrading && '(log in first or enable paper)'}</span>
+                    <span>
+                        Auto-trade signals{' '}
+                        {!isLoggedIn && !paperTrading && '(click to enable paper + auto-trade, or log in)'}
+                    </span>
                 </label>
             </section>
 
-            {(autoTrade || state.config.autoTrade) && (
+            {autoTrade && (
                 <div
                     className={`ai-scanner__at-state ${state.autoTradeBlock ? 'ai-scanner__at-state--blocked' : ''}`}
                     role='status'
@@ -299,9 +348,25 @@ const AISignalScannerPage = observer(() => {
 
             <section className='ai-scanner__section'>
                 <h3>Multi-market scan ({markets.length} markets)</h3>
-                {markets.length === 0 ? (
-                    <p className='ai-scanner__empty-row'>No markets warmed up yet — start the scanner.</p>
-                ) : (
+                {markets.length === 0
+                    ? isRunning ? (
+                        <div className='ai-scanner__table-wrap ai-scanner__skeleton' aria-hidden='true'>
+                            <table className='ai-scanner__table'>
+                                <tbody>
+                                    {[0, 1, 2, 3, 4].map(i => (
+                                        <tr key={i}>
+                                            {Array.from({ length: 13 }, (_, j) => (
+                                                <td key={j}><span className='ai-scanner__shimmer' /></td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <p className='ai-scanner__empty-row'>No markets warmed up yet — start the scanner.</p>
+                    )
+                : (
                     <div className='ai-scanner__table-wrap'>
                         <table className='ai-scanner__table'>
                             <thead>
@@ -344,15 +409,24 @@ const AISignalScannerPage = observer(() => {
             <section className='ai-scanner__section'>
                 <h3>Trade history</h3>
                 {state.trades.length === 0 ? (
-                    <p className='ai-scanner__empty-row' data-testid='empty-history'>
-                        {!state.config.autoTrade && !autoTrade
-                            ? 'No trades yet — Auto-trade is off. Turn on "Auto-trade signals" (enable Paper trading first, or log in) and start the scanner.'
-                            : state.autoTradeBlock
-                              ? `No trades yet — auto-trade paused: ${state.autoTradeBlock}.`
-                              : !isRunning
-                                ? 'No trades yet — start the scanner to begin trading.'
-                                : `No trades yet — waiting for a signal above ${state.config.threshold}% that clears risk limits. Every attempt is listed in Live activity.`}
-                    </p>
+                    <>
+                        <p className='ai-scanner__empty-row' data-testid='empty-history'>
+                            {!autoTrade
+                                ? 'No trades yet — Auto-trade is off. Turn on "Auto-trade signals" (enable Paper trading first, or log in) and start the scanner.'
+                                : state.autoTradeBlock
+                                  ? `No trades yet — auto-trade paused: ${state.autoTradeBlock}.`
+                                  : !isRunning
+                                    ? 'No trades yet — start the scanner to begin trading.'
+                                    : `No trades yet — waiting for a signal above ${state.config.threshold}% that clears risk limits. Every attempt is listed in Live activity.`}
+                        </p>
+                        {!autoTrade && aiBot.config.autoTrade && (
+                            <p className='ai-scanner__empty-row ai-scanner__empty-xref' role='note'>
+                                The AI Bot has its own separate Auto-trade switch (currently ON) — its trades
+                                appear in the AI Bot dock → Activity, not in this scanner&apos;s history. To trade
+                                here, turn on &quot;Auto-trade signals&quot; above.
+                            </p>
+                        )}
+                    </>
                 ) : (
                     <div className='ai-scanner__table-wrap'>
                         <table className='ai-scanner__table'>
@@ -403,7 +477,7 @@ const AISignalScannerPage = observer(() => {
 const Stat = ({ label, value, tone }: { label: string; value: string | number; tone?: 'pos' | 'neg' }) => (
     <div className='ai-scanner__stat'>
         <span className='ai-scanner__stat-label'>{label}</span>
-        <span className={`ai-scanner__stat-value ${tone || ''}`}>{value}</span>
+        <span key={String(value)} className={`ai-scanner__stat-value ${tone || ''}`}>{value}</span>
     </div>
 );
 
