@@ -219,13 +219,12 @@ export class SignalScannerEngine {
         const loginid = authorized ? currentLoginId() : '';
         const accountIsDemo = authorized ? isDemoAccount(loginid) : false;
         const cfg = this.state.config;
-        if (authorized && !accountIsDemo && !cfg.allowLiveTrading) {
-            this.update({ accountIsDemo, liveTrading: false });
-            this.setStatus('suspended', 'Live trading disabled on a real account. Enable Live trading to place real orders.');
-            this.logEvent('risk', 'Real account: enable Live trading to place real orders.');
-            this.setAutoTradeBlock('live trading is off — switch on Live trading to place real orders', false);
-            return;
-        }
+        // A real account without Live trading must keep running: paper mode and
+        // signals-only scanning are safe, and the per-scan gate holds real
+        // orders (surfaced on the auto-trade chip) until Live trading is on.
+        // Terminating with status 'suspended' here previously froze paper mode
+        // too and never self-healed when Live trading was later enabled.
+        const liveOff = authorized && !accountIsDemo && !cfg.allowLiveTrading;
 
         this.running = true;
         this.lastTradeAt = 0;
@@ -248,6 +247,12 @@ export class SignalScannerEngine {
                   ? `Scanner starting in PAPER-TRADING mode (simulated fills settled on real ticks, ${PAPER_START_EQUITY} virtual bankroll).`
                   : 'Scanner starting in signals-only mode. Log in (or enable Paper trading) to auto-trade.'
         );
+        if (liveOff) {
+            this.logEvent('risk', 'Real account: enable Live trading to place real orders.');
+            if (cfg.autoTrade && !cfg.paperTrading) {
+                this.setAutoTradeBlock('live trading is off — switch on Live trading to place real orders', false);
+            }
+        }
 
         this.setStatus('discovering', 'Discovering synthetic markets…');
         let symbols: SyntheticSymbol[];
@@ -621,6 +626,7 @@ export class SignalScannerEngine {
             this.lastTradeAt = now;
             let placedAny = false;
             for (const candidate of candidates) {
+                if (!this.running) break;
                 const placed = await this.execute(candidate, stake);
                 if (placed) {
                     placedAny = true;
@@ -674,7 +680,7 @@ export class SignalScannerEngine {
         const { quote, error } = await requestContractQuote(quoteReq);
         if (!quote) {
             const detail = error || 'no quote';
-            this.setStatus('scanning', `Quote failed: ${detail}. Skipping.`);
+            if (this.running) this.setStatus('scanning', `Quote failed: ${detail}. Skipping.`);
             this.logEvent('error', `Quote failed on ${signal.displayName} ${signal.action}: ${detail}`, {
                 symbol: signal.symbol,
             });
@@ -715,7 +721,7 @@ export class SignalScannerEngine {
         const buy = await executeBuyFresh(quote, stake, () => requestContractQuote(quoteReq));
         if (buy.error || buy.contractId === undefined) {
             this.update({ trades: [{ ...record, stage: 'rejected', error: buy.error, closedAt: Date.now() }, ...this.state.trades] });
-            this.setStatus('scanning', `Order rejected: ${buy.error}`);
+            if (this.running) this.setStatus('scanning', `Order rejected: ${buy.error}`);
             this.logEvent('error', `Order rejected: ${buy.error}`, { symbol: signal.symbol });
             return false;
         }
@@ -738,7 +744,7 @@ export class SignalScannerEngine {
         const meta = this.symbols.find(x => x.symbol === signal.symbol);
         const settlement = await monitorUntilSettled(buy.contractId, meta?.pipSize ?? 2);
         if ('error' in settlement) {
-            this.setStatus('scanning', `Settlement pending: ${settlement.error}`);
+            if (this.running) this.setStatus('scanning', `Settlement pending: ${settlement.error}`);
             this.logEvent('error', `Settlement pending for #${buy.contractId}: ${settlement.error}`, { contractId: buy.contractId });
             return true;
         }
@@ -764,11 +770,12 @@ export class SignalScannerEngine {
             `${settled.result === 'win' ? 'WIN' : 'LOSS'}: #${buy.contractId} ${signal.displayName} ${ACTION_LABEL[signal.action]} — ${settled.profit >= 0 ? '+' : ''}${settled.profit.toFixed(2)}`,
             { symbol: signal.symbol, contractId: buy.contractId, action: signal.action, result: settled.result, profit: settled.profit }
         );
-        if (risk.suspended) {
-            this.setStatus('suspended', risk.suspensionReason || 'Risk limit reached');
-            this.logEvent('risk', `Suspended: ${risk.suspensionReason}`);
-        } else {
-            this.setStatus('scanning', `Settled ${settled.result}. Scanning…`);
+        if (risk.suspended) this.logEvent('risk', `Suspended: ${risk.suspensionReason}`);
+        // A stop mid-contract must not be overwritten by the late settlement
+        // status — otherwise the UI shows a ghost 'scanning' with no scan timer.
+        if (this.running) {
+            if (risk.suspended) this.setStatus('suspended', risk.suspensionReason || 'Risk limit reached');
+            else this.setStatus('scanning', `Settled ${settled.result}. Scanning…`);
         }
         return true;
     }
@@ -814,7 +821,7 @@ export class SignalScannerEngine {
             digit = await this.waitForNextTick(signal.symbol, 15000);
         } catch (e: any) {
             this.update({ openTrade: null });
-            this.setStatus('scanning', `Paper trade could not settle: ${e?.message}`);
+            if (this.running) this.setStatus('scanning', `Paper trade could not settle: ${e?.message}`);
             this.logEvent('error', `PAPER settle failed: ${e?.message}`, { symbol: signal.symbol });
             return;
         }
@@ -850,11 +857,12 @@ export class SignalScannerEngine {
             `PAPER ${settled.result === 'win' ? 'WIN' : 'LOSS'}: ${signal.displayName} ${ACTION_LABEL[signal.action]} — exit digit ${digit} — ${profit >= 0 ? '+' : ''}${profit.toFixed(2)} (simulated)`,
             { symbol: signal.symbol, action: signal.action, result: settled.result, profit }
         );
-        if (risk.suspended) {
-            this.setStatus('suspended', risk.suspensionReason || 'Risk limit reached');
-            this.logEvent('risk', `Suspended: ${risk.suspensionReason}`);
-        } else {
-            this.setStatus('scanning', `Paper settled ${settled.result}. Scanning…`);
+        if (risk.suspended) this.logEvent('risk', `Suspended: ${risk.suspensionReason}`);
+        // Never let a late paper-settle overwrite the stopped status (ghost
+        // 'scanning' with no timer disables Start until a reload).
+        if (this.running) {
+            if (risk.suspended) this.setStatus('suspended', risk.suspensionReason || 'Risk limit reached');
+            else this.setStatus('scanning', `Paper settled ${settled.result}. Scanning…`);
         }
     }
 }

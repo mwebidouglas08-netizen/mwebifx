@@ -240,12 +240,10 @@ export class AIBotEngine {
         const loginid = authorized ? currentLoginId() : '';
         const accountIsDemo = authorized ? isDemoAccount(loginid) : false;
         const cfg = this.state.config;
-        if (authorized && !accountIsDemo && !cfg.allowLiveTrading) {
-            this.update({ accountIsDemo, liveTrading: false });
-            this.setStatus('suspended', 'Live trading disabled on a real account. Enable Live trading to place real orders.');
-            this.logEvent('risk', 'Real account: enable Live trading to place real orders.');
-            return;
-        }
+        // Keep scanning on a real account without Live trading: the per-scan
+        // reason list holds real orders (surfaced in the panel message) until
+        // Live trading is on — no terminal suspension.
+        const liveOff = authorized && !accountIsDemo && !cfg.allowLiveTrading;
 
         this.running = true;
         this.martingaleStep = 0;
@@ -267,6 +265,7 @@ export class AIBotEngine {
                 ? `AI Bot starting on ${accountIsDemo ? 'DEMO' : 'REAL'} account (${loginid}).`
                 : 'AI Bot starting in signals-only mode. Log in to your Deriv account to enable auto-trade.'
         );
+        if (liveOff) this.logEvent('risk', 'Real account: enable Live trading to place real orders.');
 
         this.setStatus('starting', 'Discovering markets…');
         let symbols: SyntheticSymbol[];
@@ -446,6 +445,9 @@ export class AIBotEngine {
             if (!chosen) {
                 this.confirmKey = null;
                 this.confirmCount = 0;
+                if (this.state.message.startsWith('Holding:')) {
+                    this.update({ message: 'Scanning markets for signals…' });
+                }
                 return;
             }
 
@@ -491,6 +493,8 @@ export class AIBotEngine {
             else if (this.state.liveTrading === false && !this.state.accountIsDemo) reasons.push('live trading off');
 
             if (reasons.length) {
+                const held = reasons.find(r => r !== 'auto-trade off');
+                if (held) this.update({ message: `Holding: ${held}` });
                 if (!reasons.includes('auto-trade off')) {
                     this.logEvent('decision', `${analysis.displayName}: ${match.rationale} — holding (${reasons[0]})`, {
                         symbol: analysis.symbol,
@@ -580,7 +584,7 @@ export class AIBotEngine {
         const { quote, error } = await requestSimpleQuote(quoteReq);
         if (!quote) {
             const detail = error || 'no quote';
-            this.setStatus('scanning', `Quote failed: ${detail}. Skipping.`);
+            if (this.running) this.setStatus('scanning', `Quote failed: ${detail}. Skipping.`);
             this.logEvent('error', `Quote failed on ${analysis.displayName} ${ct}: ${detail}`, {
                 symbol: analysis.symbol,
             });
@@ -623,7 +627,7 @@ export class AIBotEngine {
         const buy = await executeBuyFresh(quote, stake, () => requestSimpleQuote(quoteReq));
         if (buy.error || buy.contractId === undefined) {
             this.update({ trades: [{ ...record, stage: 'rejected', error: buy.error, closedAt: Date.now() }, ...this.state.trades] });
-            this.setStatus('scanning', `Order rejected: ${buy.error}`);
+            if (this.running) this.setStatus('scanning', `Order rejected: ${buy.error}`);
             this.logEvent('error', `Order rejected: ${buy.error}`, { symbol: analysis.symbol });
             return;
         }
@@ -649,7 +653,7 @@ export class AIBotEngine {
 
         const settlement = await monitorUntilSettled(buy.contractId, meta?.pipSize ?? 2);
         if ('error' in settlement) {
-            this.setStatus('scanning', `Settlement pending: ${settlement.error}`);
+            if (this.running) this.setStatus('scanning', `Settlement pending: ${settlement.error}`);
             this.logEvent('error', `Settlement pending #${buy.contractId}: ${settlement.error}`, { contractId: buy.contractId });
             return;
         }
@@ -688,10 +692,12 @@ export class AIBotEngine {
             { symbol: analysis.symbol, contractId: buy.contractId, contractType: ct, result: settled.result, profit: settled.profit }
         );
 
+        // Never let a late settlement overwrite the stopped status (ghost
+        // 'scanning' with no timer disables Start until a reload).
         const limit = this.limitReason();
-        if (limit) this.enterSuspended(limit);
-        else if (risk.suspended) this.enterSuspended(risk.suspensionReason || 'Risk limit reached');
-        else this.setStatus('scanning', `Settled ${settled.result}. Scanning…`);
+        if (this.running && limit) this.enterSuspended(limit);
+        else if (this.running && risk.suspended) this.enterSuspended(risk.suspensionReason || 'Risk limit reached');
+        else if (this.running) this.setStatus('scanning', `Settled ${settled.result}. Scanning…`);
     }
 }
 

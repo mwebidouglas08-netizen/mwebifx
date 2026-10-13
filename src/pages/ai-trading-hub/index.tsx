@@ -365,6 +365,15 @@ const AITradingHub: React.FC<TProps> = observer(({ onOpenDashboard }) => {
             try {
                 await deployHubStrategy(strategy, window.Blockly?.derivWorkspace);
                 if (cancelled) return;
+                // Same pre-check as startEngine: an incomplete workspace makes
+                // onRunButtonClick return silently, which would otherwise leave
+                // the notice claiming the bot is running when nothing started.
+                if (runPanel?.dbot && typeof runPanel.dbot.shouldRunBot === 'function' && !runPanel.dbot.shouldRunBot()) {
+                    flashNotice(
+                        'Auto Trading: strategy loaded, but the workspace is incomplete — open Bot Dashboard and set a market, trade type, duration and purchase block.'
+                    );
+                    return;
+                }
                 flashNotice(
                     `Auto Trading: ${best.symbol} ${best.signal} at ${best.confidence}% signal strength — running ${strategy.name}.`
                 );

@@ -175,7 +175,8 @@ export class OUBotEngine {
     }
 
     setLiveTrading(enabled: boolean) {
-        this.update({ liveTrading: enabled });
+        this.update({ liveTrading: enabled, dryRun: !enabled || !isAuthorized() });
+        this.configure({ allowLiveTrading: enabled });
     }
 
     setDryRun(enabled: boolean) {
@@ -209,16 +210,17 @@ export class OUBotEngine {
         const loginid = authorized ? currentLoginId() : '';
         const accountIsDemo = authorized ? isDemoAccount(loginid) : false;
         const cfg = this.state.config;
+        // Keep analysing on a real account without Live trading: dry-run holds
+        // every order until Live trading is on — no terminal suspension, and
+        // demo accounts trade demo funds without needing the Live toggle.
+        const dryRun = !authorized || (!accountIsDemo && !cfg.allowLiveTrading);
         if (authorized && !accountIsDemo && !cfg.allowLiveTrading) {
-            this.update({ accountIsDemo, dryRun: true });
-            this.setStatus('suspended', 'Live trading disabled on a real account. Enable Live Trading to place real orders.');
-            this.logEvent('risk', 'Real account: enable Live Trading to place real orders.');
-            return;
+            this.logEvent('risk', 'Real account: enable Live Trading to place real orders — running analysis only.');
         }
 
         this.running = true;
         this.lastActiveTradeAt = 0;
-        this.update({ accountIsDemo, dryRun: !cfg.allowLiveTrading || !authorized, equity: accountBalance() });
+        this.update({ accountIsDemo, dryRun, equity: accountBalance() });
         this.logEvent(
             'status',
             authorized
@@ -540,7 +542,7 @@ export class OUBotEngine {
         this.setStatus('proposing', `Requesting quote: ${opp.displayName} ${opp.direction} ${opp.barrier}`);
         const { quote, error } = await requestQuote(quoteReq);
         if (error || !quote) {
-            this.setStatus('scanning', `Quote failed: ${error || 'no quote'}`);
+            if (this.running) this.setStatus('scanning', `Quote failed: ${error || 'no quote'}`);
             this.logEvent('error', `Quote failed on ${opp.displayName}: ${error || 'no quote'}`);
             return;
         }
@@ -548,7 +550,7 @@ export class OUBotEngine {
         // Edge mode re-checks EV against the live payout; Active (demo practice)
         // mode deliberately proceeds regardless so the pipeline stays visible.
         if (!active && (finalEdge.expectedValuePct < cfg.limits.minExpectedValue || finalEdge.payoutRatio < cfg.limits.minPayoutRatio)) {
-            this.setStatus('scanning', 'Quote no longer meets EV threshold. Skipping.');
+            if (this.running) this.setStatus('scanning', 'Quote no longer meets EV threshold. Skipping.');
             return;
         }
 
@@ -579,7 +581,7 @@ export class OUBotEngine {
             this.update({
                 trades: [{ ...record, stage: 'rejected', error: buy.error, closedAt: Date.now() }, ...this.state.trades],
             });
-            this.setStatus('scanning', `Order rejected: ${buy.error}`);
+            if (this.running) this.setStatus('scanning', `Order rejected: ${buy.error}`);
             this.logEvent('error', `Order rejected: ${buy.error}`, { symbol: opp.symbol });
             return;
         }
@@ -601,7 +603,7 @@ export class OUBotEngine {
         const meta = this.symbols.find(x => x.symbol === opp.symbol);
         const settlement = await monitorUntilSettled(buy.contractId, meta?.pipSize ?? 2);
         if ('error' in settlement) {
-            this.setStatus('scanning', `Settlement pending: ${settlement.error}`);
+            if (this.running) this.setStatus('scanning', `Settlement pending: ${settlement.error}`);
             this.logEvent('error', `Settlement pending for #${buy.contractId}: ${settlement.error}`, { contractId: buy.contractId });
             return;
         }
@@ -616,11 +618,12 @@ export class OUBotEngine {
             `${settled.result === 'win' ? 'WIN' : 'LOSS'}: #${buy.contractId} ${opp.displayName} ${opp.direction} ${opp.barrier} — exit digit ${settled.exitDigit ?? '—'}, ${settled.profit >= 0 ? '+' : ''}${settled.profit.toFixed(2)}`,
             { symbol: opp.symbol, contractId: buy.contractId, direction: opp.direction, barrier: opp.barrier, result: settled.result, profit: settled.profit, exitDigit: settled.exitDigit, payout: quote.payout }
         );
-        if (risk.suspended) {
-            this.setStatus('suspended', risk.suspensionReason || 'Risk limit reached');
-            this.logEvent('risk', `Suspended: ${risk.suspensionReason}`);
-        } else {
-            this.setStatus('scanning', `Settled ${settled.result}: ${settled.profit?.toFixed(2)}. Reassessing market…`);
+        // Never let a late settlement overwrite the stopped status (ghost
+        // 'scanning' with no timer disables Start until a reload).
+        if (risk.suspended) this.logEvent('risk', `Suspended: ${risk.suspensionReason}`);
+        if (this.running) {
+            if (risk.suspended) this.setStatus('suspended', risk.suspensionReason || 'Risk limit reached');
+            else this.setStatus('scanning', `Settled ${settled.result}: ${settled.profit?.toFixed(2)}. Reassessing market…`);
         }
     }
 
