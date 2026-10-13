@@ -109,3 +109,28 @@
         &.weak { border-left: 3px solid var(--brand-danger, #e34444); }
     }
 }
+
+/* Cinematic polish layer */
+.bt-page {
+    background: transparent;
+
+    .bt-result-card {
+        background: var(--surface-card);
+        border-color: var(--card-border);
+        border-radius: 14px;
+        box-shadow: var(--card-shadow);
+        transition: transform 0.25s ease, box-shadow 0.25s ease;
+
+        &:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--card-shadow-lifted);
+        }
+    }
+
+    .bt-controls .bt-run {
+        border-radius: 10px;
+        background: var(--nav-pill-active, var(--brand-primary));
+        border-color: transparent;
+        box-shadow: 0 8px 20px -8px var(--glow-ring);
+    }
+}

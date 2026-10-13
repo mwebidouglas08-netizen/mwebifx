@@ -210,6 +210,28 @@
         // Header
         --header-background-mt5: #{constants.$color-blue-8};
         --header-background-others: #{constants.$color-green-7};
+
+        /* Cinematic layer (Mwebifx hub surfaces) — light */
+        --canvas-tint: #f4f6fb;
+        --surface-card: #ffffff;
+        --surface-raised: #ffffff;
+        --surface-glass: rgb(255 255 255 / 78%);
+        --surface-inset: #{constants.$color-grey-2};
+        --card-border: rgb(15 23 42 / 8%);
+        --card-shadow: 0 1px 2px rgb(15 23 42 / 4%), 0 12px 32px -12px rgb(15 23 42 / 12%);
+        --card-shadow-lifted: 0 2px 6px rgb(15 23 42 / 6%), 0 24px 48px -16px rgb(15 23 42 / 18%);
+        --accent-teal: #0e9aa7;
+        --accent-teal-deep: #0b7280;
+        --accent-indigo: #6366f1;
+        --accent-violet: #8b5cf6;
+        --text-accent: #0b7280;
+        --brand-gradient: linear-gradient(135deg, #14b8a6 0%, #0e9aa7 45%, #6366f1 100%);
+        --brand-gradient-soft: linear-gradient(135deg, rgb(20 184 166 / 12%) 0%, rgb(99 102 241 / 10%) 100%);
+        --glow-ring: rgb(20 184 166 / 35%);
+        --nav-pill-active: linear-gradient(135deg, #0e9aa7, #0b7280);
+        --hero-mesh:
+            radial-gradient(80% 120% at 8% -20%, rgb(20 184 166 / 16%), transparent 55%),
+            radial-gradient(70% 110% at 92% -10%, rgb(99 102 241 / 14%), transparent 50%);
     }
 
     .theme--dark {
@@ -351,5 +373,27 @@
         // Header
         --header-background-mt5: #{constants.$color-blue-8};
         --header-background-others: #{constants.$color-green-7};
+
+        /* Cinematic layer (Mwebifx hub surfaces) — dark */
+        --canvas-tint: #050a14;
+        --surface-card: #0d1526;
+        --surface-raised: #101a30;
+        --surface-glass: rgb(13 21 38 / 78%);
+        --surface-inset: #0a1120;
+        --card-border: rgb(148 163 184 / 12%);
+        --card-shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 12px 32px -12px rgb(0 0 0 / 55%);
+        --card-shadow-lifted: 0 2px 6px rgb(0 0 0 / 35%), 0 24px 48px -16px rgb(0 0 0 / 65%);
+        --accent-teal: #2dd4bf;
+        --accent-teal-deep: #14b8a6;
+        --accent-indigo: #818cf8;
+        --accent-violet: #a78bfa;
+        --text-accent: #5eead4;
+        --brand-gradient: linear-gradient(135deg, #2dd4bf 0%, #14b8a6 45%, #818cf8 100%);
+        --brand-gradient-soft: linear-gradient(135deg, rgb(45 212 191 / 14%) 0%, rgb(129 140 248 / 12%) 100%);
+        --glow-ring: rgb(45 212 191 / 40%);
+        --nav-pill-active: linear-gradient(135deg, #14b8a6, #0e9aa7);
+        --hero-mesh:
+            radial-gradient(80% 120% at 8% -20%, rgb(20 184 166 / 18%), transparent 55%),
+            radial-gradient(70% 110% at 92% -10%, rgb(99 102 241 / 16%), transparent 50%);
     }
 }

@@ -409,3 +409,15 @@
     .ai-panel { width: calc(100vw - 1.8rem); max-height: 78vh; }
     .ai-stats { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* Light theme: the dock stays a dark cinematic "command pod" — elevate it
+   with a stronger shadow + teal ring so it reads as floating over the canvas. */
+body.theme--light {
+    .ai-fab {
+        box-shadow: 0 14px 34px -10px rgb(15 23 42 / 45%), 0 0 0 1px rgb(20 184 166 / 35%), 0 0 24px -6px rgb(20 184 166 / 45%);
+    }
+
+    .ai-panel {
+        box-shadow: 0 24px 60px -18px rgb(15 23 42 / 50%), 0 0 0 1px rgb(20 184 166 / 30%);
+    }
+}

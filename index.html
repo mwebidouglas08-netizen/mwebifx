@@ -3,12 +3,26 @@
     <head>
         <script>
             (function () {
-                var mode = 'dark';
-                try { mode = localStorage.getItem('theme') === 'light' ? 'light' : 'dark'; } catch (_) {}
+                // Light is the brand default (SmartFlip-class look); an explicit
+                // stored choice always wins.
+                var mode = 'light';
+                try { mode = localStorage.getItem('theme') === 'dark' ? 'dark' : 'light'; } catch (_) {}
                 var root = document.documentElement;
                 root.dataset.theme = mode;
                 root.classList.add(mode);
                 root.style.colorScheme = mode;
+                // Sync the body class before first paint so the theme tokens apply
+                // immediately (body ships as theme--light in the markup below).
+                var applyBody = function () {
+                    var b = document.body;
+                    if (!b) return;
+                    b.classList.remove('theme--light', 'theme--dark');
+                    b.classList.add('theme--' + mode);
+                    var mc = document.querySelector('meta[name="theme-color"]');
+                    if (mc) mc.setAttribute('content', mode === 'dark' ? '#050a14' : '#f4f6fb');
+                };
+                if (document.body) applyBody();
+                else document.addEventListener('DOMContentLoaded', applyBody);
             })();
         </script>
         <script>
@@ -30,7 +44,7 @@
                     '<p style="font-size:14px;color:#aaa;max-width:600px;word-break:break-word">' +
                     String(message).replace(/</g, '&lt;') +
                     '</p>' +
-                    '<button onclick="location.reload()" style="padding:8px 24px;border-radius:4px;border:none;background:#ff444f;color:#fff;cursor:pointer;font-size:14px">Refresh</button>' +
+                    '<button onclick="location.reload()" style="padding:8px 24px;border-radius:4px;border:none;background:#0e9aa7;color:#fff;cursor:pointer;font-size:14px">Refresh</button>' +
                     '</div>';
             };
             window.addEventListener('error', function (e) {
@@ -68,7 +82,7 @@
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="Mwebifx" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-        <meta name="theme-color" content="#050a14" />
+        <meta name="theme-color" content="#f4f6fb" />
         <meta name="title" content="Mwebifx | AI Trading Hub" />
         <meta name="description" content="Trading platform for Deriv binary options. Signal analysis, mean-reversion detection, and optional automated order execution with risk controls. Trading involves risk of loss." />
         <meta property="og:title" content="Mwebifx | Trading Hub" />
@@ -77,6 +91,10 @@
         <style>
             :root {
                 font-size: 62.5%;
+                background: #f4f6fb;
+            }
+            html[data-theme='dark'],
+            html[data-theme='dark'] :root {
                 background: #050a14;
             }
             html, body, #root {
@@ -84,6 +102,9 @@
                 min-width: 100%;
                 min-height: 100%;
                 margin: 0;
+                background: #f4f6fb;
+            }
+            html[data-theme='dark'], html[data-theme='dark'] body, html[data-theme='dark'] #root {
                 background: #050a14;
             }
             body {
@@ -93,7 +114,8 @@
                 min-height: 100vh;
             }
 
-            /* Boot splash — cinematic startup while the bundle parses. */
+            /* Boot splash — cinematic startup while the bundle parses.
+               Adapts to the resolved theme (light by default, dark on request). */
             #boot-splash {
                 position: fixed;
                 inset: 0;
@@ -102,8 +124,17 @@
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
-                background: radial-gradient(120% 90% at 50% 6%, #0b1728 0%, #050a14 55%, #030710 100%);
+                background:
+                    radial-gradient(90% 60% at 18% -10%, rgba(20, 184, 166, 0.16), transparent 60%),
+                    radial-gradient(80% 55% at 88% 0%, rgba(99, 102, 241, 0.14), transparent 55%),
+                    radial-gradient(120% 90% at 50% 6%, #ffffff 0%, #f4f6fb 55%, #e9edf7 100%);
                 transition: opacity 0.65s ease, visibility 0.65s ease;
+            }
+            html[data-theme='dark'] #boot-splash {
+                background:
+                    radial-gradient(90% 60% at 18% -10%, rgba(20, 184, 166, 0.2), transparent 60%),
+                    radial-gradient(80% 55% at 88% 0%, rgba(99, 102, 241, 0.18), transparent 55%),
+                    radial-gradient(120% 90% at 50% 6%, #0b1728 0%, #050a14 55%, #030710 100%);
             }
             #boot-splash.boot-splash--out {
                 opacity: 0;
@@ -115,7 +146,7 @@
                 width: 360px;
                 height: 360px;
                 border-radius: 50%;
-                background: radial-gradient(circle, rgba(75, 180, 179, 0.26), transparent 65%);
+                background: radial-gradient(circle, rgba(20, 184, 166, 0.24), transparent 65%);
                 filter: blur(8px);
                 animation: bootGlow 2.8s ease-in-out infinite;
             }
@@ -125,22 +156,33 @@
                 height: 92px;
                 transform: rotate(45deg);
                 border-radius: 22px;
-                border: 1px solid rgba(75, 180, 179, 0.6);
-                background: linear-gradient(145deg, rgba(75, 180, 179, 0.2), rgba(5, 10, 20, 0.92));
+                border: 1px solid rgba(14, 154, 167, 0.55);
+                background: linear-gradient(145deg, rgba(20, 184, 166, 0.16), rgba(255, 255, 255, 0.9));
+                box-shadow: 0 18px 50px rgba(15, 118, 110, 0.18);
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 animation: bootMark 2.8s ease-in-out infinite;
+            }
+            html[data-theme='dark'] .boot-splash__mark {
+                border: 1px solid rgba(75, 180, 179, 0.6);
+                background: linear-gradient(145deg, rgba(75, 180, 179, 0.2), rgba(5, 10, 20, 0.92));
+                box-shadow: none;
             }
             .boot-splash__mark span {
                 transform: rotate(-45deg);
                 font-size: 42px;
                 font-weight: 800;
                 letter-spacing: 0.04em;
-                background: linear-gradient(120deg, #eafcff, #4bb4b3 55%, #9df1e5);
+                background: linear-gradient(120deg, #0b7280, #14b8a6 55%, #0e9aa7);
                 -webkit-background-clip: text;
                 background-clip: text;
                 color: transparent;
+            }
+            html[data-theme='dark'] .boot-splash__mark span {
+                background: linear-gradient(120deg, #eafcff, #4bb4b3 55%, #9df1e5);
+                -webkit-background-clip: text;
+                background-clip: text;
             }
             .boot-splash__word {
                 position: relative;
@@ -150,6 +192,9 @@
                 font-weight: 700;
                 letter-spacing: 0.44em;
                 text-indent: 0.44em;
+                color: #0b1220;
+            }
+            html[data-theme='dark'] .boot-splash__word {
                 color: #eaf6f6;
             }
             .boot-splash__word::after {
@@ -172,22 +217,42 @@
                 letter-spacing: 0.52em;
                 text-indent: 0.52em;
                 text-transform: uppercase;
+                color: rgba(14, 154, 167, 0.85);
+            }
+            html[data-theme='dark'] .boot-splash__tag {
                 color: rgba(140, 195, 193, 0.8);
             }
+            .boot-splash__status {
+                margin-top: 10px;
+                min-height: 16px;
+                font-size: 11.5px;
+                letter-spacing: 0.06em;
+                color: rgba(80, 96, 128, 0.9);
+                transition: opacity 0.35s ease;
+            }
+            html[data-theme='dark'] .boot-splash__status {
+                color: rgba(148, 163, 184, 0.75);
+            }
+            .boot-splash__status.boot-splash__status--swap {
+                opacity: 0;
+            }
             .boot-splash__bar {
-                margin-top: 48px;
+                margin-top: 34px;
                 width: 190px;
                 height: 2px;
-                background: rgba(255, 255, 255, 0.08);
+                background: rgba(15, 23, 42, 0.08);
                 border-radius: 2px;
                 overflow: hidden;
+            }
+            html[data-theme='dark'] .boot-splash__bar {
+                background: rgba(255, 255, 255, 0.08);
             }
             .boot-splash__bar i {
                 display: block;
                 height: 100%;
                 width: 42%;
                 border-radius: 2px;
-                background: linear-gradient(90deg, transparent, #4bb4b3 35%, #a5f3e6 65%, transparent);
+                background: linear-gradient(90deg, transparent, #14b8a6 35%, #6366f1 70%, transparent);
                 animation: bootBar 1.5s ease-in-out infinite;
             }
             @keyframes bootGlow {
@@ -204,10 +269,10 @@
             @keyframes bootMark {
                 0%,
                 100% {
-                    box-shadow: 0 0 26px rgba(75, 180, 179, 0.25), inset 0 0 18px rgba(75, 180, 179, 0.14);
+                    box-shadow: 0 0 26px rgba(20, 184, 166, 0.22), inset 0 0 18px rgba(20, 184, 166, 0.12);
                 }
                 50% {
-                    box-shadow: 0 0 58px rgba(75, 180, 179, 0.5), inset 0 0 26px rgba(75, 180, 179, 0.28);
+                    box-shadow: 0 0 58px rgba(20, 184, 166, 0.42), inset 0 0 26px rgba(20, 184, 166, 0.24);
                 }
             }
             @keyframes bootShimmer {
@@ -236,7 +301,7 @@
             }
         </style>
     </head>
-    <body class="body theme theme--dark">
+    <body class="body theme theme--light">
         <div id="modal_root" class="modal-root"></div>
         <div id="popup_root" class="popup-root"></div>
         <div id="root"></div>
@@ -245,6 +310,7 @@
             <div class="boot-splash__mark"><span>M</span></div>
             <div class="boot-splash__word">MWEBIFX</div>
             <div class="boot-splash__tag">AI Trading Terminal</div>
+            <div class="boot-splash__status" id="boot-splash-status">Warming up the bot engine…</div>
             <div class="boot-splash__bar"><i></i></div>
         </div>
         <script>
@@ -258,12 +324,31 @@
                 var hide = function () {
                     if (hidden) return;
                     hidden = true;
+                    clearInterval(copyTimer);
                     splash.className = 'boot-splash boot-splash--out';
                     setTimeout(function () {
                         if (splash.parentNode) splash.parentNode.removeChild(splash);
                     }, 800);
                 };
                 window.__hideBootSplash = hide;
+                // Rotating boot copy (SmartFlip-style loader, richer cadence).
+                var lines = [
+                    'Warming up the bot engine…',
+                    'Preparing your dashboard…',
+                    'Loading AI engines…',
+                    'Connecting markets…'
+                ];
+                var idx = 0;
+                var el = document.getElementById('boot-splash-status');
+                var copyTimer = setInterval(function () {
+                    if (!el || hidden) return;
+                    idx = (idx + 1) % lines.length;
+                    el.className = 'boot-splash__status boot-splash__status--swap';
+                    setTimeout(function () {
+                        el.textContent = lines[idx];
+                        el.className = 'boot-splash__status';
+                    }, 350);
+                }, 1600);
                 window.addEventListener('load', function () {
                     setTimeout(hide, 450);
                 });

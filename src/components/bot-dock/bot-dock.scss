@@ -171,3 +171,9 @@
         &__panel { width: min(94vw, 360px); }
     }
 }
+
+/* Light theme: keep the dock's dark glass identity, add elevation. */
+body.theme--light .bot-dock__fab,
+body.theme--light .bot-dock__panel {
+    box-shadow: 0 18px 44px -14px rgb(15 23 42 / 40%), 0 0 0 1px rgb(20 184 166 / 25%);
+}

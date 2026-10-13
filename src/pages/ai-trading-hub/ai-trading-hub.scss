@@ -717,3 +717,118 @@
     text-align: center;
     color: var(--text-general);
 }
+
+/* ------------------------------------------------- cinematic polish layer */
+
+.ai-trading-hub {
+    background: transparent;
+}
+
+.hub-title h1 {
+    background: var(--brand-gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.engine-status {
+    border-radius: 999px;
+    border-color: var(--card-border);
+    background: var(--surface-glass);
+    backdrop-filter: blur(8px);
+}
+
+.analyze-btn,
+.deploy-btn {
+    border-radius: 10px;
+    background: var(--nav-pill-active, var(--brand-primary));
+    box-shadow: 0 8px 20px -8px var(--glow-ring);
+    transition: filter 0.2s, transform 0.2s, box-shadow 0.2s;
+
+    &:hover:not(:disabled) {
+        filter: brightness(1.08);
+        transform: translateY(-1px);
+        box-shadow: 0 12px 26px -8px var(--glow-ring);
+    }
+}
+
+.stat-card {
+    background: var(--surface-card);
+    border-color: var(--card-border);
+    border-radius: 14px;
+    box-shadow: var(--card-shadow);
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+
+    &:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--card-shadow-lifted);
+        border-color: var(--glow-ring);
+    }
+
+    .stat-value {
+        background: var(--brand-gradient);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+    }
+}
+
+.hub-tabs .tab-btn.active {
+    border-bottom: none;
+    position: relative;
+
+    &::after {
+        content: '';
+        position: absolute;
+        left: 1.2rem;
+        right: 1.2rem;
+        bottom: -2px;
+        height: 3px;
+        border-radius: 3px;
+        background: var(--brand-gradient);
+    }
+}
+
+.analysis-log,
+.opportunity-card,
+.bot-card,
+.strategy-card,
+.markets-table,
+.trades-table {
+    background: var(--surface-card);
+    border-color: var(--card-border);
+    border-radius: 14px;
+    box-shadow: var(--card-shadow);
+}
+
+.opportunity-card,
+.bot-card,
+.strategy-card {
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+
+    &:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--card-shadow-lifted);
+        border-color: var(--glow-ring);
+    }
+}
+
+.bot-card--live,
+.strategy-card:has(.deploy-btn) {
+    border-color: var(--glow-ring);
+}
+
+.filter-chips .chip.active {
+    background: var(--nav-pill-active, var(--brand-primary));
+    border-color: transparent;
+    box-shadow: 0 6px 16px -6px var(--glow-ring);
+}
+
+.markets-table .table-row,
+.trades-table .table-row {
+    transition: background 0.2s;
+
+    &:hover {
+        background: var(--general-hover);
+    }
+}

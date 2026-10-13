@@ -232,3 +232,13 @@
         &__feed { max-height: 240px; }
     }
 }
+
+/* Cinematic polish layer */
+.ou-bot {
+    &__table-wrap {
+        border-color: var(--card-border);
+        border-radius: 14px;
+        background: var(--surface-card);
+        box-shadow: var(--card-shadow);
+    }
+}

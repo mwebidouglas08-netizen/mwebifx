@@ -82,6 +82,31 @@
     }
 }
 
+/* Light theme: soft cinematic wash instead of the dark void. */
+body.theme--light .boot-splash {
+    background:
+        radial-gradient(90% 60% at 18% -10%, rgb(20 184 166 / 16%), transparent 60%),
+        radial-gradient(80% 55% at 88% 0%, rgb(99 102 241 / 14%), transparent 55%),
+        radial-gradient(120% 120% at 50% 20%, #ffffff 0%, #eef2f9 70%);
+
+    .boot-splash__title {
+        color: #0b1220;
+    }
+
+    .boot-splash__dot {
+        color: #0e9aa7;
+    }
+
+    .boot-splash__tag,
+    .boot-splash__stage {
+        color: #5b6b8c;
+    }
+
+    .boot-splash__bar {
+        background: rgb(15 23 42 / 10%);
+    }
+}
+
 @keyframes boot-rise {
     from { opacity: 0; transform: translateY(14px); }
     to { opacity: 1; transform: translateY(0); }
