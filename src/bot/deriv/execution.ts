@@ -1,6 +1,14 @@
 import { Direction, TradeRecord } from '../core/types';
 import { SignalAction, ContractFamily, ACTION_CONTRACT_TYPE } from '../core/signal-types';
-import { buyContract, getOpenContract, getProposal, accountCurrency, ApiResult } from './api';
+import {
+    buyContract,
+    getOpenContract,
+    getProposal,
+    accountCurrency,
+    accountBalance,
+    currentSocket,
+    ApiResult,
+} from './api';
 
 export interface OverUnderRequest {
     symbol: string;
@@ -31,6 +39,8 @@ export interface ProposalQuote {
     currency: string;
     minStake?: number;
     maxStake?: number;
+    /** Socket the proposal was issued on — ids cannot be bought across sockets. */
+    socket?: unknown;
 }
 
 const contractTypeFor = (direction: Direction): string =>
@@ -127,6 +137,34 @@ const parseQuote = (response: any): ProposalQuote | null => {
 };
 
 /**
+ * Barriers where the contract can never win are rejected by Deriv with
+ * `ContractBuyValidationError … no return`. Catch them before spending a
+ * proposal request: DIGITOVER(9) needs a digit above 9, DIGITUNDER(0) below 0.
+ */
+const impossibleBarrierError = (params: Record<string, unknown>): string | null => {
+    const ct = String(params.contract_type || '');
+    if (params.barrier === undefined) return null;
+    const b = Number(params.barrier);
+    if (!Number.isFinite(b)) return null;
+    if (ct.startsWith('DIGITOVER') && b >= 9) return `No return: ${ct}(${b}) can never win`;
+    if (ct.startsWith('DIGITUNDER') && b <= 0) return `No return: ${ct}(${b}) can never win`;
+    return null;
+};
+
+/** Parse, stamp the issuing socket and drop quotes that cannot profit. */
+const finalizeQuote = (response: any): { quote?: ProposalQuote; error?: string } => {
+    const quote = parseQuote(response);
+    if (!quote) return { error: 'Malformed proposal response' };
+    quote.socket = currentSocket();
+    if (quote.payout <= quote.askPrice + 1e-9) {
+        return {
+            error: `No return: payout ${quote.payout.toFixed(2)} never exceeds the ${quote.askPrice.toFixed(2)} stake`,
+        };
+    }
+    return { quote };
+};
+
+/**
  * Request a proposal on both API shapes and report the meaningful failure.
  *
  * The classic/authenticated socket accepts `symbol`; the trading/v1 socket
@@ -138,21 +176,15 @@ const parseQuote = (response: any): ProposalQuote | null => {
 const requestProposal = async (
     params: Record<string, unknown>
 ): Promise<{ quote?: ProposalQuote; error?: string }> => {
+    const blocked = impossibleBarrierError(params);
+    if (blocked) return { error: blocked };
     const first = await sendProposal(params);
-    if (!first.error && first.data) {
-        const quote = parseQuote(first.data);
-        if (quote) return { quote };
-        return { error: 'Malformed proposal response' };
-    }
+    if (!first.error && first.data) return finalizeQuote(first.data);
     const fallbackParams = { ...params };
     delete (fallbackParams as any).symbol;
     (fallbackParams as any).underlying_symbol = params.symbol;
     const second = await sendProposal(fallbackParams);
-    if (!second.error && second.data) {
-        const quote = parseQuote(second.data);
-        if (quote) return { quote };
-        return { error: 'Malformed proposal response' };
-    }
+    if (!second.error && second.data) return finalizeQuote(second.data);
     const winner =
         second.error && !isShapeError(second.error)
             ? second.error
@@ -259,10 +291,32 @@ export const executeBuy = async (quote: ProposalQuote, amount: number): Promise<
     return { contractId, transactionId, buyPrice };
 };
 
-const RETRYABLE_BUY_RE = /price\s*moved|proposal\s*(expired|not\s*found|invalid)|proposal.*expired|rate\s*limit/i;
+const RETRYABLE_BUY_RE =
+    /price\s*moved|proposal\s*(expired|not\s*found|invalid)|proposal.*expired|unknown\s+contract\s+proposal|invalidcontractproposal|rate\s*limit/i;
 
 /** True when the rejection is caused by a stale quote and a fresh one can fix it. */
 export const isRetryableBuyError = (message: string): boolean => RETRYABLE_BUY_RE.test(message || '');
+
+/**
+ * `InvalidContractProposal` (the buy variant of "Unknown contract proposal") is
+ * also what Deriv returns when the demo/live balance cannot cover the stake —
+ * surface the actual balance so the log explains itself. `InsufficientBalance`
+ * already says it outright and is left untouched.
+ */
+const explainBuyFailure = (error: string, amount: number): string => {
+    if (!/unknown\s+contract\s+proposal|invalidcontractproposal/i.test(error)) {
+        return error;
+    }
+    const balance = accountBalance();
+    const currency = accountCurrency();
+    if (balance > 0 && balance + 1e-9 < amount) {
+        return `${error} — balance ${balance.toFixed(2)} ${currency} is below the ${amount.toFixed(2)} ${currency} stake: top up the account or lower the stake`;
+    }
+    if (balance > 0) {
+        return `${error} — balance ${balance.toFixed(2)} ${currency} covers the stake; a fresh quote was retried and the id was still refused (stale quote or connection reset)`;
+    }
+    return `${error} — a fresh quote was retried; check the account balance and WebSocket connection`;
+};
 
 /**
  * True when the market/contract cannot be traded with the current settings at
@@ -286,15 +340,40 @@ export const executeBuyFresh = async (
     amount: number,
     refetch: () => Promise<{ quote?: ProposalQuote; error?: string }>
 ): Promise<BuyResult> => {
-    const first = await executeBuy(quote, amount);
-    if (!first.error || !isRetryableBuyError(first.error)) return first;
+    let attempt = quote;
+    // Proposal ids belong to the socket that issued them. If the connection was
+    // regenerated since the quote (account switch, visibility refresh), the old
+    // id is meaningless — silently re-quote on the live socket instead of
+    // handing Deriv a dead id ("Unknown contract proposal").
+    if (quote.socket !== undefined && quote.socket !== currentSocket()) {
+        const fresh = await refetch();
+        if (!fresh.quote) {
+            return {
+                error: explainBuyFailure(
+                    `API connection changed during the quote (refresh failed: ${fresh.error || 'no quote'})`,
+                    amount
+                ),
+            };
+        }
+        attempt = fresh.quote;
+    }
+    const first = await executeBuy(attempt, amount);
+    if (!first.error) return first;
+    if (!isRetryableBuyError(first.error)) {
+        return { error: explainBuyFailure(first.error, amount) };
+    }
     const fresh = await refetch();
     if (!fresh.quote) {
-        return { error: `${first.error} (refresh failed: ${fresh.error || 'no quote'})` };
+        return {
+            error: explainBuyFailure(
+                `${first.error} (refresh failed: ${fresh.error || 'no quote'})`,
+                amount
+            ),
+        };
     }
     const second = await executeBuy(fresh.quote, amount);
     if (!second.error) return second;
-    return { error: `${second.error}` };
+    return { error: explainBuyFailure(second.error, amount) };
 };
 
 export interface Settlement {

@@ -20,6 +20,8 @@
                 if (window.__fatalErrorShown) return;
                 window.__fatalErrorShown = true;
                 console.error('[FATAL]', message);
+                var splash = document.getElementById('boot-splash');
+                if (splash && splash.parentNode) splash.parentNode.removeChild(splash);
                 var el = document.getElementById('root');
                 if (!el) return;
                 el.innerHTML =
@@ -90,21 +92,183 @@
             #root {
                 min-height: 100vh;
             }
+
+            /* Boot splash — cinematic startup while the bundle parses. */
+            #boot-splash {
+                position: fixed;
+                inset: 0;
+                z-index: 2147483000;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                background: radial-gradient(120% 90% at 50% 6%, #0b1728 0%, #050a14 55%, #030710 100%);
+                transition: opacity 0.65s ease, visibility 0.65s ease;
+            }
+            #boot-splash.boot-splash--out {
+                opacity: 0;
+                visibility: hidden;
+                pointer-events: none;
+            }
+            .boot-splash__glow {
+                position: absolute;
+                width: 360px;
+                height: 360px;
+                border-radius: 50%;
+                background: radial-gradient(circle, rgba(75, 180, 179, 0.26), transparent 65%);
+                filter: blur(8px);
+                animation: bootGlow 2.8s ease-in-out infinite;
+            }
+            .boot-splash__mark {
+                position: relative;
+                width: 92px;
+                height: 92px;
+                transform: rotate(45deg);
+                border-radius: 22px;
+                border: 1px solid rgba(75, 180, 179, 0.6);
+                background: linear-gradient(145deg, rgba(75, 180, 179, 0.2), rgba(5, 10, 20, 0.92));
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                animation: bootMark 2.8s ease-in-out infinite;
+            }
+            .boot-splash__mark span {
+                transform: rotate(-45deg);
+                font-size: 42px;
+                font-weight: 800;
+                letter-spacing: 0.04em;
+                background: linear-gradient(120deg, #eafcff, #4bb4b3 55%, #9df1e5);
+                -webkit-background-clip: text;
+                background-clip: text;
+                color: transparent;
+            }
+            .boot-splash__word {
+                position: relative;
+                overflow: hidden;
+                margin-top: 40px;
+                font-size: 26px;
+                font-weight: 700;
+                letter-spacing: 0.44em;
+                text-indent: 0.44em;
+                color: #eaf6f6;
+            }
+            .boot-splash__word::after {
+                content: '';
+                position: absolute;
+                inset: 0;
+                background: linear-gradient(
+                    100deg,
+                    transparent 25%,
+                    rgba(255, 255, 255, 0.65) 50%,
+                    transparent 75%
+                );
+                transform: translateX(-130%);
+                animation: bootShimmer 2.4s ease-in-out infinite;
+                mix-blend-mode: overlay;
+            }
+            .boot-splash__tag {
+                margin-top: 14px;
+                font-size: 11px;
+                letter-spacing: 0.52em;
+                text-indent: 0.52em;
+                text-transform: uppercase;
+                color: rgba(140, 195, 193, 0.8);
+            }
+            .boot-splash__bar {
+                margin-top: 48px;
+                width: 190px;
+                height: 2px;
+                background: rgba(255, 255, 255, 0.08);
+                border-radius: 2px;
+                overflow: hidden;
+            }
+            .boot-splash__bar i {
+                display: block;
+                height: 100%;
+                width: 42%;
+                border-radius: 2px;
+                background: linear-gradient(90deg, transparent, #4bb4b3 35%, #a5f3e6 65%, transparent);
+                animation: bootBar 1.5s ease-in-out infinite;
+            }
+            @keyframes bootGlow {
+                0%,
+                100% {
+                    opacity: 0.55;
+                    transform: scale(0.92);
+                }
+                50% {
+                    opacity: 1;
+                    transform: scale(1.05);
+                }
+            }
+            @keyframes bootMark {
+                0%,
+                100% {
+                    box-shadow: 0 0 26px rgba(75, 180, 179, 0.25), inset 0 0 18px rgba(75, 180, 179, 0.14);
+                }
+                50% {
+                    box-shadow: 0 0 58px rgba(75, 180, 179, 0.5), inset 0 0 26px rgba(75, 180, 179, 0.28);
+                }
+            }
+            @keyframes bootShimmer {
+                0% {
+                    transform: translateX(-130%);
+                }
+                60%,
+                100% {
+                    transform: translateX(130%);
+                }
+            }
+            @keyframes bootBar {
+                0% {
+                    transform: translateX(-120%);
+                }
+                100% {
+                    transform: translateX(330%);
+                }
+            }
+            @media (prefers-reduced-motion: reduce) {
+                #boot-splash,
+                #boot-splash * {
+                    animation: none !important;
+                    transition-duration: 0.01s !important;
+                }
+            }
         </style>
     </head>
     <body class="body theme theme--dark">
         <div id="modal_root" class="modal-root"></div>
         <div id="popup_root" class="popup-root"></div>
         <div id="root"></div>
+        <div id="boot-splash" role="status" aria-label="Loading Mwebifx">
+            <div class="boot-splash__glow"></div>
+            <div class="boot-splash__mark"><span>M</span></div>
+            <div class="boot-splash__word">MWEBIFX</div>
+            <div class="boot-splash__tag">AI Trading Terminal</div>
+            <div class="boot-splash__bar"><i></i></div>
+        </div>
         <script>
-            // Register the service worker so the app is installable + offline-capable.
-            if ('serviceWorker' in navigator) {
+            // Hide the splash once the page (bundle + assets) has loaded. The
+            // 6s failsafe guarantees the app is never trapped behind it, and
+            // __showFatalError removes it immediately on a boot crash.
+            (function () {
+                var splash = document.getElementById('boot-splash');
+                if (!splash) return;
+                var hidden = false;
+                var hide = function () {
+                    if (hidden) return;
+                    hidden = true;
+                    splash.className = 'boot-splash boot-splash--out';
+                    setTimeout(function () {
+                        if (splash.parentNode) splash.parentNode.removeChild(splash);
+                    }, 800);
+                };
+                window.__hideBootSplash = hide;
                 window.addEventListener('load', function () {
-                    navigator.serviceWorker.register('/sw.js').catch(function () {
-                        /* offline support is progressive enhancement */
-                    });
+                    setTimeout(hide, 450);
                 });
-            }
+                setTimeout(hide, 6000);
+            })();
         </script>
     </body>
 </html>

@@ -32,6 +32,14 @@ const Main = observer(() => {
         return () => document.body.classList.remove('hub-view');
     }, [activeView, ui]);
 
+    // Re-applies the entrance animation whenever a view becomes visible —
+    // wrappers stay mounted (display toggles), so the CSS animation alone would
+    // only ever play once, hidden, at first paint.
+    const enterAnim = (view: HubView): { animation?: string } =>
+        activeView === view
+            ? { animation: 'hubEnter 0.45s cubic-bezier(0.22, 1, 0.36, 1) both' }
+            : {};
+
     return (
         <div className='main-dashboard'>
             <VersionBanner />
@@ -83,28 +91,28 @@ const Main = observer(() => {
                     user would stare at empty prices for several seconds. */}
                 <div
                     className='main-hub'
-                    style={{ display: activeView === 'ai-hub' ? 'block' : 'none' }}
+                    style={{ display: activeView === 'ai-hub' ? 'block' : 'none', ...enterAnim('ai-hub') }}
                     aria-hidden={activeView !== 'ai-hub'}
                 >
                     <AITradingHub onOpenDashboard={() => setActiveView('dashboard')} />
                 </div>
                 <div
                     className='main-hub'
-                    style={{ display: activeView === 'ou-bot' ? 'block' : 'none' }}
+                    style={{ display: activeView === 'ou-bot' ? 'block' : 'none', ...enterAnim('ou-bot') }}
                     aria-hidden={activeView !== 'ou-bot'}
                 >
                     <OUBotPage />
                 </div>
                 <div
                     className='main-hub'
-                    style={{ display: activeView === 'ai-scanner' ? 'block' : 'none' }}
+                    style={{ display: activeView === 'ai-scanner' ? 'block' : 'none', ...enterAnim('ai-scanner') }}
                     aria-hidden={activeView !== 'ai-scanner'}
                 >
                     <AISignalScannerPage />
                 </div>
                 <div
                     className='main-hub'
-                    style={{ display: activeView === 'backtest' ? 'block' : 'none' }}
+                    style={{ display: activeView === 'backtest' ? 'block' : 'none', ...enterAnim('backtest') }}
                     aria-hidden={activeView !== 'backtest'}
                 >
                     <BacktestPage />

@@ -28,11 +28,13 @@ const VersionBanner = () => {
         const onFocus = () => check();
         window.addEventListener('focus', onFocus);
         document.addEventListener('visibilitychange', onFocus);
-        const timer = window.setInterval(check, 120000);
+        window.addEventListener('online', onFocus);
+        const timer = window.setInterval(check, 30000);
         return () => {
             alive = false;
             window.removeEventListener('focus', onFocus);
             document.removeEventListener('visibilitychange', onFocus);
+            window.removeEventListener('online', onFocus);
             window.clearInterval(timer);
         };
     }, []);

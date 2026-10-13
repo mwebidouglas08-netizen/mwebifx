@@ -808,6 +808,9 @@ body.hub-view {
     min-width: 0;
 }
 
+/* Entrance polish: the tab strip settles in on first paint; the active view
+   fades up on every switch (the wrapper stays mounted, so the animation is
+   re-applied inline from main/index.tsx when a view becomes visible). */
 .view-toggle {
     display: flex;
     gap: 0.4rem;
@@ -819,6 +822,50 @@ body.hub-view {
     width: fit-content;
     max-width: 100%;
     overflow-x: auto;
+    animation: viewToggleIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.view-btn {
+    animation: viewBtnIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+
+    &:nth-child(1) { animation-delay: 0.04s; }
+    &:nth-child(2) { animation-delay: 0.09s; }
+    &:nth-child(3) { animation-delay: 0.14s; }
+    &:nth-child(4) { animation-delay: 0.19s; }
+    &:nth-child(5) { animation-delay: 0.24s; }
+}
+
+@keyframes viewToggleIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+}
+
+@keyframes viewBtnIn {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+}
+
+@keyframes hubEnter {
+    from {
+        opacity: 0;
+        transform: translateY(14px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .view-toggle,
+    .view-btn,
+    .main-hub {
+        animation: none !important;
+    }
 }
 
 .view-btn {

@@ -12,6 +12,10 @@ export const isAuthorized = (): boolean => Boolean(api_base.is_authorized);
 
 export const currentLoginId = (): string => api_base.account_id || '';
 
+/** Identity of the live Deriv socket — proposal ids are connection-scoped, so a
+ * quote issued before a socket regeneration can no longer be bought afterwards. */
+export const currentSocket = (): unknown => api_base.api;
+
 export const accountBalance = (): number => {
     const info = api_base.account_info as any;
     const b = info?.balance;

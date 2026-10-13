@@ -136,6 +136,8 @@ export class AIBotEngine {
     private symbols: SyntheticSymbol[] = [];
     private familiesBySymbol = new Map<string, ContractFamily[]>();
     private quoteBlocked = new Set<string>();
+    /** symbol:contractType:barrier combos Deriv cannot price ("no return"). */
+    private comboBlocked = new Set<string>();
     private busy = false;
     private running = false;
     private eventSeq = 0;
@@ -569,6 +571,8 @@ export class AIBotEngine {
         const cfg = this.state.config;
         const ct = match.contractType;
         const meta = this.symbols.find(s => s.symbol === analysis.symbol);
+        const comboKey = `${analysis.symbol}:${ct}:${prediction ?? ''}`;
+        if (this.comboBlocked.has(comboKey)) return;
         // A brand-new proposal per order: Deriv refuses cached proposal ids
         // (the price has moved by the time we buy), which showed up as
         // "Order rejected" on every attempt.
@@ -588,6 +592,14 @@ export class AIBotEngine {
             this.logEvent('error', `Quote failed on ${analysis.displayName} ${ct}: ${detail}`, {
                 symbol: analysis.symbol,
             });
+            if (/no return/i.test(detail)) {
+                this.comboBlocked.add(comboKey);
+                this.logEvent(
+                    'error',
+                    `${analysis.displayName} ${ct}(${prediction ?? ''}) cannot profit at this barrier - skipping that combination`,
+                    { symbol: analysis.symbol }
+                );
+            }
             if (isMarketUnavailableError(detail)) {
                 this.quoteBlocked.add(analysis.symbol);
                 this.logEvent(
@@ -626,6 +638,7 @@ export class AIBotEngine {
         this.setStatus('buying', `Submitting: ${analysis.displayName} ${ct}`);
         const buy = await executeBuyFresh(quote, stake, () => requestSimpleQuote(quoteReq));
         if (buy.error || buy.contractId === undefined) {
+            if (buy.error && /no return/i.test(buy.error)) this.comboBlocked.add(comboKey);
             this.update({ trades: [{ ...record, stage: 'rejected', error: buy.error, closedAt: Date.now() }, ...this.state.trades] });
             if (this.running) this.setStatus('scanning', `Order rejected: ${buy.error}`);
             this.logEvent('error', `Order rejected: ${buy.error}`, { symbol: analysis.symbol });
