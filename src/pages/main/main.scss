@@ -974,6 +974,7 @@ body.hub-view {
    re-applied inline from main/index.tsx when a view becomes visible). */
 .view-toggle {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.5rem;
     margin: 0.8rem 0 1.6rem;
     padding: 0.5rem;
@@ -983,7 +984,6 @@ body.hub-view {
     border-radius: 16px;
     width: fit-content;
     max-width: 100%;
-    overflow-x: auto;
     box-shadow: var(--card-shadow);
     animation: viewToggleIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
     scrollbar-width: none;

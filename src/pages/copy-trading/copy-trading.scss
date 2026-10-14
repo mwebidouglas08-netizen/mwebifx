@@ -1,0 +1,312 @@
+.copy-page {
+    display: flex;
+    flex-direction: column;
+    gap: 1.4rem;
+    padding: 1.6rem;
+    color: var(--text-prominent);
+    background: var(--general-section-1);
+    min-height: 100%;
+
+    h2 { margin: 0 0 0.3rem; font-size: 1.8rem; }
+    h3 {
+        margin: 0 0 0.8rem;
+        font-size: 1.3rem;
+
+        em { font-size: 1rem; font-style: normal; color: var(--text-general); font-weight: 400; }
+    }
+
+    .copy-sub { margin: 0; color: var(--text-general); font-size: 1.15rem; max-width: 72ch; }
+
+    .copy-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .copy-status { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+
+    .copy-badge {
+        padding: 0.3rem 0.8rem;
+        border-radius: 999px;
+        font-size: 1rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        background: var(--general-main-1);
+        border: 1px solid var(--border-normal);
+
+        &--connecting, &--running { color: var(--brand-primary); border-color: var(--brand-primary); }
+        &--stopping { color: var(--text-general); }
+        &--error { color: var(--brand-danger, #e34444); border-color: var(--brand-danger, #e34444); }
+        &--idle { color: var(--text-general); }
+    }
+
+    .copy-acct {
+        padding: 0.3rem 0.7rem;
+        border-radius: 6px;
+        font-size: 1rem;
+        font-weight: 600;
+        background: var(--brand-danger, #e34444);
+        color: #fff;
+
+        &--demo { background: var(--brand-success, #4bb4b3); }
+    }
+
+    .copy-note,
+    .copy-notice,
+    .copy-footnote,
+    .copy-example {
+        padding: 0.8rem 1rem;
+        border: 1px solid var(--border-normal);
+        border-left: 3px solid var(--brand-primary);
+        border-radius: 8px;
+        background: var(--general-main-1);
+        color: var(--text-general);
+        font-size: 1.1rem;
+        line-height: 1.5;
+
+        strong { color: var(--text-prominent); }
+    }
+
+    .copy-section { display: flex; flex-direction: column; }
+    .copy-empty { margin: 0; color: var(--text-general); font-size: 1.1rem; }
+
+    .copy-master,
+    .copy-add {
+        display: flex;
+        align-items: flex-end;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.8rem;
+    }
+
+    .copy-field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        font-size: 1.05rem;
+        color: var(--text-general);
+
+        input {
+            padding: 0.55rem 0.7rem;
+            min-width: 14rem;
+            border: 1px solid var(--border-normal);
+            border-radius: 6px;
+            background: var(--general-main-1);
+            color: var(--text-prominent);
+            font-size: 1.1rem;
+
+            &:focus { outline: none; border-color: var(--brand-primary); }
+        }
+    }
+
+    .copy-btn {
+        padding: 0.6rem 1.1rem;
+        border: 1px solid var(--border-normal);
+        border-radius: 8px;
+        background: var(--general-main-1);
+        color: var(--text-prominent);
+        font-size: 1.15rem;
+        font-weight: 600;
+        cursor: pointer;
+
+        &:disabled { opacity: 0.5; cursor: not-allowed; }
+        &:hover:not(:disabled) { border-color: var(--brand-primary); }
+
+        &--primary {
+            background: var(--brand-primary);
+            border-color: var(--brand-primary);
+            color: #fff;
+        }
+
+        &--danger {
+            border-color: var(--brand-danger, #e34444);
+            color: var(--brand-danger, #e34444);
+            font-size: 1rem;
+            padding: 0.4rem 0.8rem;
+        }
+    }
+
+    .copy-master-state {
+        display: flex;
+        align-items: center;
+        gap: 0.7rem;
+        flex-wrap: wrap;
+        padding: 0.7rem 0.9rem;
+        border: 1px solid var(--border-normal);
+        border-radius: 8px;
+        background: var(--general-main-1);
+        font-size: 1.1rem;
+        color: var(--text-general);
+    }
+
+    .copy-dot {
+        width: 0.9rem;
+        height: 0.9rem;
+        border-radius: 50%;
+        background: var(--text-general);
+        display: inline-block;
+
+        &--on { background: var(--brand-success, #4bb4b3); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-success, #4bb4b3) 25%, transparent); }
+    }
+
+    .copy-pill {
+        padding: 0.15rem 0.6rem;
+        border-radius: 999px;
+        font-size: 1rem;
+        font-weight: 700;
+        background: var(--brand-danger, #e34444);
+        color: #fff;
+
+        &--demo { background: var(--brand-success, #4bb4b3); }
+    }
+
+    .copy-balance { color: var(--text-prominent); font-weight: 600; }
+
+    .copy-copiers {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 1rem;
+    }
+
+    .copy-card {
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+        padding: 1rem;
+        border: 1px solid var(--border-normal);
+        border-radius: 12px;
+        background: var(--general-main-1);
+
+        &--off { opacity: 0.65; }
+
+        &__top {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            flex-wrap: wrap;
+        }
+
+        &__name { font-size: 1.25rem; font-weight: 700; color: var(--text-prominent); }
+
+        &__stats {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            color: var(--text-general);
+            font-size: 1.05rem;
+
+            strong { color: var(--text-prominent); }
+        }
+
+        &__error {
+            margin: 0;
+            color: var(--brand-danger, #e34444);
+            font-size: 1.05rem;
+            word-break: break-word;
+        }
+
+        &__seen { margin: 0; color: var(--text-general); font-size: 1rem; }
+    }
+
+    .copy-switch {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 1.05rem;
+        color: var(--text-general);
+        cursor: pointer;
+        margin-left: auto;
+
+        input { width: 1.4rem; height: 1.4rem; accent-color: var(--brand-primary); cursor: pointer; }
+    }
+
+    .copy-settings {
+        display: flex;
+        align-items: flex-end;
+        gap: 1.2rem;
+        flex-wrap: wrap;
+    }
+
+    .copy-toggle {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 1.15rem;
+        cursor: pointer;
+
+        input { width: 1.4rem; height: 1.4rem; accent-color: var(--brand-primary); cursor: pointer; }
+    }
+
+    .copy-msg {
+        margin: 0;
+        min-height: 1.3em;
+        color: var(--text-general);
+        font-size: 1.1rem;
+    }
+
+    .copy-grid {
+        display: grid;
+        gap: 0.8rem;
+
+        &--stats { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+    }
+
+    .copy-stat {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        padding: 0.8rem;
+        border: 1px solid var(--border-normal);
+        border-radius: 8px;
+        background: var(--general-main-1);
+
+        span { color: var(--text-general); font-size: 1rem; }
+        strong { font-size: 1.5rem; }
+
+        .neg { color: var(--brand-danger, #e34444); }
+    }
+
+    .copy-feed {
+        max-height: 24rem;
+        overflow-y: auto;
+        border: 1px solid var(--border-normal);
+        border-radius: 8px;
+        background: var(--general-main-1);
+        padding: 0.4rem 0.6rem;
+    }
+
+    .copy-event {
+        display: flex;
+        gap: 0.7rem;
+        align-items: baseline;
+        padding: 0.35rem 0.2rem;
+        border-bottom: 1px solid color-mix(in srgb, var(--border-normal) 60%, transparent);
+        font-size: 1.05rem;
+
+        &:last-child { border-bottom: none; }
+
+        .copy-event-time { color: var(--text-general); font-variant-numeric: tabular-nums; }
+
+        .copy-event-type {
+            min-width: 5.5rem;
+            font-weight: 700;
+            font-size: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        .copy-event-msg { color: var(--text-prominent); }
+
+        &--info .copy-event-type { color: var(--text-general); }
+        &--ok .copy-event-type { color: var(--brand-success, #4bb4b3); }
+        &--warn .copy-event-type { color: var(--brand-warn, #e8912f); }
+        &--err .copy-event-type { color: var(--brand-danger, #e34444); }
+        &--buy .copy-event-type { color: var(--brand-primary); }
+        &--settle .copy-event-type { color: var(--brand-success, #4bb4b3); }
+    }
+
+    .copy-footnote { font-size: 1.05rem; }
+}
