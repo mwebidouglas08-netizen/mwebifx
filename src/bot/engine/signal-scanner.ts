@@ -197,6 +197,15 @@ export class SignalScannerEngine {
     setLiveTrading(enabled: boolean) {
         this.update({ liveTrading: enabled });
         this.configure({ allowLiveTrading: enabled });
+        // Self-heal: while discovery is still running the scan loop hasn't
+        // re-evaluated gates yet, so clear the live-off hold immediately —
+        // the next scan re-arms it only if live trading is truly still off.
+        if (
+            enabled &&
+            this.state.autoTradeBlock === 'live trading is off — switch on Live trading to place real orders'
+        ) {
+            this.setAutoTradeBlock(null);
+        }
     }
 
     getPerformance(): PerformanceSnapshot {

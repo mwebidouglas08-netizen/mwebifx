@@ -6,6 +6,7 @@ import AITradingHub from '@/pages/ai-trading-hub';
 import OUBotPage from '@/pages/ou-bot';
 import AISignalScannerPage from '@/pages/ai-signal-scanner';
 import BacktestPage from '@/pages/backtest';
+import Landing from '@/pages/landing';
 import BotDock from '@/components/bot-dock';
 import AIBotDock from '@/components/ai-bot';
 import VersionBanner from '@/components/version-banner';
@@ -91,6 +92,9 @@ const Main = observer(() => {
     const { ui } = useStore() ?? {};
     const { is_dark_mode_on, toggleTheme } = useThemeSwitcher();
     const [activeView, setActiveView] = useState<HubView>('ai-hub');
+    const [landingDone, setLandingDone] = useState(() => {
+        try { return localStorage.getItem('mwx_landing_seen') === '1'; } catch { return true; }
+    });
     const clock = useUtcClock();
 
     // Publish the active view so dashboard-only chrome (the onboarding tour)
@@ -209,6 +213,14 @@ const Main = observer(() => {
             </main>
             <BotDock onNavigate={(view) => setActiveView(view)} />
             <AIBotDock />
+            {!landingDone && (
+                <Landing
+                    onEnter={() => {
+                        try { localStorage.setItem('mwx_landing_seen', '1'); } catch { /* private mode */ }
+                        setLandingDone(true);
+                    }}
+                />
+            )}
         </div>
     );
 });
