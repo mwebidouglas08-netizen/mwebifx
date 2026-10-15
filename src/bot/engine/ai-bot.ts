@@ -31,6 +31,7 @@ import {
     isMarketUnavailableError,
     monitorUntilSettled,
     requestSimpleQuote,
+    settlementTimeoutMs,
 } from '../deriv/execution';
 import {
     accountBalance,
@@ -667,10 +668,28 @@ export class AIBotEngine {
         this.logEvent('purchase', `Purchased #${buy.contractId}: ${analysis.displayName} ${ct} @ ${cfg.duration}${cfg.durationUnit}`, { symbol: analysis.symbol, contractId: buy.contractId, contractType: ct });
         this.setStatus('monitoring', `Monitoring #${buy.contractId}…`);
 
-        const settlement = await monitorUntilSettled(buy.contractId, meta?.pipSize ?? 2);
+        const settlement = await monitorUntilSettled(
+            buy.contractId,
+            meta?.pipSize ?? 2,
+            undefined,
+            settlementTimeoutMs(cfg.duration, cfg.durationUnit)
+        );
         if ('error' in settlement) {
-            if (this.running) this.setStatus('scanning', `Settlement pending: ${settlement.error}`);
-            this.logEvent('error', `Settlement pending #${buy.contractId}: ${settlement.error}`, { contractId: buy.contractId });
+            // Outcome unknown past the duration-aware window: leaving `openTrade`
+            // set and `openPositions` incremented deadlocked this bot behind the
+            // "Open position in progress" gate. Keep the record unsettled (never
+            // counted as a win or loss in performance), release the slot and say
+            // so plainly. Martingale progression is deliberately NOT advanced —
+            // the result is unknown, so neither win nor loss logic may run.
+            const unresolved: TradeRecord = { ...confirmed, error: settlement.error, closedAt: Date.now() };
+            const remaining = this.state.trades.filter(t => t.id !== confirmed.id);
+            this.update({
+                trades: [unresolved, ...remaining],
+                openTrade: null,
+                risk: { ...this.state.risk, openPositions: Math.max(0, this.state.risk.openPositions - 1) },
+            });
+            if (this.running) this.setStatus('scanning', `Settlement unknown: ${settlement.error}`);
+            this.logEvent('error', `Settlement unknown #${buy.contractId}: ${settlement.error} — outcome not recorded, position slot released`, { contractId: buy.contractId });
             return;
         }
         const settled = applySettlementToRecord(confirmed, settlement);

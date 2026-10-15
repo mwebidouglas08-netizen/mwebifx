@@ -335,14 +335,9 @@ export class CopyTradingEngine {
             clearTimeout(this.reconnectTimer);
             this.reconnectTimer = null;
         }
-        if (wasActive) {
-            this.setStatus('stopping', 'Stopping copy trading…');
-            this.logEvent('info', 'Copy trading stopped.');
-        }
         const ws = this.masterSocket;
         this.masterSocket = null;
         if (ws) {
-            // Sync close handlers observe status 'stopping' and fall through to idle.
             try {
                 ws.close();
             } catch {
@@ -350,7 +345,13 @@ export class CopyTradingEngine {
             }
         }
         this.update({ master: { connected: false, loginid: null, balance: null, isVirtual: null } });
-        if (wasActive && !ws) this.setStatus('idle', 'Stopped');
+        // Settle to idle directly instead of waiting on the socket's async
+        // onclose: browsers do not guarantee onclose fires promptly (or at all)
+        // after a local close, which left the status stuck on 'stopping'.
+        if (wasActive) {
+            this.setStatus('idle', 'Stopped');
+            this.logEvent('info', 'Copy trading stopped.');
+        }
     }
 
     private openSocket(token: string, handlers: SocketHandlers): WebSocket {

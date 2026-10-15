@@ -37,6 +37,7 @@ import {
     monitorUntilSettled,
     releaseQuote,
     requestQuote,
+    settlementTimeoutMs,
     ProposalQuote,
 } from '../deriv/execution';
 import { accountBalance, currentLoginId, isApiReady, isAuthorized, getTicksHistory } from '../deriv/api';
@@ -640,10 +641,28 @@ export class OUBotEngine {
         this.setStatus('monitoring', `Monitoring contract #${buy.contractId}…`);
 
         const meta = this.symbols.find(x => x.symbol === opp.symbol);
-        const settlement = await monitorUntilSettled(buy.contractId, meta?.pipSize ?? 2);
+        const settlement = await monitorUntilSettled(
+            buy.contractId,
+            meta?.pipSize ?? 2,
+            undefined,
+            settlementTimeoutMs(cfg.duration, cfg.durationUnit)
+        );
         if ('error' in settlement) {
-            if (this.running) this.setStatus('scanning', `Settlement pending: ${settlement.error}`);
-            this.logEvent('error', `Settlement pending for #${buy.contractId}: ${settlement.error}`, { contractId: buy.contractId });
+            // The contract may still be live on Deriv's side, but its outcome is
+            // unknown past the duration-aware window. Leaving `openTrade` set and
+            // `openPositions` incremented permanently deadlocked the engine behind
+            // the "Open position limit reached" gate. Record the failure on the
+            // trade (still excluded from performance — no fabricated win/loss),
+            // release the slot so the scan loop can continue, and say so plainly.
+            const failed: TradeRecord = { ...confirmed, error: settlement.error, closedAt: Date.now() };
+            const remaining = this.state.trades.filter(t => t.id !== confirmed.id);
+            this.update({
+                trades: [failed, ...remaining],
+                openTrade: null,
+                risk: { ...this.state.risk, openPositions: Math.max(0, this.state.risk.openPositions - 1) },
+            });
+            if (this.running) this.setStatus('scanning', `Settlement unknown: ${settlement.error}`);
+            this.logEvent('error', `Settlement unknown for #${buy.contractId}: ${settlement.error} — outcome not recorded, position slot released`, { contractId: buy.contractId });
             return;
         }
         const settled = applySettlementToRecord(confirmed, settlement);

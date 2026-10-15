@@ -468,9 +468,19 @@ export class BulkTraderEngine {
             try {
                 const settlement = await monitorUntilSettled(record.contractId as number, 2);
                 if ('error' in settlement) {
+                    // The contract is still open or the outcome is unknown —
+                    // count it as failed so requested = settled + failed always
+                    // holds, and the record stays unsettled (never a fake win/loss).
+                    this.update({
+                        trades: [
+                            { ...record, error: settlement.error, closedAt: Date.now() },
+                            ...this.state.trades.filter(t => t.id !== record.id),
+                        ],
+                    });
+                    this.bump({ failed: 1 });
                     this.logEvent(
                         'error',
-                        `Settlement pending for #${record.contractId}: ${settlement.error}`,
+                        `Settlement pending for #${record.contractId}: ${settlement.error} — counted as failed`,
                         { contractId: record.contractId }
                     );
                     return;
@@ -487,9 +497,16 @@ export class BulkTraderEngine {
                     { contractId: settled.contractId, result: settled.result, profit: settled.profit }
                 );
             } catch (e: any) {
+                this.update({
+                    trades: [
+                        { ...record, error: e?.message || 'settlement error', closedAt: Date.now() },
+                        ...this.state.trades.filter(t => t.id !== record.id),
+                    ],
+                });
+                this.bump({ failed: 1 });
                 this.logEvent(
                     'error',
-                    `Settlement failed for #${record.contractId}: ${e?.message || 'unexpected error'}`,
+                    `Settlement failed for #${record.contractId}: ${e?.message || 'unexpected error'} — counted as failed`,
                     { contractId: record.contractId }
                 );
             } finally {
@@ -533,7 +550,16 @@ export class BulkTraderEngine {
                 );
             })
             .catch((e: any) => {
-                this.logEvent('error', `PAPER settle failed: ${e?.message || 'unexpected error'}`);
+                // Bought but never settled — count as failed so the run's
+                // requested = settled + failed accounting still holds.
+                this.update({
+                    trades: [
+                        { ...record, error: e?.message || 'paper settle error', closedAt: Date.now() },
+                        ...this.state.trades.filter(t => t.id !== record.id),
+                    ],
+                });
+                this.bump({ failed: 1 });
+                this.logEvent('error', `PAPER settle failed: ${e?.message || 'unexpected error'} — counted as failed`);
             })
             .finally(() => {
                 this.openMonitors -= 1;

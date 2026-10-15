@@ -5,6 +5,7 @@ import { isDemoAccount } from '@/utils/account-helpers';
 import { useBulkTrader } from '@/bot/use-engine';
 import { bulkTrader, DEFAULT_BULK_CONFIG, type BulkTradeConfig } from '@/bot/engine/bulk-trader';
 import type { TradeRecord } from '@/bot/core/types';
+import { HubNote, HubPage, HubPageHeader } from '@/components/hub-page';
 import './bulk-trader.scss';
 
 const SYMBOLS = [
@@ -47,6 +48,14 @@ const EVENT_LABEL: Record<string, string> = {
     risk: 'Risk',
 };
 
+const STATUS_TONE: Record<string, string> = {
+    idle: 'hub-badge--idle',
+    starting: 'hub-badge--running',
+    running: 'hub-badge--running',
+    stopping: 'hub-badge--idle',
+    error: 'hub-badge--error',
+};
+
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 const TradeRow = ({ trade }: { trade: TradeRecord }) => (
@@ -64,10 +73,10 @@ const TradeRow = ({ trade }: { trade: TradeRecord }) => (
         <td>{money(trade.stake)}</td>
         <td>{money(trade.payout)}</td>
         <td>{trade.stage}</td>
-        <td className={trade.result === 'win' ? 'pos' : trade.result === 'loss' ? 'neg' : ''}>
+        <td className={trade.result === 'win' ? 'hub-pos' : trade.result === 'loss' ? 'hub-neg' : ''}>
             {trade.result || '—'}
         </td>
-        <td className={(trade.profit ?? 0) >= 0 ? 'pos' : 'neg'}>
+        <td className={(trade.profit ?? 0) >= 0 ? 'hub-pos' : 'hub-neg'}>
             {trade.profit !== undefined ? money(trade.profit) : '—'}
         </td>
         <td>{trade.simulated ? 'paper' : 'live'}</td>
@@ -154,42 +163,48 @@ const BulkTraderPage = observer(() => {
     const totalExposure = (Number(form.stake) || 0) * form.count;
 
     return (
-        <div className='bulk-page'>
-            <header className='bulk-head'>
-                <div>
-                    <h2>Bulk Trader</h2>
-                    <p className='bulk-sub'>
-                        Fires one identical contract N times in a burst, with a concurrency cap and live progress.
-                        Buys use Deriv&apos;s public data for pricing and require an authorized session for orders.
-                    </p>
-                </div>
-                <div className='bulk-status'>
-                    <span className={`bulk-badge bulk-badge--${state.status}`}>{state.status}</span>
-                    <span className={`bulk-acct ${isDemo ? 'bulk-acct--demo' : ''}`}>
-                        {!isLoggedIn ? 'Guest · signals only' : `${isDemo ? 'Demo' : 'Real'} · ${activeLoginid}`}
-                    </span>
-                </div>
-            </header>
+        <HubPage className='bulk-page'>
+            <HubPageHeader
+                title='Bulk Trader'
+                subtitle="Fires one identical contract N times in a burst, with a concurrency cap and live progress. Buys use Deriv's public data for pricing and require an authorized session for orders."
+                badge={
+                    <>
+                        <span className={`hub-badge ${STATUS_TONE[state.status] ?? 'hub-badge--idle'}`}>
+                            {state.status}
+                        </span>
+                        <span
+                            className={[
+                                'hub-badge',
+                                !isLoggedIn ? 'hub-badge--guest' : isDemo ? 'hub-badge--demo' : 'hub-badge--real',
+                            ]
+                                .filter(Boolean)
+                                .join(' ')}
+                        >
+                            {!isLoggedIn ? 'Guest · signals only' : `${isDemo ? 'Demo' : 'Real'} · ${activeLoginid}`}
+                        </span>
+                    </>
+                }
+            />
 
-            <div className='bulk-risk' role='note'>
+            <HubNote tone='risk'>
                 N parallel buys multiply your exposure by N. At {money(Number(form.stake) || 0)} × {form.count}{' '}
                 contracts, a full run commits up to{' '}
                 <strong>{money(totalExposure)} in total stake</strong> before any settlement — and every losing
                 contract loses its stake. Size the count like you would size leverage, not like a loop counter.
-            </div>
+            </HubNote>
 
             {paperLocked && (
-                <div className='bulk-notice bulk-notice--login' role='note'>
+                <HubNote tone='info'>
                     Not logged in — paper trading is locked on so nothing can place an order. Log in to switch
                     between paper and live.{' '}
-                    <button type='button' className='bulk-btn' onClick={() => run_panel?.showLoginDialog?.()}>
+                    <button type='button' className='hub-btn hub-btn--primary hub-btn--sm' onClick={() => run_panel?.showLoginDialog?.()}>
                         Log in
                     </button>
-                </div>
+                </HubNote>
             )}
 
             <section className='bulk-controls' aria-label='Bulk trade parameters'>
-                <label>
+                <label className='hub-field'>
                     Symbol
                     <select value={form.symbol} onChange={e => patch('symbol', e.target.value)}>
                         {SYMBOLS.map(s => (
@@ -199,7 +214,7 @@ const BulkTraderPage = observer(() => {
                         ))}
                     </select>
                 </label>
-                <label>
+                <label className='hub-field'>
                     Contract type
                     <select
                         value={form.contractType}
@@ -213,7 +228,7 @@ const BulkTraderPage = observer(() => {
                     </select>
                 </label>
                 {form.contractType.startsWith('DIGIT') && (
-                    <label>
+                    <label className='hub-field'>
                         Barrier (0-9)
                         <input
                             type='number'
@@ -224,7 +239,7 @@ const BulkTraderPage = observer(() => {
                         />
                     </label>
                 )}
-                <label>
+                <label className='hub-field'>
                     Stake
                     <input
                         type='number'
@@ -234,7 +249,7 @@ const BulkTraderPage = observer(() => {
                         onChange={e => patch('stake', Number(e.target.value) || 0)}
                     />
                 </label>
-                <label>
+                <label className='hub-field'>
                     Count (1-50)
                     <input
                         type='number'
@@ -244,7 +259,7 @@ const BulkTraderPage = observer(() => {
                         onChange={e => patch('count', clamp(Number(e.target.value) || 1, 1, 50))}
                     />
                 </label>
-                <label>
+                <label className='hub-field'>
                     Duration
                     <input
                         type='number'
@@ -253,7 +268,7 @@ const BulkTraderPage = observer(() => {
                         onChange={e => patch('duration', Math.max(1, Number(e.target.value) || 1))}
                     />
                 </label>
-                <label>
+                <label className='hub-field'>
                     Unit
                     <select
                         value={form.durationUnit}
@@ -266,7 +281,7 @@ const BulkTraderPage = observer(() => {
                         ))}
                     </select>
                 </label>
-                <label>
+                <label className='hub-field'>
                     Max concurrent
                     <input
                         type='number'
@@ -302,10 +317,10 @@ const BulkTraderPage = observer(() => {
                         {!isLoggedIn ? '(log in first)' : isDemo ? '(demo orders)' : '(unavailable on a real account)'}
                     </span>
                 </label>
-                <div className='bulk-actions'>
+                <div className='hub-actions'>
                     <button
                         type='button'
-                        className='bulk-btn bulk-btn--primary'
+                        className='hub-btn hub-btn--primary'
                         disabled={state.status === 'starting' || state.status === 'running' || state.status === 'stopping'}
                         onClick={onStart}
                     >
@@ -313,13 +328,13 @@ const BulkTraderPage = observer(() => {
                     </button>
                     <button
                         type='button'
-                        className='bulk-btn'
+                        className='hub-btn hub-btn--danger'
                         disabled={!isRunning || state.status === 'stopping'}
                         onClick={() => bulkTrader.stop()}
                     >
                         Stop
                     </button>
-                    <button type='button' className='bulk-btn bulk-btn--danger' onClick={onEmergencyStop}>
+                    <button type='button' className='hub-btn hub-btn--danger' onClick={onEmergencyStop}>
                         Emergency stop
                     </button>
                 </div>
@@ -329,48 +344,48 @@ const BulkTraderPage = observer(() => {
                 {formError || state.message}
             </p>
 
-            <section className='bulk-section' aria-live='polite'>
+            <section className='hub-section' aria-live='polite'>
                 <h3>
                     Progress <em>({progress.bought} bought · {progress.settled} settled of {progress.requested})</em>
                 </h3>
                 <div className='bulk-progress' role='progressbar' aria-valuenow={settledPct} aria-valuemin={0} aria-valuemax={100}>
                     <span style={{ width: `${settledPct}%` }} />
                 </div>
-                <div className='bulk-grid bulk-grid--stats'>
-                    <div className='bulk-stat'>
+                <div className='hub-stats'>
+                    <div className='hub-stat'>
                         <span>Requested</span>
                         <strong>{progress.requested}</strong>
                     </div>
-                    <div className='bulk-stat'>
+                    <div className='hub-stat'>
                         <span>Bought</span>
                         <strong>{progress.bought}</strong>
                     </div>
-                    <div className='bulk-stat'>
+                    <div className='hub-stat'>
                         <span>Settled</span>
                         <strong>{progress.settled}</strong>
                     </div>
-                    <div className='bulk-stat'>
+                    <div className='hub-stat'>
                         <span>Won</span>
-                        <strong className='pos'>{progress.won}</strong>
+                        <strong className='hub-pos'>{progress.won}</strong>
                     </div>
-                    <div className='bulk-stat'>
+                    <div className='hub-stat'>
                         <span>Lost</span>
-                        <strong className='neg'>{progress.lost}</strong>
+                        <strong className='hub-neg'>{progress.lost}</strong>
                     </div>
-                    <div className='bulk-stat'>
+                    <div className='hub-stat'>
                         <span>Failed</span>
-                        <strong className='neg'>{progress.failed}</strong>
+                        <strong className='hub-neg'>{progress.failed}</strong>
                     </div>
                 </div>
             </section>
 
-            <section className='bulk-section'>
+            <section className='hub-section'>
                 <h3>Trades ({state.trades.length})</h3>
                 {state.trades.length === 0 ? (
-                    <p className='bulk-empty'>No trades yet — start a run to see contracts land here.</p>
+                    <p className='hub-empty'>No trades yet — start a run to see contracts land here.</p>
                 ) : (
-                    <div className='bulk-table-wrap'>
-                        <table className='bulk-table'>
+                    <div className='hub-table-wrap'>
+                        <table className='hub-table'>
                             <thead>
                                 <tr>
                                     <th>Contract</th>
@@ -395,28 +410,28 @@ const BulkTraderPage = observer(() => {
                 )}
             </section>
 
-            <section className='bulk-section' aria-live='polite'>
+            <section className='hub-section' aria-live='polite'>
                 <h3>Events ({state.events.length})</h3>
                 {state.events.length === 0 ? (
-                    <p className='bulk-empty'>Engine events will stream here once a run starts.</p>
+                    <p className='hub-empty'>Engine events will stream here once a run starts.</p>
                 ) : (
-                    <div className='bulk-feed' ref={feedRef}>
+                    <div className='hub-log' ref={feedRef}>
                         {state.events.map(event => (
-                            <div key={event.id} className={`bulk-event bulk-event--${EVENT_TONE[event.type] ?? 'info'}`}>
-                                <span className='bulk-event-time'>{timeAt(event.at)}</span>
-                                <span className='bulk-event-type'>{EVENT_LABEL[event.type] ?? event.type}</span>
-                                <span className='bulk-event-msg'>{event.message}</span>
+                            <div key={event.id} className='hub-log__row' data-tone={EVENT_TONE[event.type] ?? 'info'}>
+                                <span className='hub-log__time'>{timeAt(event.at)}</span>
+                                <span className='hub-log__type'>{EVENT_LABEL[event.type] ?? event.type}</span>
+                                <span className='hub-log__msg'>{event.message}</span>
                             </div>
                         ))}
                     </div>
                 )}
             </section>
 
-            <p className='bulk-footnote'>
+            <HubNote tone='risk'>
                 Honest note: a bulk run is N separate contracts, not one diversified position — losing streaks cost
                 the stake on every leg. Paper trading simulates fills and settlements; it never spends real funds.
-            </p>
-        </div>
+            </HubNote>
+        </HubPage>
     );
 });
 

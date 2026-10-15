@@ -4,6 +4,7 @@ import { useStore } from '@/hooks/useStore';
 import { isDemoAccount } from '@/utils/account-helpers';
 import { useCopyTrading } from '@/bot/use-engine';
 import { copyTrading } from '@/bot/engine/copy-trading';
+import { HubNote, HubPage, HubPageHeader } from '@/components/hub-page';
 import './copy-trading.scss';
 
 const timeAt = (ms: number) =>
@@ -29,6 +30,14 @@ const EVENT_LABEL: Record<string, string> = {
     purchase: 'Bought',
     settlement: 'Settled',
     risk: 'Risk',
+};
+
+const STATUS_TONE: Record<string, string> = {
+    idle: 'hub-badge--idle',
+    connecting: 'hub-badge--running',
+    running: 'hub-badge--running',
+    stopping: 'hub-badge--idle',
+    error: 'hub-badge--error',
 };
 
 const money = (n: number) => n.toFixed(2);
@@ -114,44 +123,50 @@ const CopyTradingPage = observer(() => {
     const exampleCopied = exampleMasterStake * state.settings.stakeMultiplier;
 
     return (
-        <div className='copy-page'>
-            <header className='copy-head'>
-                <div>
-                    <h2>Copy Trading</h2>
-                    <p className='copy-sub'>
-                        Mirror a master account&apos;s trades into one or more copier accounts with a stake
-                        multiplier and cap. The engine watches the master and replays each proposal downstream.
-                    </p>
-                </div>
-                <div className='copy-status'>
-                    <span className={`copy-badge copy-badge--${state.status}`}>{state.status}</span>
-                    <span className={`copy-acct ${localIsDemo ? 'copy-acct--demo' : ''}`}>
-                        {!isLoggedIn ? 'Guest · signals only' : `${localIsDemo ? 'Demo' : 'Real'} · ${activeLoginid}`}
-                    </span>
-                </div>
-            </header>
+        <HubPage className='copy-page'>
+            <HubPageHeader
+                title='Copy Trading'
+                subtitle='Mirror a master account&#39;s trades into one or more copier accounts with a stake multiplier and cap. The engine watches the master and replays each proposal downstream.'
+                badge={
+                    <>
+                        <span className={`hub-badge ${STATUS_TONE[state.status] ?? 'hub-badge--idle'}`}>
+                            {state.status}
+                        </span>
+                        <span
+                            className={[
+                                'hub-badge',
+                                !isLoggedIn ? 'hub-badge--guest' : localIsDemo ? 'hub-badge--demo' : 'hub-badge--real',
+                            ]
+                                .filter(Boolean)
+                                .join(' ')}
+                        >
+                            {!isLoggedIn ? 'Guest · signals only' : `${localIsDemo ? 'Demo' : 'Real'} · ${activeLoginid}`}
+                        </span>
+                    </>
+                }
+            />
 
-            <div className='copy-note' role='note'>
+            <HubNote tone='risk'>
                 Only demo (virtual) copier accounts are accepted by the engine — real-money copiers are rejected on
-                purpose. The stake multiplier scales losses as well as wins: a master staking 10 USD at ×1.5
-                becomes {money(exampleCopied)} per trade here, losing streaks included.
-            </div>
+                purpose. The stake multiplier scales losses as well as wins: a master staking 10 USD at ×1.5 becomes{' '}
+                {money(exampleCopied)} per trade here, losing streaks included.
+            </HubNote>
 
             {!isLoggedIn && (
-                <div className='copy-notice copy-notice--login' role='note'>
+                <HubNote tone='info'>
                     You can configure copiers and settings while logged out, but connecting a master requires a
                     session.{' '}
-                    <button type='button' className='copy-btn' onClick={() => run_panel?.showLoginDialog?.()}>
+                    <button type='button' className='hub-btn hub-btn--primary hub-btn--sm' onClick={() => run_panel?.showLoginDialog?.()}>
                         Log in to connect
                     </button>
-                </div>
+                </HubNote>
             )}
 
-            <section className='copy-section'>
+            <section className='hub-section' aria-label='Master account'>
                 <h3>Master account</h3>
                 <div className='copy-master'>
-                    <label className='copy-field'>
-                        <span>Master API token</span>
+                    <label className='hub-field'>
+                        Master API token
                         <input
                             type='password'
                             autoComplete='off'
@@ -162,7 +177,7 @@ const CopyTradingPage = observer(() => {
                     </label>
                     <button
                         type='button'
-                        className='copy-btn copy-btn--primary'
+                        className='hub-btn hub-btn--primary'
                         disabled={state.status === 'connecting' || state.status === 'stopping'}
                         onClick={connect}
                     >
@@ -170,7 +185,7 @@ const CopyTradingPage = observer(() => {
                     </button>
                     <button
                         type='button'
-                        className='copy-btn'
+                        className='hub-btn hub-btn--danger'
                         disabled={!isRunning}
                         onClick={stop}
                     >
@@ -183,7 +198,7 @@ const CopyTradingPage = observer(() => {
                     {state.master.connected ? (
                         <>
                             <strong>{state.master.loginid || 'connected'}</strong>
-                            <span className={`copy-pill ${state.master.isVirtual ? 'copy-pill--demo' : ''}`}>
+                            <span className={`hub-badge hub-badge--sm ${state.master.isVirtual ? 'hub-badge--demo' : 'hub-badge--real'}`}>
                                 {state.master.isVirtual ? 'Demo' : 'Real'}
                             </span>
                             <span className='copy-balance'>
@@ -196,11 +211,11 @@ const CopyTradingPage = observer(() => {
                 </div>
             </section>
 
-            <section className='copy-section'>
+            <section className='hub-section' aria-label='Copiers'>
                 <h3>Copiers ({state.copiers.length})</h3>
                 <div className='copy-add'>
-                    <label className='copy-field'>
-                        <span>Copier token</span>
+                    <label className='hub-field'>
+                        Copier token
                         <input
                             type='password'
                             autoComplete='off'
@@ -209,8 +224,8 @@ const CopyTradingPage = observer(() => {
                             onChange={e => setCopierToken(e.target.value)}
                         />
                     </label>
-                    <label className='copy-field'>
-                        <span>Label</span>
+                    <label className='hub-field'>
+                        Label
                         <input
                             type='text'
                             placeholder='e.g. Demo A'
@@ -220,7 +235,7 @@ const CopyTradingPage = observer(() => {
                     </label>
                     <button
                         type='button'
-                        className='copy-btn copy-btn--primary'
+                        className='hub-btn hub-btn--primary'
                         disabled={!copierToken.trim()}
                         onClick={addCopier}
                     >
@@ -229,13 +244,13 @@ const CopyTradingPage = observer(() => {
                 </div>
 
                 {state.copiers.length === 0 ? (
-                    <p className='copy-empty'>No copiers yet — add a demo account token to start mirroring.</p>
+                    <p className='hub-empty'>No copiers yet — add a demo account token to start mirroring.</p>
                 ) : (
                     <div className='copy-copiers'>
                         {state.copiers.map(copier => (
-                            <article key={copier.id} className={`copy-card ${copier.enabled ? '' : 'copy-card--off'}`}>
+                            <article key={copier.id} className={`hub-panel hub-lift copy-card ${copier.enabled ? '' : 'copy-card--off'}`}>
                                 <div className='copy-card__top'>
-                                    <span className='copy-card__name'>{copier.label}</span>
+                                    <h3>{copier.label}</h3>
                                     <span
                                         className={`copy-dot ${copier.authorized ? 'copy-dot--on' : ''}`}
                                         title={copier.authorized ? 'Authorized' : 'Not authorized'}
@@ -251,7 +266,7 @@ const CopyTradingPage = observer(() => {
                                     </label>
                                     <button
                                         type='button'
-                                        className='copy-btn copy-btn--danger'
+                                        className='hub-btn hub-btn--danger hub-btn--sm'
                                         onClick={() => removeCopier(copier.id, copier.label)}
                                     >
                                         Remove
@@ -280,7 +295,7 @@ const CopyTradingPage = observer(() => {
                 )}
             </section>
 
-            <section className='copy-section'>
+            <section className='hub-section' aria-label='Replication settings'>
                 <h3>Replication settings</h3>
                 <div className='copy-settings'>
                     <label className='copy-toggle'>
@@ -291,8 +306,8 @@ const CopyTradingPage = observer(() => {
                         />
                         <span>Replication enabled</span>
                     </label>
-                    <label className='copy-field'>
-                        <span>Stake multiplier (0.1 – 10)</span>
+                    <label className='hub-field'>
+                        Stake multiplier (0.1 – 10)
                         <input
                             type='number'
                             step={0.1}
@@ -309,8 +324,8 @@ const CopyTradingPage = observer(() => {
                             }}
                         />
                     </label>
-                    <label className='copy-field'>
-                        <span>Stake cap (empty = no cap)</span>
+                    <label className='hub-field'>
+                        Stake cap (empty = no cap)
                         <input
                             type='number'
                             step={0.5}
@@ -336,53 +351,54 @@ const CopyTradingPage = observer(() => {
                 {state.message}
             </p>
 
-            <div className='copy-grid copy-grid--stats'>
-                <div className='copy-stat'>
+            <div className='hub-stats'>
+                <div className='hub-stat'>
                     <span>Observed</span>
                     <strong>{state.stats.observed}</strong>
                 </div>
-                <div className='copy-stat'>
+                <div className='hub-stat'>
                     <span>Copied</span>
                     <strong>{state.stats.copied}</strong>
                 </div>
-                <div className='copy-stat'>
+                <div className='hub-stat'>
                     <span>Failed</span>
-                    <strong className='neg'>{state.stats.failed}</strong>
+                    <strong className='hub-neg'>{state.stats.failed}</strong>
                 </div>
-                <div className='copy-stat'>
+                <div className='hub-stat'>
                     <span>Skipped</span>
                     <strong>{state.stats.skipped}</strong>
                 </div>
             </div>
 
-            <section className='copy-section' aria-live='polite'>
+            <section className='hub-section' aria-live='polite' aria-label='Events'>
                 <h3>Events ({state.events.length})</h3>
                 {state.events.length === 0 ? (
-                    <p className='copy-empty'>
+                    <p className='hub-empty'>
                         No events yet — connect a master account to watch proposals stream in.
                     </p>
                 ) : (
-                    <div className='copy-feed' ref={feedRef}>
+                    <div className='hub-log' ref={feedRef}>
                         {state.events.map(event => (
                             <div
                                 key={event.id}
-                                className={`copy-event copy-event--${EVENT_TONE[event.type] ?? 'info'}`}
+                                className='hub-log__row'
+                                data-tone={EVENT_TONE[event.type] ?? 'info'}
                             >
-                                <span className='copy-event-time'>{timeAt(event.at)}</span>
-                                <span className='copy-event-type'>{EVENT_LABEL[event.type] ?? event.type}</span>
-                                <span className='copy-event-msg'>{event.message}</span>
+                                <span className='hub-log__time'>{timeAt(event.at)}</span>
+                                <span className='hub-log__type'>{EVENT_LABEL[event.type] ?? event.type}</span>
+                                <span className='hub-log__msg'>{event.message}</span>
                             </div>
                         ))}
                     </div>
                 )}
             </section>
 
-            <p className='copy-footnote'>
+            <HubNote tone='risk'>
                 Honest note: copying replicates the master&apos;s decisions, not their results — the master may be
                 on a demo account, may change strategy at any time, and a multiplier raises the cost of every loss
                 it mirrors. Start with a multiplier of 1 and a tight stake cap.
-            </p>
-        </div>
+            </HubNote>
+        </HubPage>
     );
 });
 

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useStore } from '@/hooks/useStore';
 import { fetchHistoricalTicks, type HistoricalTicks } from '@/bot/deriv/history';
+import { HubNote, HubPage, HubPageHeader } from '@/components/hub-page';
 import './tradingview.scss';
 
 interface TvSymbol {
@@ -43,7 +44,7 @@ const TickChart = ({ ticks }: { ticks: HistoricalTicks }) => {
             .join(' ');
     }, [quotes]);
 
-    if (!path) return <p className='tv-empty'>No ticks to draw yet.</p>;
+    if (!path) return <p className='hub-empty'>No ticks to draw yet.</p>;
 
     const min = Math.min(...quotes);
     const max = Math.max(...quotes);
@@ -158,59 +159,56 @@ const TradingViewPage = observer(() => {
     }, [showLocal, selected.deriv]);
 
     return (
-        <div className='tv-page'>
-            <header className='tv-head'>
-                <div>
-                    <h2>TradingView Chart</h2>
-                    <p className='tv-sub'>
-                        The TradingView advanced chart embedded in the workspace, plus a local tick chart that
-                        runs when the embed cannot load.
-                    </p>
-                </div>
-                <div className='tv-controls'>
-                    <label>
-                        Symbol
-                        <select value={symbolKey} onChange={e => setSymbolKey(e.target.value)}>
-                            {SYMBOLS.map(s => (
-                                <option key={s.deriv} value={s.deriv}>
-                                    {s.label}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
-                    <div className='tv-modes' role='tablist' aria-label='Chart source'>
-                        <button
-                            type='button'
-                            role='tab'
-                            aria-selected={mode === 'tradingview'}
-                            className={`tv-mode ${mode === 'tradingview' ? 'tv-mode--on' : ''}`}
-                            onClick={() => {
-                                setMode('tradingview');
-                                setEmbedState('loading');
-                                setAttempt(value => value + 1);
-                            }}
-                        >
-                            TradingView
-                        </button>
-                        <button
-                            type='button'
-                            role='tab'
-                            aria-selected={mode === 'local'}
-                            className={`tv-mode ${mode === 'local' ? 'tv-mode--on' : ''}`}
-                            onClick={() => setMode('local')}
-                        >
-                            Local ticks
-                        </button>
+        <HubPage className='tv-page'>
+            <HubPageHeader
+                title='TradingView Chart'
+                subtitle='The TradingView advanced chart embedded in the workspace, plus a local tick chart that runs when the embed cannot load.'
+                actions={
+                    <div className='tv-controls'>
+                        <label className='hub-field'>
+                            Symbol
+                            <select value={symbolKey} onChange={e => setSymbolKey(e.target.value)}>
+                                {SYMBOLS.map(s => (
+                                    <option key={s.deriv} value={s.deriv}>
+                                        {s.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <div className='hub-seg' role='tablist' aria-label='Chart source'>
+                            <button
+                                type='button'
+                                role='tab'
+                                aria-selected={mode === 'tradingview'}
+                                className={`hub-seg__btn ${mode === 'tradingview' ? 'hub-seg__btn--on' : ''}`}
+                                onClick={() => {
+                                    setMode('tradingview');
+                                    setEmbedState('loading');
+                                    setAttempt(value => value + 1);
+                                }}
+                            >
+                                TradingView
+                            </button>
+                            <button
+                                type='button'
+                                role='tab'
+                                aria-selected={mode === 'local'}
+                                className={`hub-seg__btn ${mode === 'local' ? 'hub-seg__btn--on' : ''}`}
+                                onClick={() => setMode('local')}
+                            >
+                                Local ticks
+                            </button>
+                        </div>
                     </div>
-                </div>
-            </header>
+                }
+            />
 
             {!selected.onTradingView && (
-                <div className='tv-note tv-note--warn' role='note'>
+                <HubNote tone='risk'>
                     TradingView does not carry Deriv synthetic indices — the widget will likely report this
                     symbol as unavailable. The local tick chart below reads the same instrument straight from
                     Deriv&apos;s public feed.
-                </div>
+                </HubNote>
             )}
 
             {mode === 'tradingview' && embedState === 'failed' && (
@@ -225,7 +223,7 @@ const TradingViewPage = observer(() => {
                     <div className='tv-fallback__actions'>
                         <button
                             type='button'
-                            className='tv-btn tv-btn--primary'
+                            className='hub-btn hub-btn--primary'
                             onClick={() => {
                                 setEmbedState('loading');
                                 setAttempt(value => value + 1);
@@ -233,7 +231,7 @@ const TradingViewPage = observer(() => {
                         >
                             Retry the embed
                         </button>
-                        <button type='button' className='tv-btn' onClick={() => setMode('local')}>
+                        <button type='button' className='hub-btn' onClick={() => setMode('local')}>
                             Use local ticks only
                         </button>
                     </div>
@@ -248,24 +246,22 @@ const TradingViewPage = observer(() => {
             )}
 
             {showLocal && (
-                <div className='tv-local'>
-                    <div className='tv-local__head'>
-                        <h3>
-                            Local tick chart — {selected.label} <em>(last 100 ticks from Deriv)</em>
-                        </h3>
-                    </div>
-                    {tickLoading && <p className='tv-empty'>Loading ticks…</p>}
+                <section className='hub-section' aria-label='Local tick chart'>
+                    <h3>
+                        Local tick chart — {selected.label} <em>(last 100 ticks from Deriv)</em>
+                    </h3>
+                    {tickLoading && <p className='hub-empty'>Loading ticks…</p>}
                     {tickError && <div className='tv-error'>{tickError}</div>}
                     {!tickLoading && !tickError && ticks && <TickChart ticks={ticks} />}
-                </div>
+                </section>
             )}
 
-            <p className='tv-footnote'>
+            <HubNote tone='info'>
                 Honest note: the embedded chart is provided by TradingView — its data, symbols and uptime are
                 subject to TradingView&apos;s feed and terms, not this app. The local chart uses Deriv&apos;s
                 public <code>ticks_history</code> feed and is a plain price line, not a TradingView product.
-            </p>
-        </div>
+            </HubNote>
+        </HubPage>
     );
 });
 

@@ -49,6 +49,7 @@ import {
     isMarketUnavailableError,
     monitorUntilSettled,
     requestContractQuote,
+    settlementTimeoutMs,
 } from '../deriv/execution';
 import { accountBalance, currentLoginId, getContractsFor, getTicksHistory, isApiReady, isAuthorized } from '../deriv/api';
 import { isDemoAccount } from '@/utils/account-helpers';
@@ -389,16 +390,16 @@ export class SignalScannerEngine {
     }
 
     /** Resolve on the next real tick for `symbol`, or reject after `timeoutMs`. */
-    private waitForNextTick(symbol: string, timeoutMs = 10000): Promise<number> {
+    private waitForNextTick(symbol: string, timeoutMs = 10000): Promise<{ digit: number; quote: number }> {
         return new Promise((resolve, reject) => {
             const timer = setTimeout(() => {
                 const list = this.tickWaiters.get(symbol) || [];
                 this.tickWaiters.set(symbol, list.filter(cb => cb !== handler));
                 reject(new Error(`No tick for ${symbol} within ${timeoutMs}ms`));
             }, timeoutMs);
-            const handler = (digit: number) => {
+            const handler = (digit: number, quote: number) => {
                 clearTimeout(timer);
-                resolve(digit);
+                resolve({ digit, quote });
             };
             const list = this.tickWaiters.get(symbol) || [];
             list.push(handler);
@@ -755,10 +756,27 @@ export class SignalScannerEngine {
         this.setStatus('monitoring', `Monitoring contract #${buy.contractId}…`);
 
         const meta = this.symbols.find(x => x.symbol === signal.symbol);
-        const settlement = await monitorUntilSettled(buy.contractId, meta?.pipSize ?? 2);
+        const settlement = await monitorUntilSettled(
+            buy.contractId,
+            meta?.pipSize ?? 2,
+            undefined,
+            settlementTimeoutMs(cfg.duration, cfg.durationUnit)
+        );
         if ('error' in settlement) {
-            if (this.running) this.setStatus('scanning', `Settlement pending: ${settlement.error}`);
-            this.logEvent('error', `Settlement pending for #${buy.contractId}: ${settlement.error}`, { contractId: buy.contractId });
+            // Outcome unknown past the duration-aware window: keep the record
+            // unsettled (never counted as a win or loss), release the open-position
+            // slot so the scanner is not permanently stuck behind its own risk
+            // gate, and say so plainly. Martingale is NOT advanced — the result
+            // is unknown, so neither win nor loss logic may run.
+            const unresolved: TradeRecord = { ...confirmed, error: settlement.error, closedAt: Date.now() };
+            const remaining = this.state.trades.filter(t => t.id !== confirmed.id);
+            this.update({
+                trades: [unresolved, ...remaining],
+                openTrade: null,
+                risk: { ...this.state.risk, openPositions: Math.max(0, this.state.risk.openPositions - 1) },
+            });
+            if (this.running) this.setStatus('scanning', `Settlement unknown: ${settlement.error}`);
+            this.logEvent('error', `Settlement unknown for #${buy.contractId}: ${settlement.error} — outcome not recorded, position slot released`, { contractId: buy.contractId });
             return true;
         }
         const settled = applySettlementToRecord(confirmed, settlement);
@@ -829,9 +847,15 @@ export class SignalScannerEngine {
         );
         this.setStatus('monitoring', `Paper trade open on ${signal.symbol} — waiting for next tick…`);
 
-        let digit: number;
+        // Rise/fall paper trades settle on real quote movement: entry quote at
+        // open vs the next tick's quote. A single digit cannot decide CALL/PUT,
+        // so previously every paper rise/fall trade settled as a fabricated loss.
+        const isRiseFall = signal.action === 'CALL' || signal.action === 'PUT';
+        const entryQuote = this.feed?.getSeries(signal.symbol)?.quotes.slice(-1)[0];
+
+        let tick: { digit: number; quote: number };
         try {
-            digit = await this.waitForNextTick(signal.symbol, 15000);
+            tick = await this.waitForNextTick(signal.symbol, 15000);
         } catch (e: any) {
             this.update({ openTrade: null });
             if (this.running) this.setStatus('scanning', `Paper trade could not settle: ${e?.message}`);
@@ -839,7 +863,21 @@ export class SignalScannerEngine {
             return;
         }
 
-        const won = paperWon(signal.action, digit, signal.barrier ?? 0);
+        let won: boolean;
+        if (isRiseFall) {
+            if (entryQuote === undefined || !Number.isFinite(entryQuote)) {
+                // No entry quote means the move cannot be judged — record an
+                // unsettled trade rather than inventing a loss.
+                this.update({ openTrade: null });
+                if (this.running) this.setStatus('scanning', 'Paper trade could not settle: no entry quote');
+                this.logEvent('error', `PAPER settle failed: no entry quote for ${signal.symbol} — outcome not recorded`, { symbol: signal.symbol });
+                return;
+            }
+            won = signal.action === 'CALL' ? tick.quote > entryQuote : tick.quote < entryQuote;
+        } else {
+            won = paperWon(signal.action, tick.digit, signal.barrier ?? 0);
+        }
+        const digit = tick.digit;
         const profit = won ? stake * (record.payoutRatio - 1) : -stake;
         const settled: TradeRecord = {
             ...record,
@@ -867,7 +905,9 @@ export class SignalScannerEngine {
         }
         this.logEvent(
             'settlement',
-            `PAPER ${settled.result === 'win' ? 'WIN' : 'LOSS'}: ${signal.displayName} ${ACTION_LABEL[signal.action]} — exit digit ${digit} — ${profit >= 0 ? '+' : ''}${profit.toFixed(2)} (simulated)`,
+            isRiseFall
+                ? `PAPER ${settled.result === 'win' ? 'WIN' : 'LOSS'}: ${signal.displayName} ${ACTION_LABEL[signal.action]} — quote ${entryQuote!.toFixed(6)} → ${tick.quote.toFixed(6)} — ${profit >= 0 ? '+' : ''}${profit.toFixed(2)} (simulated)`
+                : `PAPER ${settled.result === 'win' ? 'WIN' : 'LOSS'}: ${signal.displayName} ${ACTION_LABEL[signal.action]} — exit digit ${digit} — ${profit >= 0 ? '+' : ''}${profit.toFixed(2)} (simulated)`,
             { symbol: signal.symbol, action: signal.action, result: settled.result, profit }
         );
         if (risk.suspended) this.logEvent('risk', `Suspended: ${risk.suspensionReason}`);
@@ -904,8 +944,10 @@ export const paperWon = (action: string, digit: number, barrier: number): boolea
         case 'DIFFER':
             return digit !== barrier;
         default:
-            // Rise/fall cannot be settled from a single digit — treat as no-win.
-            return false;
+            // Rise/fall and unknown actions cannot be settled from a single digit.
+            // Returning false here fabricated losses for every paper CALL/PUT —
+            // callers must settle those on real quote movement instead.
+            throw new Error(`paperWon cannot settle action "${action}" from a digit — settle rise/fall on quotes`);
     }
 };
 

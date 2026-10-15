@@ -3,15 +3,15 @@ import { isTouchDevice } from '@/components/shared/utils/screen/responsive';
 
 /**
  * The initial dark-mode state. An explicit stored `theme` (set once the user
- * toggles) always wins; with no stored choice the app defaults to the light
- * cinematic theme (SmartFlip-class look) rather than forcing dark or chasing
- * the OS preference.
+ * toggles) always wins; with no stored choice the app defaults to dark — the
+ * SmartFlip-class dark-first terminal look — rather than chasing the OS
+ * preference.
  */
 function getInitialDarkMode(): boolean {
     const stored = localStorage.getItem('theme');
     if (stored === 'dark') return true;
     if (stored === 'light') return false;
-    return false;
+    return true;
 }
 
 export default class UiStore {

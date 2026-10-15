@@ -183,6 +183,60 @@ const impossibleBarrierError = (params: Record<string, unknown>): string | null 
     return null;
 };
 
+const VALID_DURATION_UNITS = new Set(['t', 's', 'm', 'h', 'd']);
+
+/**
+ * Reject malformed proposals before they spend a request on the shared
+ * Deriv budget: stake must be positive, duration a whole number >= 1 in a
+ * supported unit, and a digit barrier (when present) an integer 0–9.
+ */
+const validateTradeParams = (params: Record<string, unknown>): string | null => {
+    const amount = Number(params.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+        return `Invalid stake: ${params.amount} — it must be a positive number`;
+    }
+    const duration = Number(params.duration);
+    if (!Number.isInteger(duration) || duration < 1) {
+        return `Invalid duration: ${params.duration} — it must be a whole number of at least 1`;
+    }
+    const unit = String(params.duration_unit ?? '');
+    if (!VALID_DURATION_UNITS.has(unit)) {
+        return `Invalid duration unit: "${params.duration_unit}" — use t (ticks), s, m, h or d`;
+    }
+    if (params.barrier !== undefined) {
+        const b = Number(params.barrier);
+        if (!Number.isInteger(b) || b < 0 || b > 9) {
+            return `Invalid digit barrier: ${params.barrier} — it must be a whole number 0–9`;
+        }
+    }
+    return null;
+};
+
+/**
+ * Wall-clock window to wait for a contract to settle, sized from its own
+ * duration plus head-room for polling. The old hard 60s default timed out
+ * (and risked a stuck open-position slot) on any contract longer than a
+ * minute — e.g. 5-minute or hourly durations.
+ */
+export const settlementTimeoutMs = (duration: number, durationUnit: string): number => {
+    const d = Number.isFinite(duration) && duration >= 1 ? Math.floor(duration) : 1;
+    const headRoom = 90000;
+    switch (durationUnit) {
+        case 's':
+            return d * 1000 + headRoom;
+        case 'm':
+            return d * 60000 + headRoom;
+        case 'h':
+            return d * 3600000 + headRoom;
+        case 'd':
+            return d * 86400000 + headRoom;
+        case 't':
+        default:
+            // Tick contracts: ~5s per tick is a safe upper bound across symbols.
+            return d * 5000 + headRoom;
+    }
+};
+
 /** Parse, stamp the issuing socket and drop quotes that cannot profit. */
 const finalizeQuote = (
     response: any,
@@ -217,6 +271,8 @@ const finalizeQuote = (
 const requestProposal = async (
     params: Record<string, unknown>
 ): Promise<{ quote?: ProposalQuote; error?: string }> => {
+    const invalid = validateTradeParams(params);
+    if (invalid) return { error: invalid };
     const blocked = impossibleBarrierError(params);
     if (blocked) return { error: blocked };
     const first = await sendProposal(params);
@@ -465,10 +521,7 @@ const settleFrom = (poc: any): Settlement => {
         exitTick,
         entryEpoch: poc.entry_tick_time !== undefined ? Number(poc.entry_tick_time) : undefined,
         exitEpoch: poc.exit_tick_time !== undefined ? Number(poc.exit_tick_time) : undefined,
-        exitDigit:
-            exitTick !== undefined && poc.exit_tick_time !== undefined
-                ? undefined
-                : undefined,
+        // exitDigit is derived by the caller via deriveExitDigit (pipSize-dependent).
         barrier: poc.barrier !== undefined ? Number(poc.barrier) : undefined,
         status: poc.status,
         outcome: poc.outcome,

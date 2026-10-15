@@ -1,5 +1,8 @@
 import { ContractOpportunity, RiskLimits, RiskState, TradeRecord } from './types';
 
+/** Deriv's minimum order stake — sizing never goes below it. */
+export const MIN_ORDER_STAKE = 0.35;
+
 export const DEFAULT_RISK_LIMITS: RiskLimits = {
     maxStake: 1,
     maxStakePctEquity: 0.02,
@@ -151,7 +154,24 @@ export const evaluateOpportunity = (
     }
 
     const stake = Math.min(opp.stake, limits.maxStake, equity * limits.maxStakePctEquity);
-    const rounded = Math.max(0.35, Math.round(stake * 100) / 100);
+    let rounded = Math.round(stake * 100) / 100;
+    // Deriv's minimum order stake is 0.35. Floor at it only when the floor
+    // itself still respects both caps — the old unconditional
+    // `Math.max(0.35, …)` could size above `equity * maxStakePctEquity`
+    // (equity < 17.5) or above a sub-0.35 maxStake, violating the very caps
+    // it then claimed to enforce.
+    if (rounded < MIN_ORDER_STAKE) {
+        if (MIN_ORDER_STAKE <= limits.maxStake && MIN_ORDER_STAKE <= equity * limits.maxStakePctEquity) {
+            rounded = MIN_ORDER_STAKE;
+        } else {
+            return {
+                allowed: false,
+                gate: 'stake_too_high',
+                reason: `Sized stake ${rounded.toFixed(2)} is below Deriv's ${MIN_ORDER_STAKE} minimum and cannot be floored without breaching the stake caps (max ${limits.maxStake}, equity cap ${(equity * limits.maxStakePctEquity).toFixed(2)})`,
+                stake: 0,
+            };
+        }
+    }
     if (rounded > limits.maxStake) {
         return {
             allowed: false,

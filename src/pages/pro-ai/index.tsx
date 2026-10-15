@@ -3,7 +3,7 @@ import { observer } from 'mobx-react-lite';
 import { useStore } from '@/hooks/useStore';
 import { isDemoAccount } from '@/utils/account-helpers';
 import { fetchHistoricalTicks } from '@/bot/deriv/history';
-import { executeBuyFresh, monitorUntilSettled, requestQuote } from '@/bot/deriv/execution';
+import { executeBuyFresh, monitorUntilSettled, requestQuote, settlementTimeoutMs } from '@/bot/deriv/execution';
 import {
     DEFAULT_PRO_AI_OPTIONS,
     PRO_AI_BOTS,
@@ -16,6 +16,7 @@ import {
     type ProAiScope,
 } from '@/bot/core/pro-ai';
 import { winsFor } from '@/bot/core/digit-stats';
+import { HubNote, HubPage, HubPageHeader } from '@/components/hub-page';
 import './pro-ai.scss';
 
 const SYMBOLS = [
@@ -67,7 +68,7 @@ interface EntryRecord {
     barrier: number;
     stake: number;
     contractId?: number;
-    status: 'pending' | 'settled' | 'rejected';
+    status: 'pending' | 'settled' | 'rejected' | 'unknown';
     result?: 'win' | 'loss';
     note: string;
 }
@@ -277,9 +278,19 @@ const ProAiPage = observer(() => {
             patchEntry(id, { contractId: buy.contractId, note: `Contract #${buy.contractId} open — monitoring…` });
 
             const scan = scanned.find(s => s.symbol === c.symbol);
-            const settlement = await monitorUntilSettled(buy.contractId, scan?.pipSize ?? 2);
+            const settlement = await monitorUntilSettled(
+                buy.contractId,
+                scan?.pipSize ?? 2,
+                undefined,
+                settlementTimeoutMs(1, 't')
+            );
             if ('error' in settlement) {
-                patchEntry(id, { note: settlement.error });
+                // Outcome unknown past the duration-aware window — never record
+                // a win or loss the market didn't produce.
+                patchEntry(id, {
+                    status: 'unknown',
+                    note: `${settlement.error} — outcome not recorded; check contract #${buy.contractId} in your account`,
+                });
                 return;
             }
             patchEntry(id, {
@@ -295,47 +306,51 @@ const ProAiPage = observer(() => {
     };
 
     return (
-        <div className='pro-ai'>
+        <HubPage className='pro-ai'>
             {!isLoggedIn && (
-                <div className='pro-ai__notice pro-ai__notice--login' role='note'>
+                <HubNote tone='info'>
                     Not logged in — scanning Deriv&apos;s public markets in guest mode. Paper entries work without an
                     account; demo orders need a session.{' '}
                     <button
                         type='button'
-                        className='pro-ai__btn pro-ai__btn--primary'
+                        className='hub-btn hub-btn--primary hub-btn--sm'
                         onClick={() => run_panel?.showLoginDialog?.()}
                     >
                         Log in for demo orders
                     </button>
-                </div>
+                </HubNote>
             )}
 
-            <header className='pro-ai__head'>
-                <div>
-                    <h2>Pro AI</h2>
-                    <p className='pro-ai__sub'>
-                        Ranks Over / Under bots per market with SmartFlip&apos;s scoring heuristic — AI score, recent
-                        win rate and Wilson quality — and blocks no-trade conditions before anything is shown as BUY.
-                    </p>
-                </div>
-                <div className='pro-ai__status'>
-                    <span className={`pro-ai__badge ${loading ? 'pro-ai__badge--scan' : 'pro-ai__badge--idle'}`}>
-                        {loading ? 'scanning' : 'idle'}
-                    </span>
-                    <span className={`pro-ai__acct ${isDemo ? 'pro-ai__acct--demo' : ''}`}>
-                        {!isLoggedIn ? 'Guest · analysis only' : `${isDemo ? 'Demo' : 'Real'} · ${activeLoginid}`}
-                    </span>
-                </div>
-            </header>
+            <HubPageHeader
+                title='Pro AI'
+                subtitle="Ranked digit-entry scanner across volatility markets — ranks Over / Under bots per market with SmartFlip's scoring heuristic (AI score, recent win rate, Wilson quality) and blocks no-trade conditions before anything is shown as BUY."
+                badge={
+                    <>
+                        <span className={`hub-badge ${loading ? 'hub-badge--running' : 'hub-badge--idle'}`}>
+                            {loading ? 'scanning' : 'idle'}
+                        </span>
+                        <span
+                            className={[
+                                'hub-badge',
+                                !isLoggedIn ? 'hub-badge--guest' : isDemo ? 'hub-badge--demo' : 'hub-badge--real',
+                            ]
+                                .filter(Boolean)
+                                .join(' ')}
+                        >
+                            {!isLoggedIn ? 'Guest · analysis only' : `${isDemo ? 'Demo' : 'Real'} · ${activeLoginid}`}
+                        </span>
+                    </>
+                }
+            />
 
-            <div className='pro-ai__notice pro-ai__notice--warn' role='note'>
+            <HubNote tone='risk'>
                 <strong>Honest disclaimer:</strong> Pro AI is a ranked heuristic on historical digits, not a guaranteed
                 edge. The gates (AI score, recent win rate) measure the recent distribution — they do not predict the
                 next digit. Trade demo first and risk only what you can afford to lose.
-            </div>
+            </HubNote>
 
             <section className='pro-ai__controls'>
-                <label>
+                <label className='hub-field'>
                     Scope
                     <select value={scope} onChange={e => setScope(e.target.value as ProAiScope)}>
                         {SCOPE_ORDER.map(s => (
@@ -345,7 +360,7 @@ const ProAiPage = observer(() => {
                         ))}
                     </select>
                 </label>
-                <label>
+                <label className='hub-field'>
                     Sample size
                     <input
                         type='number'
@@ -355,7 +370,7 @@ const ProAiPage = observer(() => {
                         onChange={e => setSampleSize(Number(e.target.value) || DEFAULT_PRO_AI_OPTIONS.sampleSize)}
                     />
                 </label>
-                <label>
+                <label className='hub-field'>
                     Min AI score
                     <input
                         type='number'
@@ -366,7 +381,7 @@ const ProAiPage = observer(() => {
                         onChange={e => setMinAiScore(Number(e.target.value) || DEFAULT_PRO_AI_OPTIONS.minAiScore)}
                     />
                 </label>
-                <label>
+                <label className='hub-field'>
                     Min recent win rate
                     <input
                         type='number'
@@ -379,7 +394,7 @@ const ProAiPage = observer(() => {
                         }
                     />
                 </label>
-                <label>
+                <label className='hub-field'>
                     Entry stake
                     <input
                         type='number'
@@ -389,7 +404,7 @@ const ProAiPage = observer(() => {
                         onChange={e => setStake(Number(e.target.value) || 1)}
                     />
                 </label>
-                <button className='pro-ai__run' onClick={run} disabled={loading}>
+                <button className='hub-btn hub-btn--primary' onClick={run} disabled={loading}>
                     {loading ? 'Scanning…' : 'Run Pro AI scan'}
                 </button>
             </section>
@@ -425,18 +440,18 @@ const ProAiPage = observer(() => {
             {notice && <div className='pro-ai__warn' role='status'>{notice}</div>}
 
             {scanned.length > 0 && !loading && (
-                <div className='pro-ai__summary'>
+                <p className='hub-empty'>
                     Scanned {scanned.length} market{scanned.length === 1 ? '' : 's'} ·{' '}
                     {scanned[0].digits.length} ticks each · {PRO_AI_BOTS.length} bots per market · gates: AI ≥{' '}
                     {pct(Number(minAiScore) || DEFAULT_PRO_AI_OPTIONS.minAiScore)}, recent ≥{' '}
                     {pct(Number(minRecentWinRate) || DEFAULT_PRO_AI_OPTIONS.minRecentWinRate)}
-                </div>
+                </p>
             )}
 
-            <section className='pro-ai__section'>
+            <section className='hub-section'>
                 <h3>BUY candidates ({candidates.length})</h3>
                 {candidates.length === 0 ? (
-                    <p className='pro-ai__empty-row'>
+                    <p className='hub-empty'>
                         {loading
                             ? 'Scanning markets…'
                             : scanned.length
@@ -444,8 +459,8 @@ const ProAiPage = observer(() => {
                               : 'Run a scan to rank BUY candidates across the selected markets.'}
                     </p>
                 ) : (
-                    <div className='pro-ai__table-wrap'>
-                        <table className='pro-ai__table'>
+                    <div className='hub-table-wrap'>
+                        <table className='hub-table'>
                             <thead>
                                 <tr>
                                     <th>Market</th>
@@ -465,7 +480,7 @@ const ProAiPage = observer(() => {
                                     <tr key={`${c.symbol}-${c.botId}`}>
                                         <td>{c.displayName}</td>
                                         <td>{botName(c.botId)}</td>
-                                        <td className='pos'>{pct(c.aiScore)}</td>
+                                        <td className='hub-pos'>{pct(c.aiScore)}</td>
                                         <td>{pct(c.winRate)}</td>
                                         <td>{pct(c.recentWinRate)}</td>
                                         <td>{pct(c.validationWinRate)}</td>
@@ -473,12 +488,16 @@ const ProAiPage = observer(() => {
                                         <td>{c.sampleSize}</td>
                                         <td>{pct(c.theoretical)}</td>
                                         <td className='pro-ai__actions'>
-                                            <button type='button' className='pro-ai__btn' onClick={() => paperBuy(c)}>
+                                            <button
+                                                type='button'
+                                                className='hub-btn hub-btn--ghost hub-btn--sm'
+                                                onClick={() => paperBuy(c)}
+                                            >
                                                 Paper buy
                                             </button>
                                             <button
                                                 type='button'
-                                                className='pro-ai__btn pro-ai__btn--primary'
+                                                className='hub-btn hub-btn--primary hub-btn--sm'
                                                 title={
                                                     isLoggedIn
                                                         ? isDemo
@@ -499,13 +518,13 @@ const ProAiPage = observer(() => {
                 )}
             </section>
 
-            <details className='pro-ai__blocked'>
+            <details className='hub-panel pro-ai__blocked'>
                 <summary>Blocked evaluations ({blocked.length})</summary>
                 {blocked.length === 0 ? (
-                    <p className='pro-ai__empty-row'>Nothing was blocked — every market × bot pair cleared the gates.</p>
+                    <p className='hub-empty'>Nothing was blocked — every market × bot pair cleared the gates.</p>
                 ) : (
-                    <div className='pro-ai__table-wrap'>
-                        <table className='pro-ai__table'>
+                    <div className='hub-table-wrap'>
+                        <table className='hub-table'>
                             <thead>
                                 <tr>
                                     <th>Market</th>
@@ -531,15 +550,15 @@ const ProAiPage = observer(() => {
                 )}
             </details>
 
-            <section className='pro-ai__section'>
+            <section className='hub-section'>
                 <h3>Entries ({entries.length})</h3>
                 {entries.length === 0 ? (
-                    <p className='pro-ai__empty-row'>
+                    <p className='hub-empty'>
                         No entries yet — use Paper buy (works as a guest) or Demo buy on a candidate row.
                     </p>
                 ) : (
-                    <div className='pro-ai__table-wrap'>
-                        <table className='pro-ai__table'>
+                    <div className='hub-table-wrap'>
+                        <table className='hub-table'>
                             <thead>
                                 <tr>
                                     <th>Mode</th>
@@ -561,9 +580,23 @@ const ProAiPage = observer(() => {
                                         <td>{money(e.stake)}</td>
                                         <td>{e.contractId ?? '—'}</td>
                                         <td>
-                                            <span className={`pro-ai__stage pro-ai__stage--${e.status}`}>{e.status}</span>
+                                            <span
+                                                className={[
+                                                    'hub-badge',
+                                                    'hub-badge--sm',
+                                                    e.status === 'settled'
+                                                        ? 'hub-badge--ready'
+                                                        : e.status === 'rejected'
+                                                          ? 'hub-badge--error'
+                                                          : e.status === 'unknown'
+                                                            ? 'hub-badge--warn'
+                                                            : 'hub-badge--running',
+                                                ].join(' ')}
+                                            >
+                                                {e.status}
+                                            </span>
                                         </td>
-                                        <td className={e.result === 'win' ? 'pos' : e.result === 'loss' ? 'neg' : ''}>
+                                        <td className={e.result === 'win' ? 'hub-pos' : e.result === 'loss' ? 'hub-neg' : ''}>
                                             {e.result || '—'}
                                         </td>
                                         <td className='pro-ai__reason'>{e.note}</td>
@@ -574,7 +607,7 @@ const ProAiPage = observer(() => {
                     </div>
                 )}
             </section>
-        </div>
+        </HubPage>
     );
 });
 

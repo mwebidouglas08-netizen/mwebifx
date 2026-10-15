@@ -757,33 +757,65 @@
 
 /* --- AI Hub dashboard (pages/main/index.tsx) --- */
 
-/* The hub is a normal scrolling document, but it is rendered inside the bot
-   builder's app shell: `.layout` pins height to 100vh and `.bot-dashboard`
-   pins height to calc(100vh - 4.4rem), so anything taller than the viewport
-   was clipped with no scrollbar. Letting the height grow is enough — the shell
-   only needs `height: auto`. `overflow` must stay `hidden`, not `visible`:
-   the hidden Bot Dashboard's Blockly canvas is sized to the viewport width
-   and would otherwise leak a few pixels of horizontal scroll into the hub.
-   The dashboard view keeps the original fixed shell. */
+/* The hub used to be a normal scrolling document rendered inside the bot
+   builder's app shell, which needed `.layout` relaxed so tall hub pages
+   weren't clipped. The redesigned shell is a fixed-height grid instead:
+   `.layout` stays pinned to 100vh and `.main-content` is the scroll
+   container, so nothing scrolls at the document level. `overflow: hidden`
+   must stay on `.bot-dashboard` — the hidden Bot Dashboard's Blockly canvas
+   is sized to the viewport width and would otherwise leak a few pixels of
+   horizontal scroll into the hub. The dashboard view keeps the same shell
+   (its fixed-height `.main` fits inside the scroll container). */
 body.hub-view {
     .layout {
-        height: auto;
-        min-height: 100vh;
+        height: 100vh;
+        overflow: hidden;
+    }
+
+    .main-body {
+        min-height: 0;
     }
 
     .bot-dashboard {
-        height: auto;
-        min-height: calc(100vh - 4.4rem);
+        height: 100%;
+        min-height: 0;
+        overflow: hidden;
     }
 }
 
 .main-dashboard {
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
+    /* Shell palette (smartflip.site-class navy terminal) — dark by default,
+       overridden for the light theme below. Scoped here so shared theme
+       tokens (_themes.scss) stay untouched; Deriv brand reds elsewhere keep
+       using --brand-primary as before. */
+    --shell-navy-900: #0a1128;
+    --shell-navy-800: #0d1630;
+    --shell-navy-700: #121d3c;
+    --shell-glass: rgb(13 22 48 / 72%);
+    --shell-border: rgb(148 163 184 / 14%);
+    --shell-text: #e8eefc;
+    --shell-text-muted: #8b98b8;
+    --shell-accent: #22d3ee;
+    --shell-accent-soft: rgb(34 211 238 / 12%);
+    --shell-violet: #8b5cf6;
+    --shell-hover: rgb(148 163 184 / 10%);
+
+    height: 100%;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas:
+        'banner banner'
+        'sidebar shell';
+    overflow: hidden;
     position: relative;
-    background: var(--canvas-tint, var(--general-main-1));
-    color: var(--text-prominent);
+    /* Sit the shell at (or above) the layout header's sticky z-index so the
+       mobile nav drawer paints over it; the fixed app-footer (z-2) and modal
+       layers (9998+) still paint above the shell. */
+    z-index: 1;
+    background: var(--shell-navy-900);
+    color: var(--shell-text);
     isolation: isolate;
 
     /* Aurora wash behind the whole hub — fades out below the fold. */
@@ -798,96 +830,114 @@ body.hub-view {
         z-index: -1;
         mask-image: linear-gradient(#000 55%, transparent);
     }
+
+    > .version-banner {
+        grid-area: banner;
+    }
+
+    /* Light theme: slate-50 surfaces, same cyan/violet accents. */
+    body.theme--light & {
+        --shell-navy-900: #f8fafc;
+        --shell-navy-800: #ffffff;
+        --shell-navy-700: #f1f5f9;
+        --shell-glass: rgb(255 255 255 / 78%);
+        --shell-border: rgb(15 23 42 / 10%);
+        --shell-text: #0f172a;
+        --shell-text-muted: #64748b;
+        --shell-accent: #0891b2;
+        --shell-accent-soft: rgb(34 211 238 / 14%);
+        --shell-hover: rgb(15 23 42 / 6%);
+    }
 }
 
-/* --- Cinematic hub hero --- */
-.hub-hero {
+/* AIBotDock parks bottom-left; the desktop rail occupies that corner, so
+   shift the dock clear of it (collapsing the rail moves it back). On mobile
+   the rail is an off-canvas drawer and the dock keeps its original spot. */
+.main-dashboard .ai-dock {
+    left: calc(248px + 1.4rem);
+}
+
+.main-dashboard:has(.hub-sidebar--collapsed) .ai-dock {
+    left: calc(68px + 1.4rem);
+}
+
+@media (max-width: 859px) {
+    .main-dashboard .ai-dock,
+    .main-dashboard:has(.hub-sidebar--collapsed) .ai-dock {
+        left: 1.4rem;
+    }
+}
+
+/* Slim topbar: mobile hamburger, current view title, UTC clock. */
+.main-shell {
+    grid-area: shell;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.main-topbar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 1.6rem;
-    padding: 1.8rem 2.4rem 0.4rem;
-    animation: heroIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+    gap: 1.2rem;
+    padding: 0.85rem 1.6rem;
+    border-bottom: 1px solid var(--shell-border);
+    background: var(--shell-glass);
+    backdrop-filter: blur(12px);
+    z-index: 5;
+    animation: heroIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 
-    @media (max-width: 768px) {
-        flex-direction: column;
-        align-items: flex-start;
-        padding: 1.4rem 1.2rem 0.2rem;
-    }
-
-    &__brand {
-        display: flex;
-        align-items: center;
-        gap: 1.4rem;
-        min-width: 0;
-    }
-
-    &__mark {
-        flex: none;
-        width: 4.4rem;
-        height: 4.4rem;
-        border-radius: 1.3rem;
-        display: flex;
+    &__menu {
+        display: none;
         align-items: center;
         justify-content: center;
-        font-size: 2rem;
-        font-weight: 800;
-        color: #fff;
-        background: var(--brand-gradient);
-        box-shadow: 0 10px 28px -8px var(--glow-ring), inset 0 1px 0 rgb(255 255 255 / 35%);
-        transform: rotate(-6deg);
-    }
+        width: 3.4rem;
+        height: 3.4rem;
+        border-radius: 0.9rem;
+        border: 1px solid var(--shell-border);
+        background: var(--shell-glass);
+        color: var(--shell-text);
+        cursor: pointer;
+        transition: border-color 0.2s ease, background 0.2s ease;
 
-    &__titles {
-        min-width: 0;
-    }
+        &:hover {
+            border-color: var(--shell-accent);
+            background: var(--shell-accent-soft);
+        }
 
-    &__name {
-        margin: 0;
-        font-size: 2.4rem;
-        font-weight: 800;
-        letter-spacing: 0.02em;
-        line-height: 1.15;
-        background: var(--brand-gradient);
-        -webkit-background-clip: text;
-        background-clip: text;
-        color: transparent;
-    }
-
-    &__tagline {
-        margin: 0.2rem 0 0;
-        font-size: 1.25rem;
-        color: var(--text-general);
-        opacity: 0.85;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-
-        @media (max-width: 768px) {
-            white-space: normal;
+        @media (max-width: 859px) {
+            display: inline-flex;
         }
     }
 
-    &__status {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
+    &__title {
+        margin: 0;
+        font-size: 1.4rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        color: var(--shell-text);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     &__clock {
+        margin-inline-start: auto;
         display: inline-flex;
         align-items: center;
         gap: 0.7rem;
-        padding: 0.7rem 1.2rem;
+        padding: 0.55rem 1.1rem;
         border-radius: 999px;
-        border: 1px solid var(--card-border);
-        background: var(--surface-glass);
+        border: 1px solid var(--shell-border);
+        background: var(--shell-glass);
         backdrop-filter: blur(10px);
         font-family: var(--brand-font-monospace);
-        font-size: 1.25rem;
+        font-size: 1.2rem;
         letter-spacing: 0.04em;
-        color: var(--text-prominent);
-        box-shadow: var(--card-shadow);
+        color: var(--shell-text);
+        white-space: nowrap;
     }
 
     &__clock-dot {
@@ -897,33 +947,6 @@ body.hub-view {
         background: var(--brand-success);
         box-shadow: 0 0 0 0 rgb(16 185 129 / 55%);
         animation: clockPing 2.2s ease-out infinite;
-    }
-
-    &__theme {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.6rem;
-        padding: 0.7rem 1.3rem;
-        border-radius: 999px;
-        border: 1px solid var(--card-border);
-        background: var(--surface-glass);
-        backdrop-filter: blur(10px);
-        box-shadow: var(--card-shadow);
-        color: var(--text-prominent);
-        font-size: 1.25rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-
-        &:hover {
-            transform: translateY(-1px);
-            border-color: var(--glow-ring);
-            box-shadow: var(--card-shadow-lifted);
-        }
-
-        &:active {
-            transform: translateY(0);
-        }
     }
 }
 
@@ -948,11 +971,15 @@ body.hub-view {
 
 .main-content {
     flex: 1;
-    padding: 1.2rem 2.4rem 2.4rem;
+    min-height: 0;
     min-width: 0;
+    overflow-y: auto;
+    padding: 1.6rem 1.6rem 5.2rem;
+    scrollbar-width: thin;
+    scrollbar-color: var(--shell-border) transparent;
 
-    @media (max-width: 768px) {
-        padding: 0.8rem 0.8rem 2rem;
+    @media (max-width: 859px) {
+        padding: 1.2rem 1rem 5.6rem;
     }
 }
 
@@ -969,95 +996,6 @@ body.hub-view {
     min-width: 0;
 }
 
-/* Entrance polish: the tab strip settles in on first paint; the active view
-   fades up on every switch (the wrapper stays mounted, so the animation is
-   re-applied inline from main/index.tsx when a view becomes visible). */
-.view-toggle {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    margin: 0.8rem 0 1.6rem;
-    padding: 0.5rem;
-    background: var(--surface-glass);
-    backdrop-filter: blur(12px);
-    border: 1px solid var(--card-border);
-    border-radius: 16px;
-    width: fit-content;
-    max-width: 100%;
-    box-shadow: var(--card-shadow);
-    animation: viewToggleIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
-    scrollbar-width: none;
-
-    &::-webkit-scrollbar {
-        display: none;
-    }
-}
-
-.view-btn {
-    animation: viewBtnIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.7rem;
-    padding: 0.9rem 1.7rem;
-    border-radius: 12px;
-    border: none;
-    background: transparent;
-    color: var(--text-general);
-    font-size: 1.35rem;
-    font-weight: 600;
-    white-space: nowrap;
-    cursor: pointer;
-    transition: color 0.2s ease, background 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease;
-
-    svg {
-        flex: none;
-        opacity: 0.75;
-        transition: opacity 0.2s ease, transform 0.25s ease;
-    }
-
-    &:nth-child(1) { animation-delay: 0.04s; }
-    &:nth-child(2) { animation-delay: 0.09s; }
-    &:nth-child(3) { animation-delay: 0.14s; }
-    &:nth-child(4) { animation-delay: 0.19s; }
-    &:nth-child(5) { animation-delay: 0.24s; }
-
-    &:hover {
-        color: var(--text-prominent);
-        background: var(--general-hover);
-
-        svg {
-            opacity: 1;
-        }
-    }
-
-    &.active {
-        background: var(--nav-pill-active, var(--brand-primary));
-        color: #fff;
-        box-shadow: 0 8px 22px -8px var(--glow-ring), inset 0 1px 0 rgb(255 255 255 / 22%);
-        transform: translateY(-1px);
-
-        svg {
-            opacity: 1;
-            transform: scale(1.06);
-        }
-    }
-}
-
-@keyframes viewToggleIn {
-    from {
-        opacity: 0;
-        transform: translateY(-10px);
-    }
-}
-
-@keyframes viewBtnIn {
-    from {
-        opacity: 0;
-        transform: translateY(-6px);
-    }
-}
-
 @keyframes hubEnter {
     from {
         opacity: 0;
@@ -1070,9 +1008,7 @@ body.hub-view {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .hub-hero,
-    .view-toggle,
-    .view-btn,
+    .main-topbar,
     .main-hub {
         animation: none !important;
     }

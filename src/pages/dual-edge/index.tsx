@@ -5,7 +5,7 @@ import { isDemoAccount } from '@/utils/account-helpers';
 import { fetchHistoricalTicks } from '@/bot/deriv/history';
 import { TickFeed } from '@/bot/deriv/ticks';
 import { isAuthorized } from '@/bot/deriv/api';
-import { executeBuyFresh, monitorUntilSettled, requestContractQuote } from '@/bot/deriv/execution';
+import { executeBuyFresh, monitorUntilSettled, requestContractQuote, settlementTimeoutMs } from '@/bot/deriv/execution';
 import { winsFor } from '@/bot/core/digit-stats';
 import {
     DEFAULT_DUAL_CONFIG,
@@ -23,6 +23,7 @@ import {
 } from '@/bot/core/dual-edge';
 import type { EventType, TickPoint } from '@/bot/core/types';
 import type { SignalAction } from '@/bot/core/signal-types';
+import { HubNote, HubPage, HubPageHeader } from '@/components/hub-page';
 import './dual-edge.scss';
 
 const SYMBOLS = [
@@ -71,6 +72,14 @@ const EVENT_TONE: Record<EventType, string> = {
     error: 'err',
 };
 
+const STATUS_TONE: Record<DualStatus, string> = {
+    idle: 'hub-badge--idle',
+    warming: 'hub-badge--running',
+    running: 'hub-badge--running',
+    stopped: 'hub-badge--idle',
+    error: 'hub-badge--error',
+};
+
 const timeAt = (ms: number) =>
     new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
@@ -87,9 +96,9 @@ const initialSides = (profile: DualProfile, config: DualConfig): DualSideState[]
 ];
 
 const Stat = ({ label, value, tone }: { label: string; value: string | number; tone?: 'pos' | 'neg' }) => (
-    <div className='dual-edge__stat'>
-        <span className='dual-edge__stat-label'>{label}</span>
-        <span className={`dual-edge__stat-value ${tone || ''}`}>{value}</span>
+    <div className='hub-stat'>
+        <span>{label}</span>
+        <strong className={tone ? `hub-${tone}` : ''}>{value}</strong>
     </div>
 );
 
@@ -106,7 +115,7 @@ const Field = ({
     step?: number;
     disabled?: boolean;
 }) => (
-    <label className='dual-edge__field'>
+    <label className='hub-field'>
         <span>{label}</span>
         <input
             type='text'
@@ -120,45 +129,45 @@ const Field = ({
 );
 
 const SideCard = ({ state, config }: { state: DualSideState; config: DualConfig }) => (
-    <article className='dual-edge__side'>
+    <article className='hub-panel hub-lift dual-edge__side'>
         <header className='dual-edge__side-head'>
             <h4>{state.side === 'over' ? 'Over side' : 'Under side'}</h4>
-            <span className='dual-edge__side-prediction'>
+            <span className='hub-badge hub-badge--info'>
                 {state.side === 'over' ? 'DIGITOVER' : 'DIGITUNDER'} {state.barrier}
             </span>
         </header>
-        <div className='dual-edge__side-grid'>
-            <div>
+        <div className='hub-stats dual-edge__side-grid'>
+            <div className='hub-stat'>
                 <span>Barrier</span>
                 <strong>{state.barrier}</strong>
             </div>
-            <div>
+            <div className='hub-stat'>
                 <span>Stake</span>
                 <strong>{state.stake.toFixed(2)}</strong>
             </div>
-            <div>
+            <div className='hub-stat'>
                 <span>Next stake</span>
                 <strong>{nextStakePreview(state, config).toFixed(2)}</strong>
             </div>
-            <div>
+            <div className='hub-stat'>
                 <span>Step</span>
                 <strong>{state.step}</strong>
             </div>
-            <div>
+            <div className='hub-stat'>
                 <span>Consec. losses</span>
-                <strong className={state.consecutiveLosses > 0 ? 'neg' : ''}>{state.consecutiveLosses}</strong>
+                <strong className={state.consecutiveLosses > 0 ? 'hub-neg' : ''}>{state.consecutiveLosses}</strong>
             </div>
-            <div>
+            <div className='hub-stat'>
                 <span>Wins</span>
-                <strong className='pos'>{state.wins}</strong>
+                <strong className='hub-pos'>{state.wins}</strong>
             </div>
-            <div>
+            <div className='hub-stat'>
                 <span>Losses</span>
-                <strong className='neg'>{state.losses}</strong>
+                <strong className='hub-neg'>{state.losses}</strong>
             </div>
-            <div>
+            <div className='hub-stat'>
                 <span>Profit</span>
-                <strong className={state.profit >= 0 ? 'pos' : 'neg'}>{state.profit.toFixed(2)}</strong>
+                <strong className={state.profit >= 0 ? 'hub-pos' : 'hub-neg'}>{state.profit.toFixed(2)}</strong>
             </div>
         </div>
         <div className='dual-edge__chips'>
@@ -319,10 +328,21 @@ const DualEdgePage = observer(() => {
                 'purchase',
                 `Contract #${buy.contractId}: ${side} ${state.barrier} — stake ${(buy.buyPrice ?? state.stake).toFixed(2)}`
             );
-            const settlement = await monitorUntilSettled(buy.contractId, pipSizeRef.current);
+            const settlement = await monitorUntilSettled(
+                buy.contractId,
+                pipSizeRef.current,
+                undefined,
+                settlementTimeoutMs(1, 't')
+            );
             if ('error' in settlement) {
-                log('error', `Settlement pending for #${buy.contractId}: ${settlement.error}`);
-                continue;
+                // Outcome unknown — the recovery ladder must not advance on a
+                // result the market never delivered, so pause honestly.
+                log('error', `Settlement unknown for #${buy.contractId}: ${settlement.error} — outcome not recorded`);
+                stopEngine(
+                    'Settlement unknown',
+                    `Contract #${buy.contractId} outcome unknown — paused so the recovery ladder stays honest. Check your open contracts, then restart.`
+                );
+                return;
             }
             const won = settlement.isWon;
             const payoutRatio = quote.askPrice > 0 ? quote.payout / quote.askPrice : undefined;
@@ -489,51 +509,54 @@ const DualEdgePage = observer(() => {
     );
 
     return (
-        <div className='dual-edge'>
+        <HubPage className='dual-edge'>
             {!isLoggedIn && (
-                <div className='dual-edge__notice dual-edge__notice--login' role='note'>
+                <HubNote tone='info'>
                     Not logged in — Dual Edge runs in paper mode on Deriv&apos;s public ticks. Log in with a demo
                     account to arm live orders.{' '}
                     <button
                         type='button'
-                        className='dual-edge__btn dual-edge__btn--primary'
+                        className='hub-btn hub-btn--primary hub-btn--sm'
                         onClick={() => run_panel?.showLoginDialog?.()}
                     >
                         Log in for demo orders
                     </button>
-                </div>
+                </HubNote>
             )}
 
-            <header className='dual-edge__head'>
-                <div>
-                    <h2>Dual Edge</h2>
-                    <p className='dual-edge__sub'>
-                        Runs both sides of a complementary barrier pair (e.g. Over 1 / Under 8) through a documented
-                        stake progression — RECOVERY barrier switching or MKULIMA d&apos;Alembert ladder — with hard
-                        stop gates.
-                    </p>
-                </div>
-                <div className='dual-edge__status'>
-                    <span className={`dual-edge__badge dual-edge__badge--${status}`}>{status}</span>
-                    <span className={`dual-edge__acct ${isDemo ? 'dual-edge__acct--demo' : ''}`}>
-                        {!isLoggedIn ? 'Guest · analysis only' : `${isDemo ? 'Demo' : 'Real'} · ${activeLoginid}`}
-                    </span>
-                </div>
-            </header>
+            <HubPageHeader
+                title='Dual Edge'
+                subtitle="Runs both sides of a complementary barrier pair (e.g. Over 1 / Under 8) through a documented stake progression — RECOVERY barrier switching or MKULIMA d'Alembert ladder — with hard stop gates."
+                badge={
+                    <>
+                        <span className={`hub-badge ${STATUS_TONE[status]}`}>{status}</span>
+                        <span
+                            className={[
+                                'hub-badge',
+                                !isLoggedIn ? 'hub-badge--guest' : isDemo ? 'hub-badge--demo' : 'hub-badge--real',
+                            ]
+                                .filter(Boolean)
+                                .join(' ')}
+                        >
+                            {!isLoggedIn ? 'Guest · analysis only' : `${isDemo ? 'Demo' : 'Real'} · ${activeLoginid}`}
+                        </span>
+                    </>
+                }
+            />
 
-            <div className='dual-edge__notice dual-edge__notice--warn' role='note'>
+            <HubNote tone='risk'>
                 <strong>Recovery risk:</strong> recovery / martingale-style progressions lose heavily during losing
                 streaks — stakes grow while losses accumulate, and the worst-case stake here is{' '}
                 <strong>{worstStake.toFixed(2)}</strong> (capped at {formConfig.stakeCap.toFixed(2)}) after{' '}
                 {formConfig.maxRecoverySteps} recovery step(s). A side that burns through{' '}
                 {formConfig.maxRecoverySteps + 1} consecutive losses auto-stops (cap exhaustion). Paper mode models
                 stake flow only — no P/L.
-            </div>
+            </HubNote>
 
             {notice && <div className='dual-edge__warn' role='status'>{notice}</div>}
 
             <section className='dual-edge__controls'>
-                <label className='dual-edge__control'>
+                <label className='hub-field'>
                     <span>Profile</span>
                     <select value={profileId} onChange={e => setProfileId(e.target.value)} disabled={isRunning}>
                         {DUAL_PROFILES.map(p => (
@@ -543,7 +566,7 @@ const DualEdgePage = observer(() => {
                         ))}
                     </select>
                 </label>
-                <label className='dual-edge__control'>
+                <label className='hub-field'>
                     <span>Symbol</span>
                     <select value={symbol} onChange={e => setSymbol(e.target.value)} disabled={isRunning}>
                         {SYMBOLS.map(s => (
@@ -555,17 +578,17 @@ const DualEdgePage = observer(() => {
                 </label>
                 <div className='dual-edge__mode'>
                     <span className='dual-edge__mode-label'>Mode</span>
-                    <div className='dual-edge__mode-seg'>
+                    <div className='hub-seg'>
                         <button
                             type='button'
-                            className={`dual-edge__mode-btn ${mode === 'RECOVERY' ? 'dual-edge__mode-btn--on' : ''}`}
+                            className={`hub-seg__btn ${mode === 'RECOVERY' ? 'hub-seg__btn--on' : ''}`}
                             onClick={() => setMode('RECOVERY')}
                         >
                             RECOVERY
                         </button>
                         <button
                             type='button'
-                            className={`dual-edge__mode-btn ${mode === 'MKULIMA' ? 'dual-edge__mode-btn--on' : ''}`}
+                            className={`hub-seg__btn ${mode === 'MKULIMA' ? 'hub-seg__btn--on' : ''}`}
                             onClick={() => setMode('MKULIMA')}
                         >
                             MKULIMA
@@ -594,19 +617,19 @@ const DualEdgePage = observer(() => {
             </div>
 
             <section className='dual-edge__controls dual-edge__controls--actions'>
-                <div className='dual-edge__ctrl-group'>
+                <div className='hub-actions'>
                     <button
                         type='button'
-                        className='dual-edge__btn dual-edge__btn--primary'
+                        className='hub-btn hub-btn--primary'
                         disabled={isRunning}
                         onClick={onStart}
                     >
                         Start engine
                     </button>
-                    <button type='button' className='dual-edge__btn' disabled={!isRunning} onClick={onStop}>
+                    <button type='button' className='hub-btn hub-btn--danger' disabled={!isRunning} onClick={onStop}>
                         Stop
                     </button>
-                    <button type='button' className='dual-edge__btn dual-edge__btn--danger' onClick={onEmergency}>
+                    <button type='button' className='hub-btn hub-btn--danger' onClick={onEmergency}>
                         Emergency stop
                     </button>
                 </div>
@@ -642,7 +665,7 @@ const DualEdgePage = observer(() => {
                 </div>
             )}
 
-            <div className='dual-edge__grid dual-edge__grid--stats'>
+            <div className='hub-stats'>
                 <Stat
                     label={liveArmed ? 'Net P/L' : 'Stake flow (paper)'}
                     value={totals.profit.toFixed(2)}
@@ -654,11 +677,11 @@ const DualEdgePage = observer(() => {
                 <Stat label='Rounds' value={sides[0]?.history.length ?? 0} />
             </div>
 
-            <p className='dual-edge__note'>
+            <HubNote tone='info'>
                 {liveArmed
                     ? 'Live demo run: profit uses each proposal\u2019s real payout ratio.'
                     : 'stake flow — no P/L modelled in paper: wins credit nothing without a real payout, losses deduct the stake from the flow counter.'}
-            </p>
+            </HubNote>
 
             <section className='dual-edge__sides'>
                 {sides.map(s => (
@@ -666,25 +689,25 @@ const DualEdgePage = observer(() => {
                 ))}
             </section>
 
-            <section className='dual-edge__section dual-edge__activity' aria-live='polite'>
+            <section className='hub-section dual-edge__activity' aria-live='polite'>
                 <h3>
                     Event log <em>({events.length} events)</em>
                 </h3>
                 {events.length === 0 ? (
-                    <p className='dual-edge__empty-row'>No activity yet — start the engine to see ticks, quotes and settlements.</p>
+                    <p className='hub-empty'>No activity yet — start the engine to see ticks, quotes and settlements.</p>
                 ) : (
-                    <div className='dual-edge__feed'>
+                    <div className='hub-log'>
                         {events.map(ev => (
-                            <div key={ev.id} className={`dual-edge__event dual-edge__event--${EVENT_TONE[ev.type]}`}>
-                                <span className='dual-edge__event-time'>{timeAt(ev.at)}</span>
-                                <span className='dual-edge__event-type'>{EVENT_LABEL[ev.type]}</span>
-                                <span className='dual-edge__event-msg'>{ev.message}</span>
+                            <div key={ev.id} className='hub-log__row' data-tone={EVENT_TONE[ev.type]}>
+                                <span className='hub-log__time'>{timeAt(ev.at)}</span>
+                                <span className='hub-log__type'>{EVENT_LABEL[ev.type]}</span>
+                                <span className='hub-log__msg'>{ev.message}</span>
                             </div>
                         ))}
                     </div>
                 )}
             </section>
-        </div>
+        </HubPage>
     );
 });
 

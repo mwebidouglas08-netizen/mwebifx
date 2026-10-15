@@ -14,6 +14,7 @@ import {
 import dalembertExampleXml from '../../xml/dalembert.xml';
 import martingaleExampleXml from '../../xml/martingale.xml';
 import oscarsGrindExampleXml from '../../xml/oscars_grind.xml';
+import { HubNote, HubPage, HubPageHeader } from '@/components/hub-page';
 import './trading-bots.scss';
 
 type LoadKind = 'quick' | 'hub' | 'xml' | 'manual';
@@ -264,48 +265,47 @@ const TradingBotsPage = observer(({ onOpenDashboard }: Props) => {
     };
 
     return (
-        <div className='bots-page'>
-            <header className='bots-head'>
-                <div>
-                    <h2>Trading Bots</h2>
-                    <p className='bots-sub'>
-                        A catalog of every strategy this app can load into the Bot Builder — quick-strategy
-                        progressions, hub strategies and ready-made example XML.
-                    </p>
-                </div>
-                <input
-                    type='search'
-                    className='bots-search'
-                    placeholder='Search bots by name…'
-                    aria-label='Search bots by name'
-                    value={query}
-                    onChange={e => setQuery(e.target.value)}
-                />
-            </header>
+        <HubPage className='bots-page'>
+            <HubPageHeader
+                title='Trading Bots'
+                subtitle='A catalog of every strategy this app can load into the Bot Builder — quick-strategy progressions, hub strategies and ready-made example XML.'
+                actions={
+                    <input
+                        type='search'
+                        className='hub-input bots-search'
+                        placeholder='Search bots by name…'
+                        aria-label='Search bots by name'
+                        value={query}
+                        onChange={e => setQuery(e.target.value)}
+                    />
+                }
+            />
 
-            <div className='bots-chips' role='tablist' aria-label='Filter bots'>
-                {CHIPS.map(option => (
-                    <button
-                        key={option}
-                        type='button'
-                        role='tab'
-                        aria-selected={chip === option}
-                        className={`bots-chip ${chip === option ? 'bots-chip--on' : ''}`}
-                        onClick={() => setChip(option)}
-                    >
-                        {option}
-                    </button>
-                ))}
+            <div className='bots-toolbar'>
+                <div className='hub-seg' role='tablist' aria-label='Filter bots'>
+                    {CHIPS.map(option => (
+                        <button
+                            key={option}
+                            type='button'
+                            role='tab'
+                            aria-selected={chip === option}
+                            className={`hub-seg__btn ${chip === option ? 'hub-seg__btn--on' : ''}`}
+                            onClick={() => setChip(option)}
+                        >
+                            {option}
+                        </button>
+                    ))}
+                </div>
                 <span className='bots-count'>
                     {visible.length} of {cards.length} bots
                 </span>
             </div>
 
-            <div className='bots-note' role='note'>
+            <HubNote tone='info'>
                 These entries are strategies and stake progressions — they change how your stake moves between
                 trades, they do not predict the market. Nothing here guarantees profit. Loading a bot only fills
                 the workspace: nothing trades until you press Run, and paper (demo) orders are the safe first step.
-            </div>
+            </HubNote>
 
             {error && (
                 <div className='bots-error' role='alert'>
@@ -324,7 +324,7 @@ const TradingBotsPage = observer(({ onOpenDashboard }: Props) => {
                     <span>Try a shorter search, or switch the category back to All.</span>
                     <button
                         type='button'
-                        className='bots-btn'
+                        className='hub-btn hub-btn--ghost'
                         onClick={() => {
                             setQuery('');
                             setChip('All');
@@ -336,19 +336,23 @@ const TradingBotsPage = observer(({ onOpenDashboard }: Props) => {
             ) : (
                 <div className='bots-grid'>
                     {visible.map(card => (
-                        <article key={card.id} className='bots-card'>
+                        <article key={card.id} className='hub-panel hub-lift bots-card'>
                             <div className='bots-card__top'>
                                 <h3>{card.name}</h3>
                                 <div className='bots-card__tags'>
-                                    {card.popular && <span className='bots-tag bots-tag--hot'>Popular</span>}
-                                    <span className='bots-tag'>{card.automated ? 'Automated' : 'Manual'}</span>
+                                    {card.popular && (
+                                        <span className='hub-badge hub-badge--sm hub-badge--info'>Popular</span>
+                                    )}
+                                    <span className='hub-badge hub-badge--sm'>
+                                        {card.automated ? 'Automated' : 'Manual'}
+                                    </span>
                                 </div>
                             </div>
                             <p className='bots-card__desc'>{card.description}</p>
                             <div className='bots-card__foot'>
                                 <button
                                     type='button'
-                                    className='bots-load'
+                                    className='hub-btn hub-btn--primary'
                                     disabled={busyId !== null}
                                     onClick={() => onLoad(card)}
                                 >
@@ -369,7 +373,7 @@ const TradingBotsPage = observer(({ onOpenDashboard }: Props) => {
                     ))}
                 </div>
             )}
-        </div>
+        </HubPage>
     );
 });
 

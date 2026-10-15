@@ -12,6 +12,7 @@ import {
     wilsonInterval,
 } from '@/bot/core/digit-stats';
 import { bollinger, latest, macd, type BollingerResult, type MacdResult } from '@/bot/core/indicators';
+import { HubNote, HubPage, HubPageHeader } from '@/components/hub-page';
 import './analysis-tool.scss';
 
 const SYMBOLS = [
@@ -386,36 +387,43 @@ const AnalysisToolPage = observer(() => {
     const percentBLatest = analysis?.bands ? latest(analysis.bands.percentB) : null;
 
     return (
-        <div className='analysis-tool'>
-            <header className='analysis-tool__head'>
-                <div>
-                    <h2>Analysis Tool</h2>
-                    <p className='analysis-tool__sub'>
-                        Digit distribution, over/under deviations and chart indicators (RSI, MACD, Bollinger) over real
-                        Deriv tick history — drawn with plain SVG, no chart library.
-                    </p>
-                </div>
-                <div className='analysis-tool__status'>
-                    <span
-                        className={`analysis-tool__badge ${
-                            loading ? 'analysis-tool__badge--load' : analysis ? 'analysis-tool__badge--ready' : 'analysis-tool__badge--idle'
-                        }`}
-                    >
-                        {loading ? 'loading' : analysis ? 'ready' : 'idle'}
-                    </span>
-                    <span className={`analysis-tool__acct ${isDemo ? 'analysis-tool__acct--demo' : ''}`}>
-                        {!isLoggedIn ? 'Guest · analysis only' : `${isDemo ? 'Demo' : 'Real'} · ${activeLoginid}`}
-                    </span>
-                </div>
-            </header>
+        <HubPage className='analysis-tool'>
+            <HubPageHeader
+                title='Analysis Tool'
+                subtitle='Digit distribution, over/under deviations and chart indicators (RSI, MACD, Bollinger) over real Deriv tick history — drawn with plain SVG, no chart library.'
+                badge={
+                    <>
+                        <span
+                            className={[
+                                'hub-badge',
+                                loading ? 'hub-badge--running' : analysis ? 'hub-badge--ready' : 'hub-badge--idle',
+                            ]
+                                .filter(Boolean)
+                                .join(' ')}
+                        >
+                            {loading ? 'loading' : analysis ? 'ready' : 'idle'}
+                        </span>
+                        <span
+                            className={[
+                                'hub-badge',
+                                !isLoggedIn ? 'hub-badge--guest' : isDemo ? 'hub-badge--demo' : 'hub-badge--real',
+                            ]
+                                .filter(Boolean)
+                                .join(' ')}
+                        >
+                            {!isLoggedIn ? 'Guest · analysis only' : `${isDemo ? 'Demo' : 'Real'} · ${activeLoginid}`}
+                        </span>
+                    </>
+                }
+            />
 
-            <div className='analysis-tool__notice' role='note'>
+            <HubNote tone='info'>
                 <strong>Honest note:</strong> everything here is measured on PAST ticks. Digit frequencies and
                 indicators describe history — they do not predict the next tick, and no panel is a trade signal.
-            </div>
+            </HubNote>
 
             <section className='analysis-tool__controls'>
-                <label>
+                <label className='hub-field'>
                     Symbol
                     <select value={symbol} onChange={e => setSymbol(e.target.value)}>
                         {SYMBOLS.map(s => (
@@ -425,7 +433,7 @@ const AnalysisToolPage = observer(() => {
                         ))}
                     </select>
                 </label>
-                <label>
+                <label className='hub-field'>
                     Range
                     <select value={range} onChange={e => setRange(Number(e.target.value))}>
                         {RANGES.map(r => (
@@ -435,7 +443,7 @@ const AnalysisToolPage = observer(() => {
                         ))}
                     </select>
                 </label>
-                <button className='analysis-tool__run' onClick={run} disabled={loading}>
+                <button className='hub-btn hub-btn--primary' onClick={run} disabled={loading}>
                     {loading ? 'Loading…' : 'Run analysis'}
                 </button>
             </section>
@@ -443,24 +451,24 @@ const AnalysisToolPage = observer(() => {
             {error && <div className='analysis-tool__error' role='alert'>{error}</div>}
 
             {analysis && (
-                <div className='analysis-tool__data-note'>
+                <p className='hub-empty'>
                     Loaded {analysis.n} real ticks for {symbol} (pip size {analysis.pipSize}) — {analysis.quotes.length}{' '}
                     quotes available for the indicator panels.
-                </div>
+                </p>
             )}
 
             {!analysis && !error && !loading && (
-                <p className='analysis-tool__empty'>
+                <p className='hub-empty'>
                     Pick a symbol and a range, then run the analysis to see digit statistics and indicators.
                 </p>
             )}
 
-            {loading && <p className='analysis-tool__empty'>Loading real tick history…</p>}
+            {loading && <p className='hub-empty'>Loading real tick history…</p>}
 
             {analysis && (
                 <>
                     <div className='analysis-tool__grid analysis-tool__grid--verdicts'>
-                        <div className='analysis-tool__verdict'>
+                        <div className='hub-panel analysis-tool__verdict'>
                             <span className='analysis-tool__verdict-label'>Strongest over / under deviation</span>
                             <strong>
                                 {analysis.strongest.label} {signedPct(analysis.strongest.gap)}
@@ -471,9 +479,13 @@ const AnalysisToolPage = observer(() => {
                             </span>
                         </div>
                         <div
-                            className={`analysis-tool__verdict ${
-                                uniformOk ? 'analysis-tool__verdict--ok' : 'analysis-tool__verdict--warn'
-                            }`}
+                            className={[
+                                'hub-panel',
+                                'analysis-tool__verdict',
+                                uniformOk ? 'analysis-tool__verdict--ok' : 'analysis-tool__verdict--warn',
+                            ]
+                                .filter(Boolean)
+                                .join(' ')}
                         >
                             <span className='analysis-tool__verdict-label'>Digit uniformity (chi-square)</span>
                             <strong>{uniformOk ? 'Consistent with uniform' : 'Deviates from uniform'}</strong>
@@ -488,7 +500,7 @@ const AnalysisToolPage = observer(() => {
                     </div>
 
                     <div className='analysis-tool__panels'>
-                        <section className='analysis-tool__panel'>
+                        <section className='hub-panel analysis-tool__panel'>
                             <h3>Digit frequency (0–9)</h3>
                             <p className='analysis-tool__panel-note'>
                                 Bars are the empirical share of each last digit; whiskers are the Wilson 95% confidence
@@ -497,7 +509,7 @@ const AnalysisToolPage = observer(() => {
                             <DigitChart counts={analysis.counts} n={analysis.n} />
                         </section>
 
-                        <section className='analysis-tool__panel'>
+                        <section className='hub-panel analysis-tool__panel'>
                             <h3>RSI (14)</h3>
                             <p className='analysis-tool__panel-note'>
                                 Wilder RSI recomputed at each tick of the loaded quotes. Current reading:{' '}
@@ -507,11 +519,11 @@ const AnalysisToolPage = observer(() => {
                             {analysis.rsiSeries.length > 1 ? (
                                 <RsiChart values={analysis.rsiSeries} />
                             ) : (
-                                <p className='analysis-tool__empty'>Not enough quotes for an RSI line.</p>
+                                <p className='hub-empty'>Not enough quotes for an RSI line.</p>
                             )}
                         </section>
 
-                        <section className='analysis-tool__panel'>
+                        <section className='hub-panel analysis-tool__panel'>
                             <h3>MACD (12 / 26 / 9)</h3>
                             <p className='analysis-tool__panel-note'>
                                 Histogram plus MACD and signal lines over quotes. Latest: MACD{' '}
@@ -522,11 +534,11 @@ const AnalysisToolPage = observer(() => {
                             {analysis.macdData ? (
                                 <MacdChart data={analysis.macdData} count={analysis.quotes.length} />
                             ) : (
-                                <p className='analysis-tool__empty'>Need at least 30 quotes for MACD.</p>
+                                <p className='hub-empty'>Need at least 30 quotes for MACD.</p>
                             )}
                         </section>
 
-                        <section className='analysis-tool__panel'>
+                        <section className='hub-panel analysis-tool__panel'>
                             <h3>Bollinger bands (20, 2σ)</h3>
                             <p className='analysis-tool__panel-note'>
                                 Upper / lower bands (dashed), middle SMA and the quote line over the loaded ticks.
@@ -535,24 +547,24 @@ const AnalysisToolPage = observer(() => {
                             {analysis.bands ? (
                                 <BollingerChart quotes={analysis.quotes} bands={analysis.bands} />
                             ) : (
-                                <p className='analysis-tool__empty'>Need at least 20 quotes for Bollinger bands.</p>
+                                <p className='hub-empty'>Need at least 20 quotes for Bollinger bands.</p>
                             )}
                         </section>
                     </div>
 
-                    <section className='analysis-tool__panel analysis-tool__panel--wide'>
+                    <section className='hub-panel analysis-tool__panel analysis-tool__panel--wide'>
                         <h3>Over / Under by barrier</h3>
                         <p className='analysis-tool__panel-note'>
                             Empirical share vs fair probability for every barrier. Chi-square uniformity verdict on
                             digits 0–9:{' '}
-                            <strong className={uniformOk ? 'pos' : 'neg'}>
+                            <strong className={uniformOk ? 'hub-pos' : 'hub-neg'}>
                                 {uniformOk
                                     ? `not rejected (p = ${analysis.chiP.toFixed(3)})`
                                     : `skewed (p = ${analysis.chiP.toFixed(3)})`}
                             </strong>
                         </p>
-                        <div className='analysis-tool__table-wrap'>
-                            <table className='analysis-tool__table'>
+                        <div className='hub-table-wrap'>
+                            <table className='hub-table'>
                                 <thead>
                                     <tr>
                                         <th>Barrier</th>
@@ -573,12 +585,12 @@ const AnalysisToolPage = observer(() => {
                                                 <td>{r.barrier}</td>
                                                 <td>{pct(r.overEmp)}</td>
                                                 <td>{pct(r.overTheo)}</td>
-                                                <td className={overGap > 0 ? 'pos' : overGap < 0 ? 'neg' : ''}>
+                                                <td className={overGap > 0 ? 'hub-pos' : overGap < 0 ? 'hub-neg' : ''}>
                                                     {signedPct(overGap)}
                                                 </td>
                                                 <td>{pct(r.underEmp)}</td>
                                                 <td>{pct(r.underTheo)}</td>
-                                                <td className={underGap > 0 ? 'pos' : underGap < 0 ? 'neg' : ''}>
+                                                <td className={underGap > 0 ? 'hub-pos' : underGap < 0 ? 'hub-neg' : ''}>
                                                     {signedPct(underGap)}
                                                 </td>
                                             </tr>
@@ -590,7 +602,7 @@ const AnalysisToolPage = observer(() => {
                     </section>
                 </>
             )}
-        </div>
+        </HubPage>
     );
 });
 
