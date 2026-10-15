@@ -345,7 +345,6 @@ const DualEdgePage = observer(() => {
                 return;
             }
             const won = settlement.isWon;
-            const payoutRatio = quote.askPrice > 0 ? quote.payout / quote.askPrice : undefined;
             log(
                 'settlement',
                 `${won ? 'WIN' : 'LOSS'}: #${buy.contractId} ${side} ${state.barrier} — exit digit ${
@@ -353,7 +352,9 @@ const DualEdgePage = observer(() => {
                 }, ${settlement.profit >= 0 ? '+' : ''}${settlement.profit.toFixed(2)}`
             );
             const next = sidesRef.current.map(s =>
-                s.side === side ? applySideResult(s, activeProfile, config, { won, payoutRatio }) : s
+                s.side === side
+                    ? applySideResult(s, activeProfile, config, { won, profit: settlement.profit, payoutRatio: quote.askPrice > 0 ? quote.payout / quote.askPrice : undefined })
+                    : s
             );
             if (commitAndCheck(next)) return;
         }
@@ -679,7 +680,7 @@ const DualEdgePage = observer(() => {
 
             <HubNote tone='info'>
                 {liveArmed
-                    ? 'Live run: profit uses each proposal\u2019s real payout ratio.'
+                    ? 'Live run: profit is the server\u2019s settlement P/L (actual fill — includes any price-move retry).'
                     : 'stake flow — no P/L modelled in paper: wins credit nothing without a real payout, losses deduct the stake from the flow counter.'}
             </HubNote>
 

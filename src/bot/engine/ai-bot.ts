@@ -493,7 +493,17 @@ export class AIBotEngine {
             if (this.state.openTrade) reasons.push('position open');
             // Execution requires an authorized Deriv session; scanning/signals do not.
             if (!isAuthorized()) reasons.push('log in to auto-trade');
-            else if (this.state.liveTrading === false && !this.state.accountIsDemo) reasons.push('live trading off');
+            else {
+                // Re-evaluate the ACTIVE account at trade time — a demo snapshot
+                // from start() must never authorize orders on a real account.
+                const activeLogin = currentLoginId();
+                const activeIsDemo = activeLogin ? isDemoAccount(activeLogin) : this.state.accountIsDemo;
+                if (activeIsDemo !== this.state.accountIsDemo) {
+                    this.update({ accountIsDemo: activeIsDemo });
+                    this.logEvent('status', `Active account switched to ${activeIsDemo ? 'DEMO' : 'REAL'} (${activeLogin || 'no session'}) — execution gate re-evaluated.`);
+                }
+                if (this.state.liveTrading === false && !activeIsDemo) reasons.push('live trading off');
+            }
 
             if (reasons.length) {
                 const held = reasons.find(r => r !== 'auto-trade off');

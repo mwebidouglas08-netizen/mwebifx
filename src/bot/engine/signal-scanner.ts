@@ -244,9 +244,11 @@ export class SignalScannerEngine {
         this.lastTradeAt = 0;
         this.martingaleStep = 0;
         this.setAutoTradeBlock(null);
-        // Funded accounts use the real balance; paper mode (no login) uses a
-        // nominal bankroll so the equity cap and P/L tracking behave sensibly.
-        const startEquity = authorized ? accountBalance() : cfg.paperTrading ? PAPER_START_EQUITY : 0;
+        // Paper and live bankrolls must never mix: paper always runs on the
+        // nominal virtual bankroll (even when logged in — stacking simulated
+        // P/L on the real balance produced "equity" figures that matched no
+        // account), live always reads the real balance.
+        const startEquity = cfg.paperTrading ? PAPER_START_EQUITY : authorized ? accountBalance() : 0;
         this.update({
             accountIsDemo,
             liveTrading: authorized ? cfg.allowLiveTrading : false,
@@ -255,11 +257,13 @@ export class SignalScannerEngine {
         });
         this.logEvent(
             'status',
-            authorized
-                ? `Scanner starting on ${accountIsDemo ? 'DEMO' : 'REAL'} account (${loginid}).`
-                : cfg.paperTrading
-                  ? `Scanner starting in PAPER-TRADING mode (simulated fills settled on real ticks, ${PAPER_START_EQUITY} virtual bankroll).`
-                  : 'Scanner starting in signals-only mode. Log in (or enable Paper trading) to auto-trade.'
+            cfg.paperTrading
+                ? authorized
+                    ? `Scanner starting in PAPER-TRADING mode (simulated fills, ${PAPER_START_EQUITY} virtual bankroll) — your real ${accountIsDemo ? 'demo' : 'real'} balance is untouched.`
+                    : `Scanner starting in PAPER-TRADING mode (simulated fills settled on real ticks, ${PAPER_START_EQUITY} virtual bankroll).`
+                : authorized
+                  ? `Scanner starting on ${accountIsDemo ? 'DEMO' : 'REAL'} account (${loginid}).`
+                  : 'Scanner starting in signals-only mode. Log in to auto-trade.'
         );
         if (liveOff) {
             this.logEvent('risk', 'Real account: enable Live trading to place real orders.');
@@ -374,9 +378,14 @@ export class SignalScannerEngine {
         this.setAutoTradeBlock(null);
     }
 
-    /** Tracked equity (paper bankroll or last known), falling back to the live balance. */
+    /** Paper: the tracked virtual bankroll. Live: always the REAL balance —
+     *  never a stale cache (the balance stream moves it on every buy/sell). */
     private currentEquity(): number {
-        return this.state.equity > 0 ? this.state.equity : accountBalance();
+        if (this.state.config.paperTrading) {
+            return this.state.equity > 0 ? this.state.equity : PAPER_START_EQUITY;
+        }
+        const live = accountBalance();
+        return live > 0 ? live : this.state.equity;
     }
 
     private onTick(symbol: string, series: SymbolSeries) {
@@ -612,7 +621,16 @@ export class SignalScannerEngine {
                 this.setAutoTradeBlock(`suspended — ${this.state.risk.suspensionReason || 'risk limit reached'}`);
                 return;
             }
-            if (!paper && this.state.liveTrading === false && !this.state.accountIsDemo) {
+            // Re-evaluate the ACTIVE account at trade time: the login can
+            // switch after start(), and a demo snapshot must never authorize
+            // orders on a real account (or vice versa).
+            const activeLogin = currentLoginId();
+            const activeIsDemo = activeLogin ? isDemoAccount(activeLogin) : this.state.accountIsDemo;
+            if (activeIsDemo !== this.state.accountIsDemo) {
+                this.update({ accountIsDemo: activeIsDemo });
+                this.logEvent('status', `Active account switched to ${activeIsDemo ? 'DEMO' : 'REAL'} (${activeLogin || 'no session'}) — execution gate re-evaluated.`);
+            }
+            if (!paper && this.state.liveTrading === false && !activeIsDemo) {
                 this.setAutoTradeBlock('live trading is off — switch on Live trading to place real orders');
                 return;
             }

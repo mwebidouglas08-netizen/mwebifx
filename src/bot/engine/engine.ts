@@ -57,6 +57,8 @@ export interface EngineState {
     accountIsDemo: boolean;
     liveTrading: boolean;
     dryRun: boolean;
+    /** Explicit setDryRun(true) hold — kept separate so account re-evaluation cannot clear it. */
+    manualHold: boolean;
     events: EngineEvent[];
 }
 
@@ -134,6 +136,7 @@ export class OUBotEngine {
             accountIsDemo: true,
             liveTrading: false,
             dryRun: true,
+            manualHold: false,
             events: [],
         };
     }
@@ -177,13 +180,32 @@ export class OUBotEngine {
     }
 
     setLiveTrading(enabled: boolean) {
-        this.update({ liveTrading: enabled, dryRun: !enabled || !isAuthorized() });
+        this.update({ liveTrading: enabled, manualHold: false, dryRun: !enabled || !isAuthorized() });
         this.configure({ allowLiveTrading: enabled });
     }
 
     setDryRun(enabled: boolean) {
         // Never leave dry-run off without an authorized Deriv session.
-        this.update({ dryRun: enabled || !isAuthorized() });
+        this.update({ manualHold: enabled, dryRun: enabled || !isAuthorized() });
+    }
+
+    /**
+     * Re-evaluate the ACTIVE account and the execution gate. The login can
+     * switch after start(); a demo snapshot must never keep authorizing real
+     * orders (or block a demo that is now active).
+     */
+    private refreshAccountGate(): void {
+        const authorized = isAuthorized();
+        const loginid = authorized ? currentLoginId() : '';
+        const accountIsDemo = authorized ? isDemoAccount(loginid) : false;
+        const cfg = this.state.config;
+        const dryRun = this.state.manualHold || !authorized || (!accountIsDemo && !cfg.allowLiveTrading);
+        if (accountIsDemo === this.state.accountIsDemo && dryRun === this.state.dryRun) return;
+        this.update({ accountIsDemo, dryRun, equity: accountBalance() });
+        this.logEvent(
+            'status',
+            `Execution gate re-evaluated for ${authorized ? `${accountIsDemo ? 'DEMO' : 'REAL'} account (${loginid})` : 'no session'}${dryRun ? ' — holding orders.' : ' — orders allowed.'}`
+        );
     }
 
     emergencyStop() {
@@ -222,7 +244,7 @@ export class OUBotEngine {
 
         this.running = true;
         this.lastActiveTradeAt = 0;
-        this.update({ accountIsDemo, dryRun, equity: accountBalance() });
+        this.update({ accountIsDemo, dryRun, manualHold: false, equity: accountBalance() });
         this.logEvent(
             'status',
             authorized
@@ -485,6 +507,7 @@ export class OUBotEngine {
 
             if (!this.running) return;
             if (this.state.risk.suspended) return;
+            this.refreshAccountGate();
             if (this.state.dryRun) {
                 const why = isAuthorized()
                     ? 'Holding: enable Live trading to place real orders'

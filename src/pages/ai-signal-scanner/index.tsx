@@ -64,7 +64,7 @@ const AISignalScannerPage = observer(() => {
     const isRunning = !['idle', 'stopped', 'error'].includes(state.status);
     const isLoggedIn = Boolean(client?.is_logged_in);
     const activeLoginid = client?.loginid || '';
-    const isDemo = state.accountIsDemo || isDemoAccount(activeLoginid);
+    const isDemo = activeLoginid ? isDemoAccount(activeLoginid) : state.accountIsDemo;
 
     const applyConfig = () => {
         signalScanner.configure({

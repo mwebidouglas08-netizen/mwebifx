@@ -93,7 +93,7 @@ const BulkTraderPage = observer(() => {
 
     const isLoggedIn = Boolean(client?.is_logged_in);
     const activeLoginid = client?.loginid || '';
-    const isDemo = state.accountIsDemo || isDemoAccount(activeLoginid);
+    const isDemo = activeLoginid ? isDemoAccount(activeLoginid) : state.accountIsDemo;
     const paperLocked = !isLoggedIn;
     const isRunning = state.status === 'starting' || state.status === 'running' || state.status === 'stopping';
 

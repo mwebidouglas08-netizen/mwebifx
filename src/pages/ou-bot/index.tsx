@@ -67,7 +67,7 @@ const OUBotPage = observer(() => {
     const isRunning = state.status !== 'idle' && state.status !== 'stopped' && state.status !== 'error';
     const isLoggedIn = Boolean(client?.is_logged_in);
     const activeLoginid = client?.loginid || '';
-    const isDemo = state.accountIsDemo || isDemoAccount(activeLoginid);
+    const isDemo = activeLoginid ? isDemoAccount(activeLoginid) : state.accountIsDemo;
 
     const applyConfig = () => {
         ouBotEngine.configure({

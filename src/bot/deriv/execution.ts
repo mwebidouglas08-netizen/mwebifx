@@ -504,11 +504,21 @@ export interface Settlement {
     outcome?: string;
 }
 
-const settleFrom = (poc: any): Settlement => {
+const settleFrom = (poc: any): Settlement | { error: string } => {
     const sellPrice = Number(poc.sell_price ?? poc.bid_price ?? 0);
     const buyPrice = Number(poc.buy_price ?? 0);
-    const profit = Number(poc.profit ?? sellPrice - buyPrice);
-    const isWon = poc.is_won === 1 || poc.is_won === true || profit > 0;
+    const hasWinFlag = poc.is_won !== undefined && poc.is_won !== null;
+    const hasProfit = poc.profit !== undefined && poc.profit !== null;
+    const hasSellPrice = poc.sell_price !== undefined || poc.bid_price !== undefined;
+    // A sold contract with NO outcome data must become an unknown settlement —
+    // deriving profit 0 from absent prices used to fabricate a LOSS.
+    if (!hasWinFlag && !hasProfit && !hasSellPrice) {
+        return {
+            error: `Contract #${poc.contract_id ?? '?'} sold but the server sent no outcome (is_won/profit/sell_price missing) — not recorded`,
+        };
+    }
+    const profit = hasProfit ? Number(poc.profit) : sellPrice - buyPrice;
+    const isWon = hasWinFlag ? poc.is_won === 1 || poc.is_won === true : profit > 0;
     const exitTick = poc.exit_tick !== undefined ? Number(poc.exit_tick) : undefined;
     return {
         contractId: Number(poc.contract_id),
@@ -558,6 +568,7 @@ export const monitorUntilSettled = async (
         onProgress?.(poc);
         if (poc.is_sold === 1 || poc.is_sold === true || poc.is_expired === 1) {
             const settlement = settleFrom(poc);
+            if ('error' in settlement) return settlement;
             settlement.exitDigit = deriveExitDigit(settlement, pipSize);
             return settlement;
         }
@@ -567,6 +578,7 @@ export const monitorUntilSettled = async (
         const sold = lastPoc.is_sold === 1 || lastPoc.is_sold === true || lastPoc.is_expired === 1;
         if (sold) {
             const settlement = settleFrom(lastPoc);
+            if ('error' in settlement) return settlement;
             settlement.exitDigit = deriveExitDigit(settlement, pipSize);
             return settlement;
         }

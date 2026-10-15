@@ -55,7 +55,11 @@ const AlgoProAiPage = observer(() => {
 
     const isLoggedIn = Boolean(client?.is_logged_in);
     const activeLoginid = client?.loginid || '';
-    const isDemo = state.accountIsDemo || isDemoAccount(activeLoginid);
+    // Drive the account identity from the ACTIVE login — state.accountIsDemo
+    // defaults to true until the first Start, which used to label a real
+    // account "Demo" and silently skip the REAL-funds confirms.
+    const isDemo = activeLoginid ? isDemoAccount(activeLoginid) : state.accountIsDemo;
+    const liveBalance = client?.balance ? Number(client.balance) : null;
     const paperLocked = !isLoggedIn;
     const isRunning = state.running || state.loading;
 
@@ -99,14 +103,16 @@ const AlgoProAiPage = observer(() => {
 
     const perf = algoProEngine.getPerformance();
     const best = state.markets.length
-        ? [...state.markets].sort((a, b) => b.pairConfidence - a.pairConfidence)[0]
+        ? [...state.markets]
+              .filter(m => m.signal)
+              .sort((a, b) => Number(b.favourable) - Number(a.favourable) || b.signalEdge - a.signalEdge || b.pairConfidence - a.pairConfidence)[0] ?? null
         : null;
 
     return (
         <HubPage className='algo-pro-page'>
             <HubPageHeader
                 title='Algo Pro AI'
-                subtitle='Continuous AI scanner across all 10 volatility indices (R_10 … R_100 + 1s). Pattern strategies, martingale recovery, take-profit/stop-loss — one contract at a time, with honest settlement handling.'
+                subtitle='Continuous live scanner across all 10 volatility indices (R_10 … R_100 + 1s). Trades fire only on confidence-gated signals whose measured win-rate clears the house break-even on live ticks — one contract at a time, with honest settlement handling.'
                 badge={
                     <>
                         <span className={`hub-badge ${state.running ? 'hub-badge--running' : state.error ? 'hub-badge--error' : 'hub-badge--idle'}`}>
@@ -205,6 +211,11 @@ const AlgoProAiPage = observer(() => {
                     Pair confidence gate (0-1)
                     <input type='number' step={0.05} min={0} max={1} value={form.pairConfidenceGate} onChange={e => patch('pairConfidenceGate', Math.min(1, Math.max(0, Number(e.target.value) || 0)))} />
                 </label>
+                <p className='algo-pro-fieldset-hint'>
+                    Favourability filter (both modes): the measured win-rate on live ticks must clear the contract's
+                    house break-even by +1pp (30+ tick sample) before any order fires — pattern signals below that are
+                    held as “Weak signal — holding”.
+                </p>
             </section>
 
             <section className='algo-pro-toggles'>
@@ -234,7 +245,15 @@ const AlgoProAiPage = observer(() => {
 
             <section className='algo-pro-stats hub-stats' aria-live='polite'>
                 <div className='hub-stat'>
-                    <span>Total P/L</span>
+                    <span>Account balance{form.paperTrading ? ' (real — paper trades don\u2019t touch it)' : ''}</span>
+                    <strong>
+                        {isLoggedIn && liveBalance !== null && Number.isFinite(liveBalance)
+                            ? `${liveBalance.toFixed(2)} ${client?.currency || 'USD'}`
+                            : '—'}
+                    </strong>
+                </div>
+                <div className='hub-stat'>
+                    <span>Total P/L {form.paperTrading ? '(paper)' : '(session)'}</span>
                     <strong className={state.totalProfit >= 0 ? 'hub-pos' : 'hub-neg'}>{money(state.totalProfit)}</strong>
                 </div>
                 <div className='hub-stat'>
@@ -261,8 +280,10 @@ const AlgoProAiPage = observer(() => {
 
             {best && (
                 <HubNote tone='info' role='status'>
-                    <strong>Best pair signal right now:</strong> {best.displayName} — {best.signal ? best.signal.label : best.lastDigit >= 0 ? `digit ${best.lastDigit}` : 'warming up'}{' '}
-                    (pair confidence {fmtPct(best.pairConfidence)})
+                    <strong>Best signal right now:</strong> {best.displayName} — {best.signal?.label ?? best.lastDigit >= 0 ? `digit ${best.lastDigit}` : 'warming up'}{' '}
+                    (edge {best.signal ? `${best.signalEdge >= 0 ? '+' : ''}${(best.signalEdge * 100).toFixed(1)}pp` : '—'}
+                    {best.signal && !best.favourable ? ' — not favourable yet, held' : ''}
+                    {form.usePairScanner ? `, pair confidence ${fmtPct(best.pairConfidence)}` : ''})
                 </HubNote>
             )}
 
@@ -281,6 +302,7 @@ const AlgoProAiPage = observer(() => {
                                     <th>Last quote</th>
                                     <th>Last digits</th>
                                     <th>Signal</th>
+                                    <th>Edge</th>
                                     <th>Pair conf.</th>
                                     <th>Checked</th>
                                     <th>Status</th>
@@ -299,7 +321,10 @@ const AlgoProAiPage = observer(() => {
                                                 <span key={`${m.symbol}-${i}-${d}`}>{d}</span>
                                             ))}
                                         </td>
-                                        <td className={m.signal ? 'algo-pro-signal' : ''}>{m.signal?.label ?? '—'}</td>
+                                        <td className={m.favourable ? 'algo-pro-signal' : ''}>{m.signal?.label ?? '—'}</td>
+                                        <td className={m.signalEdge > 0 ? 'hub-pos' : m.signalEdge < 0 ? 'hub-neg' : ''}>
+                                            {m.signal ? `${m.signalEdge >= 0 ? '+' : ''}${(m.signalEdge * 100).toFixed(1)}pp` : '—'}
+                                        </td>
                                         <td>{fmtPct(m.pairConfidence)}</td>
                                         <td>{m.checked}</td>
                                         <td>{m.status}</td>
@@ -374,10 +399,12 @@ const AlgoProAiPage = observer(() => {
             </section>
 
             <HubNote tone='risk'>
-                Honest note: pattern scanners cannot beat a fair wheel — they react to streak patterns and digit
-                runs, not to predictive edges. Martingale recovery multiplies stake after every loss and can hit the
-                stop loss quickly. Paper mode simulates fills on real ticks and never spends real funds; unknown
-                settlements are recorded as unknown, never as wins or losses.
+                Honest note: the scanner only gates on measured live data — a market whose recent digit distribution
+                beats the house break-even. No gate can create an edge on a fair wheel: streak patterns and digit runs
+                are reactions, not predictions. Martingale recovery multiplies stake after every loss and can hit the
+                stop loss quickly. Paper mode simulates fills on real ticks and never spends real funds; the account
+                balance shown is always the real Deriv balance and never moves during paper runs. Unknown settlements
+                are recorded as unknown, never as wins or losses.
             </HubNote>
         </HubPage>
     );

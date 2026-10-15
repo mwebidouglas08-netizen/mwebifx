@@ -332,12 +332,20 @@ export const bestPairCandidate = (digits: number[], profile: PairProfile): PairC
     return b.recentRate > a.recentRate ? b : a;
 };
 
-/** Convert a winning pair candidate into a trade signal. */
-export const pairCandidateToSignal = (candidate: PairCandidate): AlgoProSignal => ({
-    contractType: candidate.side === 'over' ? 'DIGITOVER' : 'DIGITUNDER',
-    label: candidate.side === 'over' ? `Trade Over ${candidate.barrier}` : `Trade Under ${candidate.recoveryBarrier}`,
-    barrier: candidate.side === 'over' ? candidate.barrier : candidate.recoveryBarrier,
-});
+/** Convert a pair candidate into a trade signal.
+ *  - Primary: the candidate's own side/barrier (Over X / Under Y of the profile).
+ *  - Recovery (after a loss): the paired partner (recoverySide/recoveryBarrier).
+ *  Previously the under side mapped to `recoveryBarrier`, which traded
+ *  "Under 2" while scoring the Under-7 rate — a mismatched barrier/payout. */
+export const pairCandidateToSignal = (candidate: PairCandidate, recovery = false): AlgoProSignal => {
+    const side = recovery ? candidate.recoverySide : candidate.side;
+    const barrier = recovery ? candidate.recoveryBarrier : candidate.barrier;
+    return {
+        contractType: side === 'over' ? 'DIGITOVER' : 'DIGITUNDER',
+        label: `Trade ${side === 'over' ? 'Over' : 'Under'} ${barrier}`,
+        barrier,
+    };
+};
 
 export interface RankedMarketSignal {
     symbol: string;
@@ -353,6 +361,120 @@ export const rankMarketSignals = (items: RankedMarketSignal[]): RankedMarketSign
         }
         return b.candidate.recentRate - a.candidate.recentRate;
     });
+
+// ---------------------------------------------------------------------------
+// Signal quality — live favourability gate (measured rate vs house break-even)
+// ---------------------------------------------------------------------------
+
+/** Theoretical win probability of a contract on a fair wheel. */
+export const theoreticalProbability = (contractType: AlgoProContractType, barrier?: number): number => {
+    switch (contractType) {
+        case 'DIGITOVER':
+            return Math.min(1, Math.max(0, (10 - (barrier ?? 0)) / 10));
+        case 'DIGITUNDER':
+            return Math.min(1, Math.max(0, (barrier ?? 10) / 10));
+        default:
+            return 0.5; // DIGITEVEN / DIGITODD / CALL / PUT ≈ 50/50
+    }
+};
+
+/** Break-even hit-rate: Deriv pays ≈ 0.95/p (≈5% margin), so the measured
+ *  win-rate must exceed p/0.95 before a trade is even break-even. */
+export const breakevenRate = (contractType: AlgoProContractType, barrier?: number): number =>
+    theoreticalProbability(contractType, barrier) / 0.95;
+
+export interface SignalQuality {
+    /** Blended measured win-rate: 0.55·full-sample + 0.30·recent (orb weights). */
+    blended: number;
+    fullRate: number;
+    recentRate: number;
+    pTheory: number;
+    breakeven: number;
+    /** blended − breakeven (positive = favourable). */
+    edge: number;
+    sample: number;
+    recentSample: number;
+}
+
+const qualityWindow = (n: number): number => Math.min(250, Math.max(30, Math.round(0.12 * n)));
+
+interface RatePair {
+    full: number;
+    recent: number;
+    sample: number;
+    recentSample: number;
+}
+
+const winRate = (contractType: AlgoProContractType, barrier: number | undefined, digits: number[], prices: number[]): RatePair => {
+    if (contractType === 'CALL' || contractType === 'PUT') {
+        const moves: number[] = [];
+        for (let i = 1; i < prices.length; i++) {
+            if (prices[i] > prices[i - 1]) moves.push(1);
+            else if (prices[i] < prices[i - 1]) moves.push(0);
+        }
+        const recentN = qualityWindow(moves.length);
+        const recent = moves.slice(-recentN);
+        const wins = (list: number[]) => (list.length ? list.filter(x => x === 1).length / list.length : 0);
+        return {
+            full: wins(moves),
+            recent: wins(recent),
+            sample: moves.length,
+            recentSample: recent.length,
+        };
+    }
+    const hit = (d: number): boolean => {
+        switch (contractType) {
+            case 'DIGITOVER':
+                return d > (barrier ?? 0);
+            case 'DIGITUNDER':
+                return d < (barrier ?? 10);
+            case 'DIGITEVEN':
+                return d % 2 === 0;
+            case 'DIGITODD':
+                return d % 2 === 1;
+            default:
+                return false;
+        }
+    };
+    const recentN = qualityWindow(digits.length);
+    const recent = digits.slice(-recentN);
+    return {
+        full: digits.length ? digits.filter(hit).length / digits.length : 0,
+        recent: recent.length ? recent.filter(hit).length / recent.length : 0,
+        sample: digits.length,
+        recentSample: recent.length,
+    };
+};
+
+/** Measure a would-be signal against the live digit/quote buffers. */
+export const signalQuality = (
+    signal: Pick<AlgoProSignal, 'contractType' | 'barrier'>,
+    digits: number[],
+    prices: number[]
+): SignalQuality => {
+    const { full, recent, sample, recentSample } = winRate(signal.contractType, signal.barrier, digits, prices);
+    const pTheory = theoreticalProbability(signal.contractType, signal.barrier);
+    const breakeven = pTheory / 0.95;
+    const blended = 0.55 * full + 0.3 * recent;
+    return {
+        blended,
+        fullRate: full,
+        recentRate: recent,
+        pTheory,
+        breakeven,
+        edge: blended - breakeven,
+        sample,
+        recentSample,
+    };
+};
+
+/** Favourability rule: enough live data, blended rate beats house break-even,
+ *  and the RECENT window (current market state) clears it with a margin. */
+export const QUALITY_MIN_SAMPLE = 30;
+export const QUALITY_EDGE_MARGIN = 0.01;
+
+export const isFavourable = (q: SignalQuality): boolean =>
+    q.sample >= QUALITY_MIN_SAMPLE && q.blended >= q.breakeven && q.recentRate >= q.breakeven + QUALITY_EDGE_MARGIN;
 
 // ---------------------------------------------------------------------------
 // Infinity Algo 1 session (digit trigger + recovery, from infinity-algo-1.xml)

@@ -7,7 +7,7 @@ jest.mock('../api', () => ({
     currentSocket: jest.fn(() => 'sock-1'),
 }));
 
-import { requestQuote, settlementTimeoutMs } from '../execution';
+import { monitorUntilSettled, requestQuote, settlementTimeoutMs } from '../execution';
 import * as api from '../api';
 
 const validReq = {
@@ -126,5 +126,42 @@ describe('settlementTimeoutMs (regression: hard 60s default killed long duration
         expect(settlementTimeoutMs(Number.NaN, 't')).toBe(95000);
         expect(settlementTimeoutMs(0, 't')).toBe(95000);
         expect(settlementTimeoutMs(3, 'weird')).toBe(105000);
+    });
+});
+
+describe('monitorUntilSettled — unknown outcome (regression: fabricated LOSS)', () => {
+    beforeEach(() => {
+        (api.getOpenContract as jest.Mock).mockReset();
+    });
+
+    it('returns an error instead of a win/loss when a sold contract has no outcome data', async () => {
+        (api.getOpenContract as jest.Mock).mockResolvedValue({
+            data: { proposal_open_contract: { contract_id: 42, is_sold: 1, buy_price: 1 } },
+        });
+        const result = await monitorUntilSettled(42, 2, undefined, 5000, 10);
+        expect('error' in result).toBe(true);
+        expect((result as { error: string }).error).toContain('no outcome');
+    });
+
+    it('returns the server settlement (win + true profit) when outcome data is present', async () => {
+        (api.getOpenContract as jest.Mock).mockResolvedValue({
+            data: {
+                proposal_open_contract: {
+                    contract_id: 42,
+                    is_sold: 1,
+                    is_won: 1,
+                    profit: 0.95,
+                    buy_price: 1,
+                    sell_price: 1.95,
+                    exit_tick: 1234.5678,
+                },
+            },
+        });
+        const result = await monitorUntilSettled(42, 4, undefined, 5000, 10);
+        expect('error' in result).toBe(false);
+        const settlement = result as import('../execution').Settlement;
+        expect(settlement.isWon).toBe(true);
+        expect(settlement.profit).toBe(0.95);
+        expect(settlement.exitDigit).toBe(8);
     });
 });

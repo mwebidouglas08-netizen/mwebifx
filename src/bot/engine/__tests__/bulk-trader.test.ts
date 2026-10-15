@@ -7,6 +7,7 @@ jest.mock('../../deriv/execution', () => ({
     applySettlementToRecord: jest.fn(),
     isMarketUnavailableError: jest.fn(() => false),
     releaseQuote: jest.fn(),
+    settlementTimeoutMs: jest.fn(() => 95000),
 }));
 
 jest.mock('../../deriv/api', () => ({

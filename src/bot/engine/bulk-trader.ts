@@ -1,5 +1,6 @@
 import { MarketCategory, TradeRecord } from '../core/types';
 import { ContractFamily, SignalAction } from '../core/signal-types';
+import { pipSizeDefault } from '../core/algo-pro-ai';
 import {
     ContractRequest,
     applySettlementToRecord,
@@ -7,6 +8,7 @@ import {
     monitorUntilSettled,
     releaseQuote,
     requestContractQuote,
+    settlementTimeoutMs,
 } from '../deriv/execution';
 import { currentLoginId, getTicksHistory, isApiReady, isAuthorized } from '../deriv/api';
 import { SymbolSeries, TickFeed } from '../deriv/ticks';
@@ -379,6 +381,27 @@ export class BulkTraderEngine {
             return;
         }
 
+        // Re-evaluate the ACTIVE account before every live order: the login can
+        // switch mid-run, and a demo snapshot must never authorize real orders
+        // without the Live-trading arm (or block a now-active demo).
+        const authorized = isAuthorized();
+        const loginid = authorized ? currentLoginId() : '';
+        const accountIsDemo = authorized ? isDemoAccount(loginid) : false;
+        if (accountIsDemo !== this.state.accountIsDemo) {
+            this.update({ accountIsDemo });
+            this.logEvent('info', `Active account switched to ${accountIsDemo ? 'DEMO' : 'REAL'} (${loginid || 'no session'}) — execution gate re-evaluated.`);
+        }
+        if (!authorized) {
+            this.logEvent('error', 'No logged-in Deriv account before a live order — stopping the run.');
+            this.stop();
+            return;
+        }
+        if (!accountIsDemo && !cfg.allowLiveTrading) {
+            this.logEvent('risk', 'REAL account active but Live trading is off — stopping the run before any real order.');
+            this.stop();
+            return;
+        }
+
         const stake = cfg.stake;
         const barrier = barrierNumber(cfg);
         const quoteReq: ContractRequest = {
@@ -463,10 +486,16 @@ export class BulkTraderEngine {
     }
 
     private monitorLive(record: TradeRecord) {
+        const cfg = this.state.config;
         this.openMonitors += 1;
         void (async () => {
             try {
-                const settlement = await monitorUntilSettled(record.contractId as number, 2);
+                const settlement = await monitorUntilSettled(
+                    record.contractId as number,
+                    pipSizeDefault(record.symbol),
+                    undefined,
+                    settlementTimeoutMs(cfg.duration, cfg.durationUnit)
+                );
                 if ('error' in settlement) {
                     // The contract is still open or the outcome is unknown —
                     // count it as failed so requested = settled + failed always

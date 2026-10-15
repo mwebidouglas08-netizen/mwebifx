@@ -5,15 +5,17 @@ import {
     AlgoProSignal,
     AlgoProStrategyId,
     DEFAULT_ALGO_PRO_STRATEGY,
-    PairProfile,
     PairProfileId,
     PAIR_PROFILES,
     bestPairCandidate,
+    isFavourable,
     lastDigitAt,
     martingaleStake,
+    pairCandidateToSignal,
     pipSizeDefault,
     scopeMarkets,
     signalFromStrategy,
+    signalQuality,
     tradeKey,
 } from '../core/algo-pro-ai';
 import { paperWon } from './signal-scanner';
@@ -26,7 +28,7 @@ import {
     requestContractQuote,
     settlementTimeoutMs,
 } from '../deriv/execution';
-import { accountBalance, currentLoginId, getTicksHistory, isApiReady, isAuthorized } from '../deriv/api';
+import { currentLoginId, getTicksHistory, isApiReady, isAuthorized } from '../deriv/api';
 import { isDemoAccount } from '@/utils/account-helpers';
 
 export interface AlgoProSettings {
@@ -57,6 +59,10 @@ export interface AlgoProMarketState {
     prices: number[];
     signal: AlgoProSignal | null;
     pairConfidence: number;
+    /** Live measured edge of the would-be trade (win-rate − house break-even). */
+    signalEdge: number;
+    /** True only when the measured rate clears break-even with a margin. */
+    favourable: boolean;
     checked: number;
     status: string;
     trading: boolean;
@@ -129,7 +135,7 @@ export const DEFAULT_ALGO_PRO_SETTINGS: AlgoProSettings = {
     strategyId: DEFAULT_ALGO_PRO_STRATEGY,
     scope: 'all',
     profileId: 'over2_under7',
-    usePairScanner: false,
+    usePairScanner: true,
     pairConfidenceGate: 0.65,
     stake: 0.5,
     ticks: 1,
@@ -293,6 +299,8 @@ export class AlgoProEngine {
             prices: [],
             signal: null,
             pairConfidence: 0,
+            signalEdge: 0,
+            favourable: false,
             checked: signalLookback(settings.strategyId, false),
             status: 'Waiting for ticks…',
             trading: false,
@@ -362,11 +370,9 @@ export class AlgoProEngine {
         const digits = series.digits.slice(-BUFFER);
         const prices = series.quotes.slice(-BUFFER);
         const lastDigit = digits[digits.length - 1] ?? lastDigitAt(quote, pip);
-        const recoveryMode = this.state.recoveryMode;
-        const signal = signalFromStrategy(settings.strategyId, prices, digits, recoveryMode);
-        const pair = bestPairCandidate(digits, this.profile());
         const idx = this.state.markets.findIndex(m => m.symbol === symbol);
         if (idx < 0) return;
+        const evald = this.evaluateMarket(digits, prices, settings, this.state.recoveryMode);
         const markets = [...this.state.markets];
         const prev = markets[idx];
         const trading = !!this.state.activeContractId && this.state.activeMarket === symbol;
@@ -376,11 +382,19 @@ export class AlgoProEngine {
             lastDigit,
             digits,
             prices,
-            signal,
-            pairConfidence: pair.confidence,
-            checked: signalLookback(settings.strategyId, recoveryMode),
+            signal: evald.signal,
+            pairConfidence: evald.pairConfidence,
+            signalEdge: evald.signalEdge,
+            favourable: evald.favourable,
+            checked: signalLookback(settings.strategyId, this.state.recoveryMode),
             trading,
-            status: trading ? 'Trading' : signal ? signal.label : 'Scanning',
+            status: trading
+                ? 'Trading'
+                : !evald.signal
+                  ? 'Scanning'
+                  : evald.favourable
+                    ? evald.signal.label
+                    : 'Weak signal — holding',
         };
         const readySignals = markets.filter(m => this.signalEligible(m)).length;
         this.update({ markets, readySignals });
@@ -394,36 +408,57 @@ export class AlgoProEngine {
         this.maybeExecute(markets[idx], quote, lastDigit);
     }
 
-    private profile(): PairProfile {
-        return PAIR_PROFILES.find(p => p.id === this.state.settings.profileId) ?? PAIR_PROFILES[1];
+    /**
+     * Compute the trade this market would take right now plus its live
+     * favourability: pair mode uses the orb pair candidate (confidence gate),
+     * pattern mode uses the strategy streak — BOTH must then clear the
+     * measured break-even filter (isFavourable) before any order may fire.
+     */
+    private evaluateMarket(
+        digits: number[],
+        prices: number[],
+        settings: AlgoProSettings,
+        recoveryMode: boolean
+    ): { signal: AlgoProSignal | null; pairConfidence: number; signalEdge: number; favourable: boolean } {
+        const profile = PAIR_PROFILES.find(p => p.id === settings.profileId) ?? PAIR_PROFILES[1];
+        const best = bestPairCandidate(digits, profile);
+        const signal = settings.usePairScanner
+            ? pairCandidateToSignal(best, recoveryMode)
+            : signalFromStrategy(settings.strategyId, prices, digits, recoveryMode);
+        if (!signal) return { signal: null, pairConfidence: best.confidence, signalEdge: 0, favourable: false };
+        const quality = signalQuality(signal, digits, prices);
+        return {
+            signal,
+            pairConfidence: best.confidence,
+            signalEdge: quality.edge,
+            favourable: isFavourable(quality),
+        };
     }
 
     private signalEligible(m: AlgoProMarketState): boolean {
         const s = this.state.settings;
+        if (!m.signal || !m.favourable) return false;
         if (s.usePairScanner) return m.pairConfidence >= s.pairConfidenceGate;
-        return !!m.signal;
+        return true;
     }
 
-    private maybeExecute(m: AlgoProMarketState, quote: number, lastDigit: number) {
+    private maybeExecute(_trigger: AlgoProMarketState, _quote: number, _lastDigit: number) {
         const settings = this.state.settings;
         if (!this.state.running || !settings) return;
         if (this.state.activeContractId || this.executionBusy) return;
 
-        let signal: AlgoProSignal | null;
-        if (settings.usePairScanner) {
-            if (m.pairConfidence < settings.pairConfidenceGate) return;
-            const best = bestPairCandidate(m.digits, this.profile());
-            signal =
-                best.side === 'over'
-                    ? { contractType: 'DIGITOVER', label: `Trade Over ${best.barrier}`, barrier: best.barrier }
-                    : { contractType: 'DIGITUNDER', label: `Trade Under ${best.recoveryBarrier}`, barrier: best.recoveryBarrier };
-        } else {
-            signal = m.signal;
-        }
+        // Trade the MOST favourable eligible market, not whichever market's
+        // tick happened to arrive first: rank by measured edge, then pair
+        // confidence. Markets failing the favourability filter never enter.
+        const eligible = this.state.markets.filter(m => this.signalEligible(m));
+        if (!eligible.length) return;
+        eligible.sort((a, b) => b.signalEdge - a.signalEdge || b.pairConfidence - a.pairConfidence);
+        const m = eligible[0];
+        const signal = m.signal;
         if (!signal) return;
 
         // One trade per pattern tick: symbol:epoch:contract:barrier dedupe.
-        const epoch = Math.floor(quote * 100);
+        const epoch = Math.floor(m.lastQuote * 100);
         const key = tradeKey(m.symbol, epoch, signal.contractType, signal.barrier);
         if (key === this.lastTradeKey) return;
 
@@ -434,7 +469,7 @@ export class AlgoProEngine {
         }
 
         const stake = martingaleStake(settings.stake, settings.martingale, this.state.lossDepth);
-        void this.executeSignal(m, signal, stake, key, lastDigit);
+        void this.executeSignal(m, signal, stake, key, m.lastDigit);
     }
 
     private executionGate(settings: AlgoProSettings): string | null {
@@ -617,13 +652,23 @@ export class AlgoProEngine {
             wins,
             losses,
             status: won ? 'Last AI trade won' : 'Last AI trade lost',
-            markets: this.state.markets.map(m => ({
-                ...m,
-                trading: false,
-                signal: signalFromStrategy(settings.strategyId, m.prices, m.digits, recoveryMode),
-                checked: signalLookback(settings.strategyId, recoveryMode),
-                status: 'Scanning',
-            })),
+            markets: this.state.markets.map(m => {
+                const evald = this.evaluateMarket(m.digits, m.prices, settings, recoveryMode);
+                return {
+                    ...m,
+                    trading: false,
+                    signal: evald.signal,
+                    pairConfidence: evald.pairConfidence,
+                    signalEdge: evald.signalEdge,
+                    favourable: evald.favourable,
+                    checked: signalLookback(settings.strategyId, recoveryMode),
+                    status: !evald.signal
+                        ? 'Scanning'
+                        : evald.favourable
+                          ? evald.signal.label
+                          : 'Weak signal — holding',
+                };
+            }),
         });
         this.logEvent(
             'settlement',

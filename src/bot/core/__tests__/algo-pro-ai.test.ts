@@ -11,10 +11,12 @@ import {
     allRising,
     applyInfinitySettlement,
     bestPairCandidate,
+    breakevenRate,
     checkedTicks,
     createInfinitySession,
     digitPairCandidates,
     infinityEntryReady,
+    isFavourable,
     lastDigitAt,
     martingaleStake,
     pairCandidateToSignal,
@@ -22,6 +24,7 @@ import {
     rankMarketSignals,
     scopeMarkets,
     signalFromStrategy,
+    signalQuality,
     tradeKey,
 } from '../algo-pro-ai';
 
@@ -238,6 +241,73 @@ describe('digit-pair confidence scanner (orb)', () => {
             },
         ]);
         expect(ranked.map(r => r.symbol)).toEqual(['B', 'C', 'A']);
+    });
+});
+
+describe('pairCandidateToSignal — under-side mapping (regression: used recoveryBarrier)', () => {
+    const underCandidate = {
+        side: 'under' as const,
+        barrier: 7,
+        recoverySide: 'over' as const,
+        recoveryBarrier: 2,
+        confidence: 0.7,
+        primaryRate: 0.7,
+        recentRate: 0.7,
+        recoveryRate: 0.3,
+        sample: 100,
+        recentSample: 30,
+    };
+
+    it('trades the PRIMARY under barrier (Under 7), not the recovery barrier', () => {
+        expect(pairCandidateToSignal(underCandidate)).toEqual({
+            contractType: 'DIGITUNDER',
+            label: 'Trade Under 7',
+            barrier: 7,
+        });
+    });
+
+    it('swaps to the recovery pair only when recovery=true', () => {
+        expect(pairCandidateToSignal(underCandidate, true)).toEqual({
+            contractType: 'DIGITOVER',
+            label: 'Trade Over 2',
+            barrier: 2,
+        });
+    });
+});
+
+describe('signal quality / favourability (alg-qual)', () => {
+    it('breakevenRate is the theoretical probability over the 95% payout', () => {
+        expect(breakevenRate('DIGITUNDER', 7)).toBeCloseTo(0.7 / 0.95, 10);
+        expect(breakevenRate('DIGITOVER', 2)).toBeCloseTo(0.8 / 0.95, 10);
+    });
+
+    it('marks a well-sampled signal beating break-even on both windows as favourable', () => {
+        const digits = Array.from({ length: 100 }, (_, i) => i % 6); // all < 7 → 100% hit
+        const q = signalQuality({ contractType: 'DIGITUNDER', barrier: 7 }, digits, []);
+        expect(q.sample).toBe(100);
+        expect(q.fullRate).toBe(1);
+        expect(q.recentRate).toBe(1);
+        expect(q.breakeven).toBeCloseTo(0.7 / 0.95, 10);
+        expect(q.blended).toBeCloseTo(0.85, 10);
+        expect(q.edge).toBeGreaterThan(0);
+        expect(isFavourable(q)).toBe(true);
+    });
+
+    it('rejects an undersized sample (< 30 ticks)', () => {
+        const q = signalQuality({ contractType: 'DIGITUNDER', barrier: 7 }, [1, 2, 3], []);
+        expect(q.sample).toBe(3);
+        expect(isFavourable(q)).toBe(false);
+    });
+
+    it('rejects when the recent window turns against the signal', () => {
+        const lateTurn = [
+            ...Array.from({ length: 70 }, (_, i) => i % 6), // early wins (< 7)
+            ...Array.from({ length: 30 }, (_, i) => 7 + (i % 3)), // late losses (>= 7)
+        ];
+        const q = signalQuality({ contractType: 'DIGITUNDER', barrier: 7 }, lateTurn, []);
+        expect(q.fullRate).toBeCloseTo(0.7, 10);
+        expect(q.recentRate).toBe(0);
+        expect(isFavourable(q)).toBe(false);
     });
 });
 

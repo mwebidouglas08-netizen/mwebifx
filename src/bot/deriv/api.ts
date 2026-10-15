@@ -1,4 +1,5 @@
 import { api_base } from '@/external/bot-skeleton/services/api/api-base';
+import { observer as globalObserver } from '@/external/bot-skeleton/utils/observer';
 
 export interface ApiResult<T = any> {
     data?: T;
@@ -17,6 +18,22 @@ export const currentLoginId = (): string => api_base.account_id || '';
 export const currentSocket = (): unknown => api_base.api;
 
 export const accountBalance = (): number => {
+    // The client store is fed by the socket `balance` stream (buys, sells,
+    // deposits move it live). `account_info.balance` is only a login-time
+    // snapshot — reading it would hand every engine a stale equity figure.
+    try {
+        const store = globalObserver.getState?.('client.store') as { balance?: unknown; is_logged_in?: boolean } | null | undefined;
+        if (store?.is_logged_in && store.balance !== undefined && store.balance !== null && store.balance !== '') {
+            const live = Number(store.balance);
+            if (Number.isFinite(live)) {
+                const info = api_base.account_info as any;
+                if (info && typeof info === 'object') info.balance = live; // write-through for other readers
+                return live;
+            }
+        }
+    } catch {
+        /* fall through to the snapshot */
+    }
     const info = api_base.account_info as any;
     const b = info?.balance;
     return typeof b === 'number' ? b : Number(b) || 0;

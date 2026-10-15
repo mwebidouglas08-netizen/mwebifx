@@ -122,8 +122,11 @@ const round2 = (n: number): number => Math.round(n * 100) / 100;
 
 export interface SideResultInput {
     won: boolean;
-    /** Real payout ratio from the proposal; omit to skip P/L accounting. */
+    /** Real payout ratio from the proposal (fallback accounting only). */
     payoutRatio?: number;
+    /** SETTLEMENT-TRUE P/L straight from the server (includes the actual fill
+     *  and any PriceMoved retry). Preferred over payoutRatio whenever known. */
+    profit?: number;
 }
 
 /**
@@ -143,7 +146,9 @@ export const applySideResult = (
     if (result.won) {
         next.wins += 1;
         next.consecutiveLosses = 0;
-        if (result.payoutRatio && result.payoutRatio > 0) {
+        if (result.profit !== undefined && Number.isFinite(result.profit)) {
+            next.profit = round2(next.profit + result.profit);
+        } else if (result.payoutRatio && result.payoutRatio > 0) {
             next.profit = round2(next.profit + state.stake * (result.payoutRatio - 1));
         }
         if (config.mode === 'RECOVERY') {
@@ -159,7 +164,12 @@ export const applySideResult = (
     next.losses += 1;
     next.consecutiveLosses = state.consecutiveLosses + 1;
     next.step = state.step + 1;
-    next.profit = round2(next.profit - state.stake);
+    // Settlement-true debit when the server reported the P/L (it equals the
+    // actual fill for a full loss); fall back to the configured stake.
+    next.profit =
+        result.profit !== undefined && Number.isFinite(result.profit)
+            ? round2(next.profit + result.profit)
+            : round2(next.profit - state.stake);
 
     if (config.mode === 'RECOVERY') {
         next.barrier = profile[state.side].recovery;
