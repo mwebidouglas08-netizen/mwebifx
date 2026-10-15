@@ -147,9 +147,10 @@ const CopyTradingPage = observer(() => {
             />
 
             <HubNote tone='risk'>
-                Only demo (virtual) copier accounts are accepted by the engine — real-money copiers are rejected on
-                purpose. The stake multiplier scales losses as well as wins: a master staking 10 USD at ×1.5 becomes{' '}
-                {money(exampleCopied)} per trade here, losing streaks included.
+                By default only demo (virtual) copier accounts are accepted by the engine — real-money copiers are
+                rejected unless you explicitly enable <strong>Allow real copiers</strong> below. The stake multiplier
+                scales losses as well as wins: a master staking 10 USD at ×1.5 becomes {money(exampleCopied)} per
+                trade here, losing streaks included.
             </HubNote>
 
             {!isLoggedIn && (
@@ -219,7 +220,7 @@ const CopyTradingPage = observer(() => {
                         <input
                             type='password'
                             autoComplete='off'
-                            placeholder='Demo account token'
+                            placeholder='Account API token (demo by default)'
                             value={copierToken}
                             onChange={e => setCopierToken(e.target.value)}
                         />
@@ -244,7 +245,7 @@ const CopyTradingPage = observer(() => {
                 </div>
 
                 {state.copiers.length === 0 ? (
-                    <p className='hub-empty'>No copiers yet — add a demo account token to start mirroring.</p>
+                    <p className='hub-empty'>No copiers yet — add a copier account token (demo, or real with the opt-in) to start mirroring.</p>
                 ) : (
                     <div className='copy-copiers'>
                         {state.copiers.map(copier => (
@@ -305,6 +306,22 @@ const CopyTradingPage = observer(() => {
                             onChange={e => copyTrading.setSettings({ replicationEnabled: e.target.checked })}
                         />
                         <span>Replication enabled</span>
+                    </label>
+                    <label className='copy-toggle'>
+                        <input
+                            type='checkbox'
+                            checked={state.settings.allowRealCopiers}
+                            onChange={e => {
+                                if (e.target.checked) {
+                                    const ok = window.confirm(
+                                        'Allow REAL-money copier accounts? Replicated orders will spend real funds on every copier account you add. Continue?'
+                                    );
+                                    if (!ok) return;
+                                }
+                                copyTrading.setSettings({ allowRealCopiers: e.target.checked });
+                            }}
+                        />
+                        <span>Allow real copiers (dangerous — real funds)</span>
                     </label>
                     <label className='hub-field'>
                         Stake multiplier (0.1 – 10)

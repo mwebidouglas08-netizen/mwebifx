@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useAIBot } from '@/bot/use-engine';
 import { aiBot } from '@/bot/engine/ai-bot';
+import { useStore } from '@/hooks/useStore';
+import { isDemoAccount } from '@/utils/account-helpers';
 import {
     AIBotEvent,
     PURCHASE_LABEL,
@@ -75,9 +77,13 @@ const NumberField = ({ label, value, onChange, step, min, max }: { label: string
 
 const AIBotPanel = ({ onClose }: { onClose: () => void }) => {
     const state = useAIBot();
+    const { client } = useStore() ?? {};
     const cfg = state.config;
     const [section, setSection] = useState<'strategy' | 'risk' | 'markets' | 'activity'>('markets');
     const [pendingLive, setPendingLive] = useState(false);
+    // The engine's accountIsDemo only reflects the last start() — before that
+    // it is stale-true, which skipped the real-money confirm on real accounts.
+    const accountIsDemo = client?.loginid ? isDemoAccount(client.loginid) : state.accountIsDemo;
 
     const running = ['starting', 'scanning', 'proposing', 'buying', 'monitoring'].includes(state.status);
     const winRate = state.stats.trades > 0 ? Math.round((state.stats.wins / state.stats.trades) * 100) : 0;
@@ -104,7 +110,7 @@ const AIBotPanel = ({ onClose }: { onClose: () => void }) => {
     };
 
     const toggleLive = () => {
-        if (!state.liveTrading && !state.accountIsDemo) {
+        if (!state.liveTrading && !accountIsDemo) {
             setPendingLive(true);
             return;
         }

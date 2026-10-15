@@ -12,6 +12,8 @@ export interface CopySettings {
     replicationEnabled: boolean;
     stakeMultiplier: number;
     stakeCap: number | null;
+    /** Opt-in: allow REAL-money copier accounts (default off — demo copiers only). */
+    allowRealCopiers: boolean;
 }
 
 export interface CopierStatus {
@@ -49,6 +51,7 @@ const DEFAULT_SETTINGS: CopySettings = {
     replicationEnabled: true,
     stakeMultiplier: 1,
     stakeCap: null,
+    allowRealCopiers: false,
 };
 
 const socketURL = (token: string): string => {
@@ -109,8 +112,10 @@ interface CopierMeta {
  * with `stake = round(masterStake × stakeMultiplier)` capped by `stakeCap`.
  *
  * Safety: copiers must prove `is_virtual === 1` (demo) at authorize time —
- * anything else is skipped as "non-demo copier blocked". Replication can be
- * switched off entirely; the master is then observed but never copied.
+ * anything else is skipped as "non-demo copier blocked" unless the explicit
+ * `allowRealCopiers` opt-in is on (then real copiers authorize with a warning).
+ * Replication can be switched off entirely; the master is then observed but
+ * never copied.
  */
 export class CopyTradingEngine {
     private listeners = new Set<(state: CopyTradingState) => void>();
@@ -283,6 +288,7 @@ export class CopyTradingEngine {
     }
 
     setSettings(patch: Partial<CopySettings>): void {
+        const wasRealAllowed = this.state.settings.allowRealCopiers;
         const settings = { ...this.state.settings, ...patch };
         const multiplier = Number(settings.stakeMultiplier);
         settings.stakeMultiplier = Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1;
@@ -290,8 +296,19 @@ export class CopyTradingEngine {
             const cap = Number(settings.stakeCap);
             settings.stakeCap = Number.isFinite(cap) && cap > 0 ? cap : null;
         }
+        settings.allowRealCopiers = settings.allowRealCopiers === true;
         this.update({ settings });
         this.persist();
+        // Turning the opt-in on re-authorizes copiers previously blocked as
+        // non-demo (their tokens are still stored — just re-run authorize).
+        if (!wasRealAllowed && settings.allowRealCopiers) {
+            for (const copier of this.state.copiers) {
+                if (copier.authorized || !copier.lastError?.includes('non-demo copier blocked')) continue;
+                const token = this.tokens.get(copier.id);
+                if (!token) continue;
+                this.validateCopier(copier.id, token, copier.label);
+            }
+        }
     }
 
     /**
@@ -427,10 +444,16 @@ export class CopyTradingEngine {
                     if (isVirtual) {
                         this.patchCopier(id, { authorized: true, lastError: null, lastSeen: Date.now() });
                         this.logEvent('success', `${label} authorized (demo account ${auth.loginid || ''}).`);
+                    } else if (this.state.settings.allowRealCopiers) {
+                        this.patchCopier(id, { authorized: true, lastError: null, lastSeen: Date.now() });
+                        this.logEvent(
+                            'warn',
+                            `${label} authorized on REAL account ${auth.loginid || ''} — real-money replication is enabled; every copied order spends real funds.`
+                        );
                     } else {
                         this.patchCopier(id, {
                             authorized: false,
-                            lastError: 'non-demo copier blocked — copiers must be demo (virtual) accounts',
+                            lastError: 'non-demo copier blocked — copiers must be demo (virtual) accounts (enable "Allow real copiers" to override)',
                         });
                         this.logEvent('warn', `${label}: non-demo copier blocked — replication only targets demo accounts.`);
                     }
@@ -521,7 +544,11 @@ export class CopyTradingEngine {
             this.setStatus('running', 'Watching master account for new trades…');
             this.logEvent(
                 'success',
-                `Connected to master ${auth.loginid || ''} (${isVirtual ? 'DEMO' : 'REAL'}) — signals only; copiers must be demo accounts.`
+                `Connected to master ${auth.loginid || ''} (${isVirtual ? 'DEMO' : 'REAL'}) — ${
+                    this.state.settings.allowRealCopiers
+                        ? 'replication may target demo and REAL copiers.'
+                        : 'signals only; copiers must be demo accounts (or enable "Allow real copiers").'
+                }`
             );
             this.masterSend({ portfolio: 1, subscribe: 1 });
             return;
@@ -628,7 +655,8 @@ export class CopyTradingEngine {
             if (!copier.enabled) continue;
             const token = this.tokens.get(copier.id);
             const meta = this.copierMeta.get(copier.id);
-            if (!token || !copier.authorized || !meta?.isVirtual) {
+            const realAllowed = this.state.settings.allowRealCopiers;
+            if (!token || !copier.authorized || (!meta?.isVirtual && !realAllowed)) {
                 this.skipCopier(copier, copier.lastError || 'non-demo copier blocked');
                 continue;
             }

@@ -441,7 +441,11 @@ export class AlgoProEngine {
         if (!this.state.running) return 'scanner stopped';
         if (settings.paperTrading) return null;
         if (!isAuthorized()) return 'not logged in — log in or enable Paper trading';
-        if (!settings.allowLiveTrading && !this.state.accountIsDemo) {
+        // Re-evaluate the account at trade time: the login can switch after
+        // start(), and a live flag armed on demo must never leak onto real.
+        const loginid = currentLoginId();
+        const accountIsDemo = loginid ? isDemoAccount(loginid) : this.state.accountIsDemo;
+        if (!settings.allowLiveTrading && !accountIsDemo) {
             return 'live trading is off — switch on Live trading to place real orders';
         }
         return null;

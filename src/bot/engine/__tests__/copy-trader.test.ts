@@ -74,7 +74,7 @@ describe('CopyTradingEngine', () => {
         localStorage.clear();
         MockWebSocket.instances.length = 0;
         copyTrading.stop();
-        copyTrading.setSettings({ replicationEnabled: true, stakeMultiplier: 1, stakeCap: null });
+        copyTrading.setSettings({ replicationEnabled: true, stakeMultiplier: 1, stakeCap: null, allowRealCopiers: false });
         [...copyTrading.getState().copiers].forEach(c => copyTrading.removeCopier(c.id));
         MockWebSocket.instances.length = 0;
     });
@@ -147,6 +147,64 @@ describe('CopyTradingEngine', () => {
         expect(state.copiers[0].skipped).toBe(1);
         expect(state.events.some(e => e.message.includes('non-demo copier blocked'))).toBe(true);
         expect(MockWebSocket.byToken('real-token')).toHaveLength(1);
+    });
+
+    it('authorizes and replicates onto a REAL copier only when allowRealCopiers is enabled', async () => {
+        copyTrading.setSettings({ allowRealCopiers: true });
+        authorizeCopier('real-token', { loginid: 'CR555', is_virtual: 0, currency: 'USD' });
+
+        const copier = copyTrading.getState().copiers[0];
+        expect(copier.authorized).toBe(true);
+        expect(copier.lastError).toBeNull();
+        expect(
+            copyTrading.getState().events.some(e => e.type === 'warn' && e.message.includes('REAL account'))
+        ).toBe(true);
+
+        await copyTrading.start('master-token');
+        const master = MockWebSocket.byToken('master-token')[0];
+        master.open();
+        master.emit({ authorize: { loginid: 'CR1', balance: 100, is_virtual: 0, currency: 'USD' } });
+        pushMasterContract(master, 601, {
+            contract_type: 'DIGITOVER',
+            barrier: '4',
+            symbol: 'R_75',
+            buy_price: 2,
+            currency: 'USD',
+            duration: 1,
+            duration_unit: 't',
+        });
+
+        const buyWs = MockWebSocket.byToken('real-token')[1];
+        expect(buyWs).toBeDefined();
+        buyWs.open();
+        expect(buyWs.sent[0].amount).toBe(2);
+
+        buyWs.emit({ proposal: { id: 'p-real', ask_price: 2, payout: 3.8 } });
+        expect(buyWs.sent[1]).toEqual({ buy: 'p-real', price: 2 });
+        buyWs.emit({ buy: { contract_id: 778, transaction_id: 10, buy_price: 2 } });
+        await new Promise(r => setTimeout(r, 0));
+
+        const state = copyTrading.getState();
+        expect(state.stats.copied).toBe(1);
+        expect(state.copiers[0].copied).toBe(1);
+        expect(state.copiers[0].lastError).toBeNull();
+    });
+
+    it('re-authorizes a previously blocked real copier when allowRealCopiers is turned on', async () => {
+        authorizeCopier('late-real', { loginid: 'CR777', is_virtual: 0, currency: 'USD' });
+        expect(copyTrading.getState().copiers[0].authorized).toBe(false);
+        expect(copyTrading.getState().copiers[0].lastError).toContain('non-demo copier blocked');
+
+        copyTrading.setSettings({ allowRealCopiers: true });
+        await new Promise(r => setTimeout(r, 0));
+
+        const ws = MockWebSocket.byToken('late-real').slice(-1)[0];
+        ws.open();
+        ws.emit({ authorize: { loginid: 'CR777', is_virtual: 0, currency: 'USD' } });
+
+        const copier = copyTrading.getState().copiers[0];
+        expect(copier.authorized).toBe(true);
+        expect(copier.lastError).toBeNull();
     });
 
     it('replicates a master trade with stake multiplier and cap', async () => {

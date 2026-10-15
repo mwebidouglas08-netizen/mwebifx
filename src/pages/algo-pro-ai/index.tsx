@@ -82,11 +82,19 @@ const AlgoProAiPage = observer(() => {
     };
 
     const onToggleLive = (enabled: boolean) => {
-        if (enabled) {
-            const ok = window.confirm('Allow LIVE orders on this account? Buys will spend real money unless paper trading stays on. Continue?');
+        if (enabled && !isDemo) {
+            const ok = window.confirm('Enable LIVE trading on a real-money account? Orders will use real funds. Continue?');
             if (!ok) return;
         }
         patch('allowLiveTrading', enabled);
+        // Apply immediately so a running scanner picks the gate up — the engine
+        // re-reads allowLiveTrading on every trade (works for demo AND real).
+        algoProEngine.configure({ allowLiveTrading: enabled });
+    };
+
+    const onTogglePaper = (enabled: boolean) => {
+        patch('paperTrading', enabled);
+        if (state.running) algoProEngine.configure({ paperTrading: enabled });
     };
 
     const perf = algoProEngine.getPerformance();
@@ -205,13 +213,13 @@ const AlgoProAiPage = observer(() => {
                     <span>Use pair scanner (confidence-gated Over/Under) instead of pattern strategy</span>
                 </label>
                 <label className='algo-pro-toggle'>
-                    <input type='checkbox' checked={paperLocked ? true : form.paperTrading} disabled={paperLocked} onChange={e => patch('paperTrading', e.target.checked)} />
+                    <input type='checkbox' checked={paperLocked ? true : form.paperTrading} disabled={paperLocked} onChange={e => onTogglePaper(e.target.checked)} />
                     <span>Paper trading {paperLocked ? '(locked while logged out)' : '(simulated fills on real ticks)'}</span>
                 </label>
                 <label className='algo-pro-toggle'>
-                    <input type='checkbox' checked={form.allowLiveTrading && isDemo && isLoggedIn} disabled={!isLoggedIn || !isDemo} onChange={e => onToggleLive(e.target.checked)} />
+                    <input type='checkbox' checked={form.allowLiveTrading && isLoggedIn} disabled={!isLoggedIn} onChange={e => onToggleLive(e.target.checked)} />
                     <span>
-                        Allow live trading {!isLoggedIn ? '(log in first)' : isDemo ? '(demo orders)' : '(unavailable on a real account)'}
+                        Allow live trading {!isLoggedIn ? '(log in first)' : isDemo ? '(demo orders)' : '(REAL funds)'}
                     </span>
                 </label>
                 <div className='hub-actions'>

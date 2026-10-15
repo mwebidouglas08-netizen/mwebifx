@@ -308,13 +308,13 @@ const BulkTraderPage = observer(() => {
                 <label className='bulk-toggle'>
                     <input
                         type='checkbox'
-                        checked={form.allowLiveTrading && isDemo && isLoggedIn}
-                        disabled={!isLoggedIn || !isDemo}
+                        checked={form.allowLiveTrading && isLoggedIn}
+                        disabled={!isLoggedIn}
                         onChange={e => onToggleLive(e.target.checked)}
                     />
                     <span>
                         Allow live trading{' '}
-                        {!isLoggedIn ? '(log in first)' : isDemo ? '(demo orders)' : '(unavailable on a real account)'}
+                        {!isLoggedIn ? '(log in first)' : isDemo ? '(demo orders)' : '(REAL funds)'}
                     </span>
                 </label>
                 <div className='hub-actions'>

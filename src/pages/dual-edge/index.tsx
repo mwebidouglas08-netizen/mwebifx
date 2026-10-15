@@ -405,7 +405,7 @@ const DualEdgePage = observer(() => {
         const activeProfile = getDualProfile(profileId);
         const config: DualConfig = { ...formConfig };
         const wantsLive = allowLive;
-        const liveOK = wantsLive && isLoggedIn && isDemo && isAuthorized();
+        const liveOK = wantsLive && isLoggedIn && isAuthorized();
 
         setNotice(null);
         profileRef.current = activeProfile;
@@ -423,11 +423,11 @@ const DualEdgePage = observer(() => {
         log(
             'status',
             `Engine starting — ${activeProfile.label} · ${config.mode} · ${
-                liveOK ? 'LIVE demo orders' : 'paper (no orders)'
+                liveOK ? 'LIVE orders' : 'paper (no orders)'
             } on ${symbol}`
         );
         if (wantsLive && !liveOK) {
-            log('risk', 'Live mode unavailable (needs a logged-in DEMO account) — falling back to paper.');
+            log('risk', 'Live mode unavailable (needs a logged-in account) — falling back to paper.');
         }
 
         try {
@@ -455,7 +455,7 @@ const DualEdgePage = observer(() => {
         applyStatus(
             'running',
             liveRef.current
-                ? 'Live — a pair of demo contracts per eligible tick'
+                ? 'Live — a pair of contracts per eligible tick'
                 : 'Paper — settling both sides on each tick (no real orders)'
         );
         log('status', `Subscribed to ${symbol} — first entry after ${activeProfile.lookback} warm-up tick(s).`);
@@ -487,13 +487,13 @@ const DualEdgePage = observer(() => {
             run_panel?.showLoginDialog?.();
             return;
         }
-        if (!isDemo) {
-            setNotice('Real-money orders are disabled on Dual Edge — only demo accounts can arm live mode here.');
-            return;
-        }
-        const ok = window.confirm(
-            'Enable LIVE demo orders? Every round places real demo-money contracts on BOTH sides and monitors them to settlement.'
-        );
+        const ok = isDemo
+            ? window.confirm(
+                  'Enable LIVE demo orders? Every round places real demo-money contracts on BOTH sides and monitors them to settlement.'
+              )
+            : window.confirm(
+                  'Enable LIVE orders on a REAL-money account? Every round places two real-money contracts on BOTH sides and monitors them to settlement — both sides spend funds. Continue?'
+              );
         if (!ok) return;
         setAllowLive(true);
     };
@@ -512,14 +512,14 @@ const DualEdgePage = observer(() => {
         <HubPage className='dual-edge'>
             {!isLoggedIn && (
                 <HubNote tone='info'>
-                    Not logged in — Dual Edge runs in paper mode on Deriv&apos;s public ticks. Log in with a demo
-                    account to arm live orders.{' '}
+                    Not logged in — Dual Edge runs in paper mode on Deriv&apos;s public ticks. Log in to
+                    arm live orders (demo or real).{' '}
                     <button
                         type='button'
                         className='hub-btn hub-btn--primary hub-btn--sm'
                         onClick={() => run_panel?.showLoginDialog?.()}
                     >
-                        Log in for demo orders
+                        Log in to arm live orders
                     </button>
                 </HubNote>
             )}
@@ -644,12 +644,12 @@ const DualEdgePage = observer(() => {
                 >
                     <input
                         type='checkbox'
-                        disabled={!isLoggedIn || !isDemo || isRunning}
-                        checked={allowLive && isLoggedIn && isDemo}
+                        disabled={!isLoggedIn || isRunning}
+                        checked={allowLive && isLoggedIn}
                         onChange={e => onToggleLive(e.target.checked)}
                     />
                     <span>
-                        Live demo orders {!isLoggedIn ? '(log in first)' : !isDemo ? '(demo account only)' : allowLive ? '(armed)' : '(off — paper)'}
+                        Live orders {!isLoggedIn ? '(log in first)' : isDemo ? (allowLive ? '(armed — demo)' : '(off — paper)') : allowLive ? '(armed — REAL funds)' : '(off — paper)'}
                     </span>
                 </label>
                 <span className='dual-edge__hint'>
@@ -679,7 +679,7 @@ const DualEdgePage = observer(() => {
 
             <HubNote tone='info'>
                 {liveArmed
-                    ? 'Live demo run: profit uses each proposal\u2019s real payout ratio.'
+                    ? 'Live run: profit uses each proposal\u2019s real payout ratio.'
                     : 'stake flow — no P/L modelled in paper: wins credit nothing without a real payout, losses deduct the stake from the flow counter.'}
             </HubNote>
 

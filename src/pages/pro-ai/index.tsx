@@ -61,7 +61,7 @@ interface BlockedRow {
 
 interface EntryRecord {
     id: string;
-    mode: 'paper' | 'demo';
+    mode: 'paper' | 'demo' | 'live';
     symbol: string;
     displayName: string;
     contract: string;
@@ -220,29 +220,32 @@ const ProAiPage = observer(() => {
         }
     };
 
-    // Demo entry: requires a logged-in DEMO account plus an explicit confirm.
-    // Guests are sent to the login dialog; real-money accounts are refused.
+    // Entry: requires a logged-in account plus an explicit confirm.
+    // Guests are sent to the login dialog; real-money accounts confirm a
+    // REAL-order warning first (demo accounts confirm a demo order).
     const demoBuy = async (c: ProAiCandidate) => {
         if (!isLoggedIn) {
             run_panel?.showLoginDialog?.();
             return;
         }
-        if (!isDemo) {
-            setNotice('Real-money entries are disabled on Pro AI — switch to a demo account to place orders here.');
-            return;
-        }
         const amount = Number(stake) || 1;
-        const ok = window.confirm(
-            `Place a DEMO order: ${contractLabel(c.direction, c.barrier)} on ${c.displayName} for ${money(
-                amount
-            )}? Pro AI is a ranked heuristic, not a guaranteed edge.`
-        );
+        const ok = isDemo
+            ? window.confirm(
+                  `Place a DEMO order: ${contractLabel(c.direction, c.barrier)} on ${c.displayName} for ${money(
+                      amount
+                  )}? Pro AI is a ranked heuristic, not a guaranteed edge.`
+              )
+            : window.confirm(
+                  `Place a REAL-MONEY order: ${contractLabel(c.direction, c.barrier)} on ${c.displayName} for ${money(
+                      amount
+                  )} on account ${activeLoginid}? This spends real funds. Pro AI is a ranked heuristic, not a guaranteed edge.`
+              );
         if (!ok) return;
 
         const id = newId('demo');
         pushEntry({
             id,
-            mode: 'demo',
+            mode: isDemo ? 'demo' : 'live',
             symbol: c.symbol,
             displayName: c.displayName,
             contract: contractLabel(c.direction, c.barrier),
@@ -502,12 +505,12 @@ const ProAiPage = observer(() => {
                                                     isLoggedIn
                                                         ? isDemo
                                                             ? 'Place a demo order (you confirm first)'
-                                                            : 'Real-money entries are disabled on this page'
-                                                        : 'Log in to place demo orders'
+                                                            : 'Place a REAL-money order (you confirm first)'
+                                                        : 'Log in to place orders'
                                                 }
                                                 onClick={() => demoBuy(c)}
                                             >
-                                                {isLoggedIn ? (isDemo ? 'Demo buy' : 'Real acct — blocked') : 'Log in to trade'}
+                                                {isLoggedIn ? (isDemo ? 'Demo buy' : 'Real buy') : 'Log in to trade'}
                                             </button>
                                         </td>
                                     </tr>
@@ -574,7 +577,7 @@ const ProAiPage = observer(() => {
                             <tbody>
                                 {entries.map(e => (
                                     <tr key={e.id}>
-                                        <td>{e.mode === 'paper' ? 'paper' : 'demo'}</td>
+                                        <td>{e.mode === 'paper' ? 'paper' : e.mode === 'live' ? 'REAL' : 'demo'}</td>
                                         <td>{e.displayName}</td>
                                         <td>{e.contract}</td>
                                         <td>{money(e.stake)}</td>
