@@ -648,19 +648,23 @@ export class OUBotEngine {
             this.logEvent('error', `Order rejected: ${buy.error}`, { symbol: opp.symbol });
             return;
         }
+        const confirmedStake = buy.buyPrice ?? stake;
+        const confirmedPayout = buy.payout ?? quote.payout;
         const confirmed: TradeRecord = {
             ...record,
             stage: 'confirmed',
             contractId: buy.contractId,
             transactionId: buy.transactionId,
-            stake: buy.buyPrice ?? stake,
+            stake: confirmedStake,
+            payout: confirmedPayout,
+            payoutRatio: confirmedStake > 0 ? confirmedPayout / confirmedStake : record.payoutRatio,
         };
         this.update({
             trades: [confirmed, ...this.state.trades],
             openTrade: confirmed,
             risk: { ...this.state.risk, openPositions: this.state.risk.openPositions + 1, tradesThisSession: this.state.risk.tradesThisSession + 1 },
         });
-        this.logEvent('purchase', `Purchased contract #${buy.contractId}: ${opp.displayName} ${opp.direction} ${opp.barrier} @ ${opp.duration}${opp.durationUnit}`, { symbol: opp.symbol, contractId: buy.contractId, direction: opp.direction, barrier: opp.barrier, stake: confirmed.stake, payout: quote.payout });
+        this.logEvent('purchase', `Purchased contract #${buy.contractId}: ${opp.displayName} ${opp.direction} ${opp.barrier} @ ${opp.duration}${opp.durationUnit}`, { symbol: opp.symbol, contractId: buy.contractId, direction: opp.direction, barrier: opp.barrier, stake: confirmed.stake, payout: confirmed.payout });
         this.setStatus('monitoring', `Monitoring contract #${buy.contractId}…`);
 
         const meta = this.symbols.find(x => x.symbol === opp.symbol);
@@ -697,7 +701,7 @@ export class OUBotEngine {
         this.logEvent(
             'settlement',
             `${settled.result === 'win' ? 'WIN' : 'LOSS'}: #${buy.contractId} ${opp.displayName} ${opp.direction} ${opp.barrier} — exit digit ${settled.exitDigit ?? '—'}, ${settled.profit >= 0 ? '+' : ''}${settled.profit.toFixed(2)}`,
-            { symbol: opp.symbol, contractId: buy.contractId, direction: opp.direction, barrier: opp.barrier, result: settled.result, profit: settled.profit, exitDigit: settled.exitDigit, payout: quote.payout }
+            { symbol: opp.symbol, contractId: buy.contractId, direction: opp.direction, barrier: opp.barrier, result: settled.result, profit: settled.profit, exitDigit: settled.exitDigit, payout: settled.payout }
         );
         // Never let a late settlement overwrite the stopped status (ghost
         // 'scanning' with no timer disables Start until a reload).

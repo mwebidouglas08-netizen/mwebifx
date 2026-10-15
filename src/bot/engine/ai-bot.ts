@@ -658,12 +658,16 @@ export class AIBotEngine {
             this.logEvent('error', `Order rejected: ${buy.error}`, { symbol: analysis.symbol });
             return;
         }
+        const confirmedStake = buy.buyPrice ?? stake;
+        const confirmedPayout = buy.payout ?? quote.payout;
         const confirmed: TradeRecord = {
             ...record,
             stage: 'confirmed',
             contractId: buy.contractId,
             transactionId: buy.transactionId,
-            stake: buy.buyPrice ?? stake,
+            stake: confirmedStake,
+            payout: confirmedPayout,
+            payoutRatio: confirmedStake > 0 ? confirmedPayout / confirmedStake : record.payoutRatio,
         };
         this.update({
             trades: [confirmed, ...this.state.trades],

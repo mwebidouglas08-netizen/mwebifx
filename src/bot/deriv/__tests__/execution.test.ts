@@ -7,7 +7,7 @@ jest.mock('../api', () => ({
     currentSocket: jest.fn(() => 'sock-1'),
 }));
 
-import { monitorUntilSettled, requestQuote, settlementTimeoutMs } from '../execution';
+import { executeBuy, monitorUntilSettled, requestQuote, settlementTimeoutMs } from '../execution';
 import * as api from '../api';
 
 const validReq = {
@@ -126,6 +126,41 @@ describe('settlementTimeoutMs (regression: hard 60s default killed long duration
         expect(settlementTimeoutMs(Number.NaN, 't')).toBe(95000);
         expect(settlementTimeoutMs(0, 't')).toBe(95000);
         expect(settlementTimeoutMs(3, 'weird')).toBe(105000);
+    });
+});
+
+describe('executeBuy — executed payout (regression: records kept the pre-retry quote payout)', () => {
+    const quote = {
+        id: 'q1',
+        askPrice: 1,
+        payout: 1.95,
+        longcode: 'Digit Over 4',
+        contractType: 'DIGITOVER',
+        barrier: '4',
+        currency: 'USD',
+    };
+
+    beforeEach(() => {
+        (api.buyContract as jest.Mock).mockReset();
+    });
+
+    it('returns the payout confirmed by the buy response', async () => {
+        (api.buyContract as jest.Mock).mockResolvedValue({
+            data: { buy: { contract_id: 7, transaction_id: 8, buy_price: 1, payout: 1.94 } },
+        });
+        const result = await executeBuy(quote, 1);
+        expect(result.error).toBeUndefined();
+        expect(result.contractId).toBe(7);
+        expect(result.payout).toBe(1.94);
+    });
+
+    it('omits payout when the buy response has none so callers keep the quote value', async () => {
+        (api.buyContract as jest.Mock).mockResolvedValue({
+            data: { buy: { contract_id: 7, transaction_id: 8, buy_price: 1 } },
+        });
+        const result = await executeBuy(quote, 1);
+        expect(result.error).toBeUndefined();
+        expect(result.payout).toBeUndefined();
     });
 });
 

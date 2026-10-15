@@ -439,12 +439,16 @@ export class BulkTraderEngine {
             this.logEvent('error', `Order ${index + 1} rejected: ${buy.error || 'no contract id'}`);
             return;
         }
+        const confirmedStake = buy.buyPrice ?? stake;
+        const confirmedPayout = buy.payout ?? quote.payout;
         const confirmed: TradeRecord = {
             ...record,
             stage: 'confirmed',
             contractId: buy.contractId,
             transactionId: buy.transactionId,
-            stake: buy.buyPrice ?? stake,
+            stake: confirmedStake,
+            payout: confirmedPayout,
+            payoutRatio: confirmedStake > 0 ? confirmedPayout / confirmedStake : record.payoutRatio,
         };
         this.update({ trades: [confirmed, ...this.state.trades] });
         this.bump({ bought: 1 });

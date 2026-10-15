@@ -361,6 +361,9 @@ export interface BuyResult {
     contractId?: number;
     transactionId?: number;
     buyPrice?: number;
+    /** Contract payout confirmed by the buy response — after a stale-quote
+     *  retry this can differ from the payout on the original quote. */
+    payout?: number;
     error?: string;
 }
 export const executeBuy = async (quote: ProposalQuote, amount: number): Promise<BuyResult> => {
@@ -386,8 +389,11 @@ export const executeBuy = async (quote: ProposalQuote, amount: number): Promise<
     const contractId = Number(b.contract_id);
     const transactionId = Number(b.transaction_id);
     const buyPrice = Number(b.buy_price);
+    const payout = Number(b.payout);
     if (!Number.isFinite(contractId)) return { error: 'No contract_id in buy response' };
-    return { contractId, transactionId, buyPrice };
+    const result: BuyResult = { contractId, transactionId, buyPrice };
+    if (Number.isFinite(payout) && payout > 0) result.payout = payout;
+    return result;
 };
 
 const RETRYABLE_BUY_RE =
