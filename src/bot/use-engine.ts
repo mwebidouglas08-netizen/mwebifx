@@ -4,6 +4,7 @@ import { signalScanner, SignalScannerState } from './engine/signal-scanner';
 import { aiBot, AIBotState } from './engine/ai-bot';
 import { bulkTrader, BulkTraderState } from './engine/bulk-trader';
 import { copyTrading, CopyTradingState } from './engine/copy-trading';
+import { algoProEngine, AlgoProState } from './engine/algo-pro-ai';
 
 export const useOUBotEngine = (): EngineState => {
     const [state, setState] = useState<EngineState>(() => ouBotEngine.getState());
@@ -70,4 +71,21 @@ export const useCopyTrading = (): CopyTradingState => {
     useEffect(() => copyTrading.subscribe(setState), []);
 
     return state;
+};
+
+export const useAlgoProAi = (): AlgoProState => {
+    const [state, setState] = useState<AlgoProState>(() => algoProEngine.getState());
+
+    useEffect(() => algoProEngine.subscribe(setState), []);
+
+    return state;
+};
+
+export const useAlgoProPerformance = () => {
+    const state = useAlgoProAi();
+    return useMemo(() => {
+        const snapshot = algoProEngine.getPerformance();
+        void state;
+        return snapshot;
+    }, [state.trades, state.totalProfit]);
 };

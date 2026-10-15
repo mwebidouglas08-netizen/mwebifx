@@ -1,0 +1,131 @@
+/* Algo Pro AI — page-specific styles layered on the hub design system. */
+
+.algo-pro-controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.9rem 1.2rem;
+    align-items: end;
+    padding: 1.4rem;
+    border: 1px solid var(--card-border, rgb(148 163 184 / 14%));
+    border-radius: 16px;
+    background: var(--surface-glass, rgba(15, 23, 42, 0.72));
+    backdrop-filter: blur(12px);
+}
+
+.algo-pro-strategy-desc {
+    grid-column: 1 / -1;
+    padding: 0.6rem 0.9rem;
+    border-left: 3px solid var(--accent-teal, #14b8a6);
+    border-radius: 0 8px 8px 0;
+    background: color-mix(in srgb, var(--accent-teal, #14b8a6) 8%, transparent);
+    color: var(--text-general);
+    font-size: 1.05rem;
+    line-height: 1.5;
+
+    strong {
+        color: var(--text-prominent);
+    }
+}
+
+.algo-pro-fieldset {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+.algo-pro-label {
+    color: var(--text-general);
+    font-size: 1.05rem;
+}
+
+.algo-pro-toggles {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    padding: 1.2rem 1.4rem;
+    border: 1px solid var(--card-border, rgb(148 163 184 / 14%));
+    border-radius: 16px;
+    background: var(--surface-glass, rgba(15, 23, 42, 0.72));
+
+    .hub-actions {
+        margin-top: 0.3rem;
+    }
+}
+
+.algo-pro-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    color: var(--text-general);
+    font-size: 1.08rem;
+    cursor: pointer;
+
+    input {
+        accent-color: var(--accent-teal, #14b8a6);
+        width: 1.1rem;
+        height: 1.1rem;
+        cursor: pointer;
+
+        &:disabled {
+            cursor: not-allowed;
+        }
+    }
+}
+
+.algo-pro-markets {
+    .algo-pro-dot {
+        display: inline-block;
+        width: 0.55rem;
+        height: 0.55rem;
+        margin-right: 0.5rem;
+        border-radius: 50%;
+        background: var(--text-general);
+        vertical-align: middle;
+        opacity: 0.6;
+    }
+
+    .algo-pro-dot--on {
+        background: var(--brand-success, #4bb4b3);
+        opacity: 1;
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-success, #4bb4b3) 30%, transparent);
+        animation: algoProPulse 1.4s ease-in-out infinite;
+    }
+
+    .algo-pro-row--trading {
+        background: color-mix(in srgb, var(--brand-success, #4bb4b3) 10%, transparent) !important;
+    }
+}
+
+.algo-pro-digits {
+    font-family: var(--brand-font-monospace, 'Courier New'), monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.08em;
+
+    span {
+        display: inline-block;
+        min-width: 1.4ch;
+        text-align: center;
+        padding: 0.05rem 0.2rem;
+        border-radius: 4px;
+        background: color-mix(in srgb, var(--text-prominent) 6%, transparent);
+        margin-right: 0.12rem;
+    }
+}
+
+.algo-pro-signal {
+    color: var(--text-accent, #0e9aa7);
+    font-weight: 700;
+}
+
+@keyframes algoProPulse {
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.45;
+        transform: scale(0.85);
+    }
+}

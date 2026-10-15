@@ -11,6 +11,7 @@ export type HubViewId =
     | 'ai-scanner'
     | 'pro-ai'
     | 'dual-edge'
+    | 'algo-pro-ai'
     | 'backtest'
     | 'analysis-tool'
     | 'tradingview';
@@ -25,6 +26,7 @@ export const HUB_VIEW_LABELS: Record<HubViewId, string> = {
     'ai-scanner': 'AI Signal Scanner',
     'pro-ai': 'Pro AI',
     'dual-edge': 'Dual Edge',
+    'algo-pro-ai': 'Algo Pro AI',
     backtest: 'Backtest',
     'analysis-tool': 'Analysis Tool',
     tradingview: 'TradingView',
@@ -105,6 +107,13 @@ const HubIcon = ({ name }: { name: HubViewId }) => {
                     <circle cx='12' cy='12' r='9' opacity='0.4' />
                 </svg>
             );
+        case 'algo-pro-ai':
+            return (
+                <svg {...common}>
+                    <path d='M12 2.5l7.5 4.3v8.4L12 19.5 4.5 15.2V6.8z' />
+                    <path d='M12 8.5l3.5 2v4L12 16.5 8.5 14.5v-4z' opacity='0.55' />
+                </svg>
+            );
         case 'bulk-trader':
             return (
                 <svg {...common}>
@@ -177,6 +186,7 @@ export const HUB_NAV_SECTIONS: NavSection[] = [
             { id: 'ai-scanner', hint: 'Multi-family signals' },
             { id: 'pro-ai', hint: 'Ranked digit-entry scanner' },
             { id: 'dual-edge', hint: 'Two-sided recovery engine' },
+            { id: 'algo-pro-ai', hint: 'All-market AI scanner + auto-trade' },
         ],
     },
     {

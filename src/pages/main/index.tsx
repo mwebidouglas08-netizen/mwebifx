@@ -9,6 +9,8 @@ import BacktestPage from '@/pages/backtest';
 import TradingBotsPage from '@/pages/trading-bots';
 import ProAiPage from '@/pages/pro-ai';
 import DualEdgePage from '@/pages/dual-edge';
+
+import AlgoProAiPage from '@/pages/algo-pro-ai';
 import BulkTraderPage from '@/pages/bulk-trader';
 import CopyTradingPage from '@/pages/copy-trading';
 import AnalysisToolPage from '@/pages/analysis-tool';
@@ -144,6 +146,13 @@ const Main = observer(() => {
                         aria-hidden={activeView !== 'dual-edge'}
                     >
                         <DualEdgePage />
+                    </div>
+                    <div
+                        className='main-hub'
+                        style={{ display: activeView === 'algo-pro-ai' ? 'block' : 'none', ...enterAnim('algo-pro-ai') }}
+                        aria-hidden={activeView !== 'algo-pro-ai'}
+                    >
+                        <AlgoProAiPage />
                     </div>
                     <div
                         className='main-hub'
