@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useStore } from '@/hooks/useStore';
+import { useCurrencyConversion } from '@/hooks/use-app-preferences';
+import { getConvertedBalance } from '@/utils/currency-conversion';
 import { isDemoAccount } from '@/utils/account-helpers';
 import { ouBotEngine } from '@/bot/engine/engine';
 import { useOUBotEngine, useOUPerformance } from '@/bot/use-engine';
@@ -51,6 +53,8 @@ const OUBotPage = observer(() => {
     const state = useOUBotEngine();
     const perf = useOUPerformance();
     const { client, run_panel } = useStore() ?? {};
+    const { displayCurrency } = useCurrencyConversion();
+    const equityConv = getConvertedBalance(state.equity, client?.currency || 'USD', displayCurrency);
 
     const [stake, setStake] = useState(state.config.stake);
     const [maxStake, setMaxStake] = useState(state.config.limits.maxStake);
@@ -144,7 +148,12 @@ const OUBotPage = observer(() => {
                     <span className={`ou-bot__acct ${isDemo ? 'ou-bot__acct--demo' : ''}`}>
                         {!isLoggedIn ? 'Guest · analysis only' : `${isDemo ? 'Demo' : 'Real'} · ${activeLoginid}`}
                     </span>
-                    <span className='ou-bot__equity'>Equity {money(state.equity)}</span>
+                    <span className='ou-bot__equity'>
+                        Equity {equityConv.formatted}
+                        {equityConv.secondary && (
+                            <span className='ou-bot__equity-alt'>≈ {equityConv.secondary}</span>
+                        )}
+                    </span>
                 </div>
             </header>
 

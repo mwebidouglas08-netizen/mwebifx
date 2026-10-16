@@ -6,6 +6,8 @@ import Text from '@/components/shared_ui/text';
 import { api_base } from '@/external/bot-skeleton/services/api/api-base';
 import { useApiBase } from '@/hooks/useApiBase';
 import { useStore } from '@/hooks/useStore';
+import { useCurrencyConversion } from '@/hooks/use-app-preferences';
+import { getConvertedBalance } from '@/utils/currency-conversion';
 import { isDemoAccount } from '@/utils/account-helpers';
 import { Localize } from '@deriv-com/translations';
 import { TAccountSwitcher } from './common/types';
@@ -17,6 +19,7 @@ const AccountSwitcher = observer(({ activeAccount }: TAccountSwitcher) => {
     const wrapperRef = useRef<HTMLDivElement>(null);
     const { accountList, activeLoginid } = useApiBase();
     const { client, run_panel } = useStore() ?? {};
+    const { displayCurrency, toggle: toggleCurrency } = useCurrencyConversion();
 
     const is_bot_running = run_panel?.is_running || api_base.is_running;
     const isSingleAccount = !accountList || accountList.length <= 1;
@@ -69,6 +72,8 @@ const AccountSwitcher = observer(({ activeAccount }: TAccountSwitcher) => {
 
     const { currency, isVirtual, balance } = activeAccount;
     const showChevron = !isSingleAccount && !is_bot_running;
+    // KSH ⇄ USD view of the same balance — the header always shows both.
+    const converted = currency ? getConvertedBalance(Number(balance ?? 0), currency, displayCurrency) : null;
 
     return (
         <div className='acc-info__wrapper' ref={wrapperRef}>
@@ -122,18 +127,45 @@ const AccountSwitcher = observer(({ activeAccount }: TAccountSwitcher) => {
                         </div>
                         {(typeof balance !== 'undefined' || !currency) && (
                             <div className='acc-info__balance-section'>
-                                <p
-                                    data-testid='dt_balance'
-                                    className={classNames('acc-info__balance', {
-                                        'acc-info__balance--no-currency': !currency && !isVirtual,
-                                    })}
-                                >
-                                    {!currency ? (
-                                        <Localize i18n_default_text='No currency assigned' />
-                                    ) : (
-                                        `${balance} ${getCurrencyDisplayCode(currency)}`
+                                <div className='acc-info__balance-stack'>
+                                    <p
+                                        data-testid='dt_balance'
+                                        className={classNames('acc-info__balance', {
+                                            'acc-info__balance--no-currency': !currency && !isVirtual,
+                                        })}
+                                    >
+                                        {!currency || !converted ? (
+                                            <Localize i18n_default_text='No currency assigned' />
+                                        ) : (
+                                            converted.formatted
+                                        )}
+                                    </p>
+                                    {converted?.secondary && (
+                                        <p className='acc-info__balance-alt' data-testid='dt_balance_alt'>
+                                            ≈ {converted.secondary}
+                                        </p>
                                     )}
-                                </p>
+                                </div>
+                                {currency && (
+                                    <button
+                                        type='button'
+                                        data-testid='dt_currency_toggle'
+                                        className='acc-info__currency-toggle'
+                                        aria-label={
+                                            displayCurrency === 'USD'
+                                                ? 'Show balance in Kenyan Shillings'
+                                                : 'Show balance in US Dollars'
+                                        }
+                                        title={displayCurrency === 'USD' ? 'Switch to KSH' : 'Switch to USD'}
+                                        onClick={e => {
+                                            e.stopPropagation();
+                                            toggleCurrency();
+                                        }}
+                                        onKeyDown={e => e.stopPropagation()}
+                                    >
+                                        {displayCurrency === 'USD' ? 'KSH' : 'USD'}
+                                    </button>
+                                )}
                             </div>
                         )}
                     </div>

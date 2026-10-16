@@ -630,6 +630,17 @@
     }
 }
 
+/* Secondary KSH ⇄ USD view of the same figure. */
+.hub-stat .hub-stat__alt {
+    display: block;
+    margin-top: 0.15rem;
+    font-family: var(--brand-font-monospace, monospace);
+    font-size: 1.05rem;
+    font-weight: 500;
+    line-height: 1.2;
+    opacity: 0.6;
+}
+
 /* ── Empty state / muted copy ───────────────────────────────────────── */
 
 .hub-empty {

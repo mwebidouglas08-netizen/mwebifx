@@ -81,6 +81,20 @@
     }
 }
 
+.algo-pro-cooldown {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    max-width: 24rem;
+
+    small {
+        color: var(--text-general);
+        font-size: 0.92rem;
+        line-height: 1.45;
+        opacity: 0.75;
+    }
+}
+
 .algo-pro-markets {
     .algo-pro-dot {
         display: inline-block;

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useStore } from '@/hooks/useStore';
-import { getCurrencyDisplayCode } from '@/components/shared';
+import { useCurrencyConversion } from '@/hooks/use-app-preferences';
+import { getConvertedBalance } from '@/utils/currency-conversion';
 import { isDemoAccount } from '@/utils/account-helpers';
 import './account-switcher.scss';
 
@@ -22,6 +23,7 @@ const HubAccountSwitcher = observer(() => {
     const [isOpen, setIsOpen] = useState(false);
     const wrapperRef = useRef<HTMLDivElement>(null);
     const { client, run_panel } = useStore() ?? {};
+    const { displayCurrency, toggle: toggleCurrency } = useCurrencyConversion();
 
     const is_logged_in = Boolean(client?.is_logged_in);
     const activeLoginid = client?.loginid || '';
@@ -76,6 +78,13 @@ const HubAccountSwitcher = observer(() => {
         [activeLoginid, client, is_bot_running]
     );
 
+    // KSH ⇄ USD view of the same equity.
+    const activeConv = getConvertedBalance(
+        Number(client?.balance ?? 0),
+        client?.currency || 'USD',
+        displayCurrency
+    );
+
     if (!is_logged_in) {
         return (
             <div className='hub-account' ref={wrapperRef}>
@@ -105,8 +114,11 @@ const HubAccountSwitcher = observer(() => {
                 <span className='hub-account__badge'>{isVirtual ? 'Demo' : 'Real'}</span>
                 <span className='hub-account__meta'>
                     {activeLoginid}
-                    <span className='hub-account__balance'>
-                        {Number(client?.balance ?? 0).toFixed(2)} {getCurrencyDisplayCode(client?.currency || 'USD')}
+                    <span className='hub-account__balance' data-testid='dt_hub_balance'>
+                        {activeConv.formatted}
+                        {activeConv.secondary && (
+                            <span className='hub-account__balance-alt'>≈ {activeConv.secondary}</span>
+                        )}
                     </span>
                 </span>
                 {canSwitch && (
@@ -132,12 +144,27 @@ const HubAccountSwitcher = observer(() => {
                             </span>
                             <span className='hub-account__option-id'>{a.loginid}</span>
                             <span className='hub-account__option-balance'>
-                                {a.balance.toFixed(2)} {a.currency ? getCurrencyDisplayCode(a.currency) : ''}
+                                {getConvertedBalance(a.balance, a.currency || 'USD', displayCurrency).formatted}
                             </span>
                         </button>
                     ))}
                 </div>
             )}
+
+            <button
+                type='button'
+                data-testid='dt_hub_currency_toggle'
+                className='hub-account__currency'
+                aria-label={
+                    displayCurrency === 'USD'
+                        ? 'Show equity in Kenyan Shillings'
+                        : 'Show equity in US Dollars'
+                }
+                title={displayCurrency === 'USD' ? 'Switch to KSH' : 'Switch to USD'}
+                onClick={toggleCurrency}
+            >
+                {displayCurrency === 'USD' ? 'KSH' : 'USD'}
+            </button>
         </div>
     );
 });

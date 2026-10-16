@@ -1,5 +1,6 @@
 import type { EngineLogEvent } from './bulk-trader';
 import { WS_SERVERS, isProduction } from '@/components/shared/utils/config/config';
+import { voiceService } from '@/services/voice-service';
 
 export interface CopierConfig {
     id: string;
@@ -688,6 +689,12 @@ export class CopyTradingEngine {
                     `${copier.label}: copied #${contractId} → ${contractType}${poc.barrier ? `(${poc.barrier})` : ''} ${symbol} @ ${stake}`,
                     { contractId }
                 );
+                voiceService.announceSignal({
+                    bot: 'Copy Trading',
+                    market: symbol,
+                    signal: `${contractType}${poc.barrier ? ` ${poc.barrier}` : ''}`,
+                    executed: true,
+                });
             }
         }
     }

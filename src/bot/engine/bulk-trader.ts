@@ -13,6 +13,7 @@ import {
 import { currentLoginId, getTicksHistory, isApiReady, isAuthorized } from '../deriv/api';
 import { SymbolSeries, TickFeed } from '../deriv/ticks';
 import { isDemoAccount } from '@/utils/account-helpers';
+import { voiceService } from '@/services/voice-service';
 import { paperWon } from './signal-scanner';
 
 /** Log line rendered by the bulk-trader page (mirrors the scanner event shape). */
@@ -529,6 +530,13 @@ export class BulkTraderEngine {
                     `${won ? 'WIN' : 'LOSS'}: #${settled.contractId} ${settled.symbol} ${settled.contractType} — ${settled.profit >= 0 ? '+' : ''}${settled.profit.toFixed(2)}`,
                     { contractId: settled.contractId, result: settled.result, profit: settled.profit }
                 );
+                voiceService.announceSettlement({
+                    bot: 'Bulk Trader',
+                    won,
+                    profit: settled.profit,
+                    contractType: settled.contractType,
+                    market: settled.symbol,
+                });
             } catch (e: any) {
                 this.update({
                     trades: [

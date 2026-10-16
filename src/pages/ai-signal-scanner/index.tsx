@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useStore } from '@/hooks/useStore';
+import { useCurrencyConversion } from '@/hooks/use-app-preferences';
+import { getConvertedBalance } from '@/utils/currency-conversion';
 import { isDemoAccount } from '@/utils/account-helpers';
 import { signalScanner } from '@/bot/engine/signal-scanner';
 import { useAIBot, useScannerPerformance, useSignalScanner } from '@/bot/use-engine';
@@ -45,6 +47,8 @@ const AISignalScannerPage = observer(() => {
     const state = useSignalScanner();
     const perf = useScannerPerformance();
     const { client, run_panel } = useStore() ?? {};
+    const { displayCurrency } = useCurrencyConversion();
+    const equityConv = getConvertedBalance(state.equity, client?.currency || 'USD', displayCurrency);
 
     const [families, setFamilies] = useState<ContractFamily[]>(state.config.families);
     const [sampleSize, setSampleSize] = useState(state.config.sampleSize);
@@ -171,7 +175,12 @@ const AISignalScannerPage = observer(() => {
                     <span className={`ai-scanner__acct ${isDemo ? 'ai-scanner__acct--demo' : ''}`}>
                         {!isLoggedIn ? 'Guest · signals only' : `${isDemo ? 'Demo' : 'Real'} · ${activeLoginid}`}
                     </span>
-                    <span className='ai-scanner__equity'>Equity {money(state.equity)}</span>
+                    <span className='ai-scanner__equity'>
+                        Equity {equityConv.formatted}
+                        {equityConv.secondary && (
+                            <span className='ai-scanner__equity-alt'>≈ {equityConv.secondary}</span>
+                        )}
+                    </span>
                 </div>
             </header>
 

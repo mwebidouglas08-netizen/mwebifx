@@ -53,6 +53,12 @@ import {
 } from '../deriv/execution';
 import { accountBalance, currentLoginId, getContractsFor, getTicksHistory, isApiReady, isAuthorized } from '../deriv/api';
 import { isDemoAccount } from '@/utils/account-helpers';
+import {
+    SelectionGate,
+    buildTradeOutcome,
+    selectFallbackCandidates,
+} from '../core/intelligent-execution';
+import { voiceService } from '@/services/voice-service';
 
 export interface SignalScannerState {
     status: ScannerStatus;
@@ -637,10 +643,20 @@ export class SignalScannerEngine {
 
             const now = Date.now();
             if (now - this.lastTradeAt < cfg.scanIntervalMs) return;
-            // Try the strongest signals in order: if one can't be quoted (market
-            // closed, contract unavailable), fall through to the next candidate
-            // instead of losing the whole scan cycle to a single failure.
-            const candidates = topSignals.filter(s => s.confidence > 0 && !this.quoteBlocked.has(s.symbol)).slice(0, 3);
+            // Intelligent market selection: every candidate has already cleared
+            // `strength >= cfg.threshold` inside signalsFromMarket, so the shared
+            // ranker orders survivors by measured strength×confidence and drops
+            // non-positive readings. Candidates are tried strongest-first: if one
+            // can't be quoted (market closed, contract unavailable), we fall
+            // through to the next instead of losing the whole scan cycle.
+            const selectionGate: SelectionGate = { minConfidence: 0, minSample: 0, requirePositiveEv: false };
+            const candidates = selectFallbackCandidates(
+                topSignals
+                    .filter(s => s.confidence > 0 && s.strength >= cfg.threshold && !this.quoteBlocked.has(s.symbol))
+                    .map(s => ({ ...s, edge: (s.confidence * s.strength) / 100 })),
+                selectionGate,
+                3
+            );
             if (!candidates.length) {
                 if (topSignals.length) this.setAutoTradeBlock('signals shown, but none clear the confidence gate');
                 else this.setAutoTradeBlock(null);
@@ -775,6 +791,13 @@ export class SignalScannerEngine {
             signalsExecuted: this.state.signalsExecuted + 1,
         });
         this.logEvent('purchase', `Purchased #${buy.contractId}: ${signal.displayName} ${ACTION_LABEL[signal.action]} @ ${cfg.duration}${cfg.durationUnit}`, { symbol: signal.symbol, contractId: buy.contractId, action: signal.action });
+        voiceService.announceSignal({
+            bot: 'Signal Scanner',
+            market: signal.displayName,
+            signal: ACTION_LABEL[signal.action],
+            confidence: signal.confidence,
+            executed: true,
+        });
         this.setStatus('monitoring', `Monitoring contract #${buy.contractId}…`);
 
         const meta = this.symbols.find(x => x.symbol === signal.symbol);
@@ -802,6 +825,17 @@ export class SignalScannerEngine {
             return true;
         }
         const settled = applySettlementToRecord(confirmed, settlement);
+        // Cross-check the reported settlement against stake/payout so an
+        // inconsistent result is surfaced instead of silently skewing stats.
+        const outcome = buildTradeOutcome(
+            settled.result === 'win',
+            settled.stake,
+            settled.payout,
+            settled.profit
+        );
+        if (outcome.mismatch) {
+            this.logEvent('error', `Settlement mismatch on #${buy.contractId}: reported ${settled.profit.toFixed(2)}, expected ${outcome.expectedProfit.toFixed(2)} — using reported value`);
+        }
         const remaining = this.state.trades.filter(t => t.id !== confirmed.id);
         const trades = [settled, ...remaining];
         const equity = accountBalance();
@@ -823,6 +857,13 @@ export class SignalScannerEngine {
             `${settled.result === 'win' ? 'WIN' : 'LOSS'}: #${buy.contractId} ${signal.displayName} ${ACTION_LABEL[signal.action]} — ${settled.profit >= 0 ? '+' : ''}${settled.profit.toFixed(2)}`,
             { symbol: signal.symbol, contractId: buy.contractId, action: signal.action, result: settled.result, profit: settled.profit }
         );
+        voiceService.announceSettlement({
+            bot: 'Signal Scanner',
+            won: settled.result === 'win',
+            profit: settled.profit,
+            contractType: settled.contractType,
+            market: signal.displayName,
+        });
         if (risk.suspended) this.logEvent('risk', `Suspended: ${risk.suspensionReason}`);
         // A stop mid-contract must not be overwritten by the late settlement
         // status — otherwise the UI shows a ghost 'scanning' with no scan timer.

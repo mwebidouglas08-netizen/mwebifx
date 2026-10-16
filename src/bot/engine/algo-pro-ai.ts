@@ -30,6 +30,7 @@ import {
 } from '../deriv/execution';
 import { currentLoginId, getTicksHistory, isApiReady, isAuthorized } from '../deriv/api';
 import { isDemoAccount } from '@/utils/account-helpers';
+import { contractSpokenLabel, voiceService } from '@/services/voice-service';
 
 export interface AlgoProSettings {
     strategyId: AlgoProStrategyId;
@@ -46,6 +47,10 @@ export interface AlgoProSettings {
     martingale: number;
     paperTrading: boolean;
     allowLiveTrading: boolean;
+    /** Minimum ms between two consecutive orders (production anti-thrash guard). */
+    cooldownMs: number;
+    /** Voice announcements for favourable signals + settlements. */
+    voiceAnnounce: boolean;
 }
 
 export interface AlgoProMarketState {
@@ -145,6 +150,8 @@ export const DEFAULT_ALGO_PRO_SETTINGS: AlgoProSettings = {
     martingale: 2,
     paperTrading: true,
     allowLiveTrading: false,
+    cooldownMs: 1500,
+    voiceAnnounce: true,
 };
 
 const normalizeSettings = (s: Partial<AlgoProSettings>): AlgoProSettings => {
@@ -158,6 +165,7 @@ const normalizeSettings = (s: Partial<AlgoProSettings>): AlgoProSettings => {
         winTarget: Math.max(0, Math.round(base.winTarget || 0)),
         martingale: Math.max(1, Number.isFinite(base.martingale) ? base.martingale : 1),
         pairConfidenceGate: Math.min(1, Math.max(0, base.pairConfidenceGate)),
+        cooldownMs: Math.min(60000, Math.max(0, Number.isFinite(base.cooldownMs) ? base.cooldownMs : 1500)),
     };
 };
 
@@ -174,6 +182,13 @@ export class AlgoProEngine {
     private settings: AlgoProSettings | null = null;
     private tickWaiters = new Map<string, Array<(digit: number, quote: number) => void>>();
     private pipSizes = new Map<string, number>();
+    /** Production anti-thrash: timestamp of the last order we fired. */
+    private lastOrderAt = 0;
+    /** Per-market throttle so a persistently favourable market is only spoken once. */
+    private lastDetectionAt = new Map<string, number>();
+    /** Watchdog: last moment any tick arrived, used to self-heal a dead feed. */
+    private lastTickAt = 0;
+    private watchdogTimer: ReturnType<typeof setInterval> | null = null;
     private state: AlgoProState;
 
     constructor() {
@@ -230,6 +245,31 @@ export class AlgoProEngine {
     private setExecutionBlock(reason: string | null) {
         if ((this.state.executionBlock ?? null) === (reason ?? null)) return;
         this.update({ executionBlock: reason });
+    }
+
+    /** Voice hook — only speaks when the bot is armed for it AND global voice is on. */
+    private say(text: string, force = false) {
+        if (!this.state.settings.voiceAnnounce) return;
+        voiceService.speak(text, { force });
+    }
+
+    /**
+     * Announce a freshly-detected favourable signal (throttled per market so a
+     * market that stays favourable doesn't repeat itself every tick).
+     */
+    private announceDetection(m: AlgoProMarketState) {
+        if (!this.state.settings.voiceAnnounce) return;
+        const now = Date.now();
+        const last = this.lastDetectionAt.get(m.symbol) ?? 0;
+        if (now - last < 8000) return;
+        this.lastDetectionAt.set(m.symbol, now);
+        voiceService.announceSignal({
+            bot: 'Algo Pro AI',
+            market: m.displayName,
+            signal: m.signal?.label ?? contractSpokenLabel(m.signal?.contractType, m.signal?.barrier),
+            confidence: m.signal?.contractType ? m.pairConfidence : undefined,
+            executed: false,
+        });
     }
 
     configure(patch: Partial<AlgoProSettings>) {
@@ -331,8 +371,50 @@ export class AlgoProEngine {
         this.feed = new TickFeed({ onTick: (symbol, _p, series) => this.onTick(symbol, series) });
         this.feed.setSymbols(markets.map(m => m.symbol));
         this.feed.start();
+        this.lastTickAt = Date.now();
+        this.startWatchdog(gen);
         this.update({ loading: false, running: true, status: 'Scanning' });
         this.logEvent('discover', `Scanning ${markets.length} volatility markets (${settings.scope}) — strategy ${settings.strategyId}.`);
+        this.say(`Algo Pro AI started. Scanning ${markets.length} markets.`);
+    }
+
+    // -----------------------------------------------------------------------
+    // Production reliability: tick watchdog
+    // -----------------------------------------------------------------------
+
+    private static readonly WATCHDOG_INTERVAL_MS = 15000;
+    /** If every market has been silent this long, the socket/feed is stuck. */
+    private static readonly TICK_STALL_MS = 45000;
+
+    private startWatchdog(gen: number) {
+        this.stopWatchdog();
+        this.watchdogTimer = setInterval(() => {
+            if (gen !== this.generation || !this.state.running) {
+                this.stopWatchdog();
+                return;
+            }
+            const stalled = Date.now() - this.lastTickAt;
+            if (stalled < AlgoProEngine.TICK_STALL_MS) return;
+            this.logEvent('error', `No ticks for ${Math.round(stalled / 1000)}s — resubscribing market feed.`);
+            this.say('Market feed stalled. Reconnecting.');
+            try {
+                this.feed?.stop();
+                const symbols = this.state.markets.map(m => m.symbol);
+                this.feed = new TickFeed({ onTick: (symbol, _p, series) => this.onTick(symbol, series) });
+                this.feed.setSymbols(symbols);
+                this.feed.start();
+                this.lastTickAt = Date.now();
+            } catch (e: any) {
+                this.logEvent('error', `Feed restart failed: ${e?.message || String(e)}`);
+            }
+        }, AlgoProEngine.WATCHDOG_INTERVAL_MS);
+    }
+
+    private stopWatchdog() {
+        if (this.watchdogTimer !== null) {
+            clearInterval(this.watchdogTimer);
+            this.watchdogTimer = null;
+        }
     }
 
     private feedSeed(symbol: string, prices: number[]): { digits: number[]; prices: number[] } {
@@ -348,22 +430,28 @@ export class AlgoProEngine {
     stop(reason?: string) {
         const wasRunning = this.state.running;
         this.generation++;
+        this.stopWatchdog();
         this.feed?.stop();
         this.feed = null;
         this.disposers.forEach(d => d());
         this.disposers = [];
+        this.lastDetectionAt.clear();
         this.update({
             running: false,
             loading: false,
             status: reason ? reason : 'Scanner idle',
             markets: this.state.markets.map(m => ({ ...m, trading: false, status: 'Scanning' })),
         });
-        if (wasRunning) this.logEvent('status', reason || 'Scanner stopped.');
+        if (wasRunning) {
+            this.logEvent('status', reason || 'Scanner stopped.');
+            if (reason) this.say(reason, true);
+        }
         this.setExecutionBlock(null);
     }
 
     private onTick(symbol: string, series: SymbolSeries) {
         if (!this.state.running) return;
+        this.lastTickAt = Date.now();
         const settings = this.settings!;
         const pip = this.pipSizes.get(symbol) ?? pipSizeDefault(symbol);
         const quote = series.quotes[series.quotes.length - 1];
@@ -403,6 +491,12 @@ export class AlgoProEngine {
         if (waiters?.length) {
             this.tickWaiters.delete(symbol);
             waiters.forEach(cb => cb(lastDigit, quote));
+        }
+
+        // Voice: speak a newly-detected favourable signal (throttled) when the
+        // scanner is between trades, then let the ranking loop decide execution.
+        if (!this.state.activeContractId && !this.executionBusy && this.signalEligible(markets[idx])) {
+            this.announceDetection(markets[idx]);
         }
 
         this.maybeExecute(markets[idx], quote, lastDigit);
@@ -447,6 +541,10 @@ export class AlgoProEngine {
         if (!this.state.running || !settings) return;
         if (this.state.activeContractId || this.executionBusy) return;
 
+        // Production anti-thrash: never fire two orders inside the cooldown
+        // window even when several markets are favourable simultaneously.
+        if (settings.cooldownMs > 0 && Date.now() - this.lastOrderAt < settings.cooldownMs) return;
+
         // Trade the MOST favourable eligible market, not whichever market's
         // tick happened to arrive first: rank by measured edge, then pair
         // confidence. Markets failing the favourability filter never enter.
@@ -468,8 +566,16 @@ export class AlgoProEngine {
             return;
         }
 
+        this.lastOrderAt = Date.now();
         const stake = martingaleStake(settings.stake, settings.martingale, this.state.lossDepth);
-        void this.executeSignal(m, signal, stake, key, m.lastDigit);
+        // Never let an unexpected throw inside the order path wedge
+        // executionBusy/activeContractId — that would silently kill the session.
+        void this.executeSignal(m, signal, stake, key, m.lastDigit).catch(e => {
+            this.executionBusy = false;
+            this.update({ activeContractId: null, activeMarket: '', activeSignal: '', status: 'Scanning' });
+            this.logEvent('error', `Execution failed unexpectedly: ${e?.message || String(e)}`, { symbol: m.symbol });
+            this.say('Trade execution failed. Continuing to scan.');
+        });
     }
 
     private executionGate(settings: AlgoProSettings): string | null {
@@ -546,6 +652,13 @@ export class AlgoProEngine {
         });
         this.logEvent('signal', `${signal.label} on ${m.displayName} — ${signal.contractType}${signal.barrier !== undefined ? ` ${signal.barrier}` : ''} @ stake ${stake.toFixed(2)}`, {
             symbol: m.symbol,
+        });
+        voiceService.announceSignal({
+            bot: 'Algo Pro AI',
+            market: m.displayName,
+            signal: contractSpokenLabel(signal.contractType, signal.barrier),
+            confidence: m.pairConfidence,
+            executed: true,
         });
 
         if (settings.paperTrading) {
@@ -675,20 +788,36 @@ export class AlgoProEngine {
             `${won ? 'WIN' : 'LOSS'}: ${id} — ${profit >= 0 ? '+' : ''}${round2(profit).toFixed(2)}${exitDigit !== undefined ? ` (exit digit ${exitDigit})` : ''}`,
             { result: won ? 'win' : 'loss', profit }
         );
+        if (this.state.settings.voiceAnnounce) {
+            const traded = this.state.trades.find(t => t.id === id);
+            voiceService.announceSettlement({
+                bot: 'Algo Pro AI',
+                won,
+                profit,
+                contractType: traded?.contractType,
+                market: traded?.displayName,
+            });
+        }
 
         // Session guards (kicktrade exact: "Take profit reached" / "Stop loss reached";
         // win target from Infinity Algo 1).
         if (settings.takeProfit > 0 && totalProfit + 1e-6 >= settings.takeProfit) {
-            this.stop(`Take profit reached: ${totalProfit.toFixed(2)}`);
+            const msg = `Take profit reached: ${totalProfit.toFixed(2)}`;
+            this.say(msg, true);
+            this.stop(msg);
             return;
         }
         if (settings.stopLoss > 0 && totalProfit - 1e-6 <= -settings.stopLoss) {
-            this.stop(`Stop loss reached: ${totalProfit.toFixed(2)}`);
+            const msg = `Stop loss reached: ${totalProfit.toFixed(2)}`;
+            this.say(msg, true);
+            this.stop(msg);
             return;
         }
         if (settings.winTarget > 0 && runCount >= settings.winTarget) {
             this.update({ winStreakTargetHit: true });
-            this.stop(`Session completed: ${runCount} wins reached`);
+            const msg = `Session completed: ${runCount} wins reached`;
+            this.say(msg, true);
+            this.stop(msg);
         }
     }
 }

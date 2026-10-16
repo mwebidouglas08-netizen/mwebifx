@@ -1,6 +1,9 @@
 /* Demo / Real account switcher in the AI Hub header. */
 .hub-account {
     position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
 
     &__trigger {
         display: flex;
@@ -64,6 +67,41 @@
         color: var(--text-general);
         font-size: 1rem;
         white-space: nowrap;
+    }
+
+    /* Secondary KSH ⇄ USD view of the same equity. */
+    &__balance-alt {
+        display: block;
+        font-family: var(--brand-font-monospace, monospace);
+        font-size: 0.9rem;
+        font-variant-numeric: tabular-nums;
+        line-height: 1.2;
+        opacity: 0.6;
+    }
+
+    &__currency {
+        flex: none;
+        padding: 0.45rem 0.7rem;
+        border: 1px solid var(--border-normal);
+        border-radius: 8px;
+        background: var(--general-section-1);
+        color: var(--text-prominent);
+        font-family: var(--brand-font-monospace, monospace);
+        font-size: 1.05rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        cursor: pointer;
+        transition: border-color 0.15s ease, color 0.15s ease;
+
+        &:hover {
+            color: var(--brand-primary);
+            border-color: var(--brand-primary);
+        }
+
+        &:focus-visible {
+            outline: 2px solid var(--brand-primary);
+            outline-offset: 2px;
+        }
     }
 
     &__chevron {

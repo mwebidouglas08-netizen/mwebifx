@@ -15,6 +15,8 @@ import Transactions from '@/components/transactions';
 import { DBOT_TABS } from '@/constants/bot-contents';
 import { popover_zindex } from '@/constants/z-indexes';
 import { useStore } from '@/hooks/useStore';
+import { useCurrencyConversion } from '@/hooks/use-app-preferences';
+import { getConvertedBalance } from '@/utils/currency-conversion';
 import { Localize, localize } from '@deriv-com/translations';
 import { useDevice } from '@deriv-com/ui';
 import ThemedScrollbars from '../shared_ui/themed-scrollbars';
@@ -68,6 +70,18 @@ const StatisticsTile = ({ content, contentClassName, title }: TStatisticsTile) =
     </div>
 );
 
+/** Secondary KSH ⇄ USD view shown under a stat amount. */
+const ConvertedAmount = ({ amount, currency }: { amount: number; currency: string }) => {
+    const { displayCurrency } = useCurrencyConversion();
+    const conv = getConvertedBalance(Number(amount ?? 0), currency, displayCurrency);
+    if (!conv.secondary) return null;
+    return (
+        <span className='run-panel__tile-alt' data-testid='dt_tile_converted'>
+            ≈ {conv.secondary}
+        </span>
+    );
+};
+
 export const StatisticsSummary = ({
     currency,
     is_mobile,
@@ -93,19 +107,34 @@ export const StatisticsSummary = ({
             <StatisticsTile
                 title={localize('Total stake')}
                 alignment='top'
-                content={<Money amount={total_stake} currency={currency} show_currency />}
+                content={
+                    <>
+                        <Money amount={total_stake} currency={currency} show_currency />
+                        <ConvertedAmount amount={total_stake} currency={currency} />
+                    </>
+                }
             />
             <StatisticsTile
                 title={localize('Total payout')}
                 alignment='top'
-                content={<Money amount={total_payout} currency={currency} show_currency />}
+                content={
+                    <>
+                        <Money amount={total_payout} currency={currency} show_currency />
+                        <ConvertedAmount amount={total_payout} currency={currency} />
+                    </>
+                }
             />
             <StatisticsTile title={localize('No. of runs')} alignment='top' content={number_of_runs} />
             <StatisticsTile title={localize('Contracts lost')} alignment='bottom' content={lost_contracts} />
             <StatisticsTile title={localize('Contracts won')} alignment='bottom' content={won_contracts} />
             <StatisticsTile
                 title={localize('Total profit/loss')}
-                content={<Money amount={total_profit} currency={currency} has_sign show_currency />}
+                content={
+                    <>
+                        <Money amount={total_profit} currency={currency} has_sign show_currency />
+                        <ConvertedAmount amount={total_profit} currency={currency} />
+                    </>
+                }
                 alignment='bottom'
                 contentClassName={classNames('run-panel__stat-amount', {
                     'run-panel__stat-amount--positive': total_profit > 0,

@@ -152,6 +152,13 @@
     &__balance-section {
         display: flex;
         align-items: center;
+        gap: 0.6rem;
+    }
+
+    &__balance-stack {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
     }
 
     &__balance {
@@ -167,6 +174,46 @@
             @include typeface(--small-left-normal-grey);
 
             white-space: nowrap;
+        }
+    }
+
+    /* Secondary KSH ⇄ USD view of the same balance. */
+    &__balance-alt {
+        margin: 0;
+        font-family: var(--brand-font-monospace, monospace);
+        font-size: 1.05rem;
+        font-variant-numeric: tabular-nums;
+        line-height: 1.2;
+        letter-spacing: 0.01em;
+        color: var(--text-general);
+        opacity: 0.6;
+        white-space: nowrap;
+        pointer-events: none;
+    }
+
+    &__currency-toggle {
+        flex: none;
+        padding: 0.2rem 0.7rem;
+        font-family: var(--brand-font-monospace, monospace);
+        font-size: 1rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        line-height: 1.5;
+        color: var(--text-general);
+        background: var(--general-section-1);
+        border: 1px solid var(--general-section-2);
+        border-radius: 999px;
+        cursor: pointer;
+        transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+
+        &:hover {
+            color: var(--status-success);
+            border-color: var(--status-success);
+        }
+
+        &:focus-visible {
+            outline: 2px solid var(--status-success);
+            outline-offset: 2px;
         }
     }
 

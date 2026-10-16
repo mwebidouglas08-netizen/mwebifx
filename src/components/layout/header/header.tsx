@@ -11,6 +11,7 @@ import { navigateToTransfer } from '@/utils/transfer-utils';
 import { Localize } from '@deriv-com/translations';
 import { Header, useDevice, Wrapper } from '@deriv-com/ui';
 import { AppLogo } from '../app-logo';
+import VoiceToggle from '../../voice-toggle';
 import AccountSwitcher from './account-switcher';
 import MenuItems from './menu-items';
 import MobileMenu from './mobile-menu';
@@ -152,6 +153,7 @@ const AppHeader = observer(() => {
                                     <AccountSwitcher activeAccount={activeAccount} />
                                 </div>
                             )}
+                            <VoiceToggle className='app-header__voice' />
                             <Button
                                 primary
                                 disabled={client?.is_logging_out || !authData?.currency}

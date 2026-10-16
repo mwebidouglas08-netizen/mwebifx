@@ -42,6 +42,8 @@ import {
 } from '../deriv/execution';
 import { accountBalance, currentLoginId, isApiReady, isAuthorized, getTicksHistory } from '../deriv/api';
 import { isDemoAccount } from '@/utils/account-helpers';
+import { buildTradeOutcome } from '../core/intelligent-execution';
+import { voiceService } from '@/services/voice-service';
 
 export interface EngineState {
     status: EngineStatus;
@@ -665,6 +667,13 @@ export class OUBotEngine {
             risk: { ...this.state.risk, openPositions: this.state.risk.openPositions + 1, tradesThisSession: this.state.risk.tradesThisSession + 1 },
         });
         this.logEvent('purchase', `Purchased contract #${buy.contractId}: ${opp.displayName} ${opp.direction} ${opp.barrier} @ ${opp.duration}${opp.durationUnit}`, { symbol: opp.symbol, contractId: buy.contractId, direction: opp.direction, barrier: opp.barrier, stake: confirmed.stake, payout: confirmed.payout });
+        voiceService.announceSignal({
+            bot: 'OU Bot',
+            market: opp.displayName,
+            signal: `${opp.direction} ${opp.barrier}`,
+            confidence: opp.confidence,
+            executed: true,
+        });
         this.setStatus('monitoring', `Monitoring contract #${buy.contractId}…`);
 
         const meta = this.symbols.find(x => x.symbol === opp.symbol);
@@ -693,6 +702,10 @@ export class OUBotEngine {
             return;
         }
         const settled = applySettlementToRecord(confirmed, settlement);
+        const outcome = buildTradeOutcome(settled.result === 'win', settled.stake, settled.payout, settled.profit);
+        if (outcome.mismatch) {
+            this.logEvent('error', `Settlement mismatch on #${buy.contractId}: reported ${settled.profit.toFixed(2)}, expected ${outcome.expectedProfit.toFixed(2)}`);
+        }
         const remaining = this.state.trades.filter(t => t.id !== confirmed.id);
         const trades = [settled, ...remaining];
         const equity = accountBalance();
@@ -703,6 +716,12 @@ export class OUBotEngine {
             `${settled.result === 'win' ? 'WIN' : 'LOSS'}: #${buy.contractId} ${opp.displayName} ${opp.direction} ${opp.barrier} — exit digit ${settled.exitDigit ?? '—'}, ${settled.profit >= 0 ? '+' : ''}${settled.profit.toFixed(2)}`,
             { symbol: opp.symbol, contractId: buy.contractId, direction: opp.direction, barrier: opp.barrier, result: settled.result, profit: settled.profit, exitDigit: settled.exitDigit, payout: settled.payout }
         );
+        voiceService.announceSettlement({
+            bot: 'OU Bot',
+            won: settled.result === 'win',
+            profit: settled.profit,
+            market: opp.displayName,
+        });
         // Never let a late settlement overwrite the stopped status (ghost
         // 'scanning' with no timer disables Start until a reload).
         if (risk.suspended) this.logEvent('risk', `Suspended: ${risk.suspensionReason}`);

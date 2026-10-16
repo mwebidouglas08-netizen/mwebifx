@@ -32,9 +32,9 @@
     },
     "typography": {
         "font_family": {
-            "primary": "Source Sans 3",
-            "secondary": "Georgia, 'Times New Roman', Times, serif",
-            "monospace": "'Courier New', Courier, monospace"
+            "primary": "Manrope, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+            "secondary": "'Playfair Display', Georgia, 'Times New Roman', Times, serif",
+            "monospace": "'JetBrains Mono', 'Courier New', Courier, monospace"
         },
         "font_sizes": {
             "xs": "0.75rem",

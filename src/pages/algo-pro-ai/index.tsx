@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useStore } from '@/hooks/useStore';
+import { useCurrencyConversion } from '@/hooks/use-app-preferences';
+import { getConvertedBalance } from '@/utils/currency-conversion';
 import { isDemoAccount } from '@/utils/account-helpers';
 import { useAlgoProAi } from '@/bot/use-engine';
 import { algoProEngine, DEFAULT_ALGO_PRO_SETTINGS, type AlgoProSettings } from '@/bot/engine/algo-pro-ai';
@@ -50,6 +52,7 @@ const fmtPct = (n: number) => `${(n * 100).toFixed(1)}%`;
 const AlgoProAiPage = observer(() => {
     const state = useAlgoProAi();
     const { client, run_panel } = useStore() ?? {};
+    const { displayCurrency } = useCurrencyConversion();
     const [form, setForm] = useState<AlgoProSettings>(() => ({ ...DEFAULT_ALGO_PRO_SETTINGS }));
     const logRef = useRef<HTMLDivElement | null>(null);
 
@@ -100,6 +103,23 @@ const AlgoProAiPage = observer(() => {
         patch('paperTrading', enabled);
         if (state.running) algoProEngine.configure({ paperTrading: enabled });
     };
+
+    // Applies immediately so a running scanner announces from the next signal.
+    const onToggleVoice = (enabled: boolean) => {
+        patch('voiceAnnounce', enabled);
+        if (state.running) algoProEngine.configure({ voiceAnnounce: enabled });
+    };
+
+    const onCooldownChange = (ms: number) => {
+        const value = Math.max(0, Math.min(60_000, Number.isFinite(ms) ? ms : 0));
+        patch('cooldownMs', value);
+        if (state.running) algoProEngine.configure({ cooldownMs: value });
+    };
+
+    const balanceConv =
+        liveBalance !== null && Number.isFinite(liveBalance)
+            ? getConvertedBalance(liveBalance, client?.currency || 'USD', displayCurrency)
+            : null;
 
     const perf = algoProEngine.getPerformance();
     const best = state.markets.length
@@ -233,6 +253,22 @@ const AlgoProAiPage = observer(() => {
                         Allow live trading {!isLoggedIn ? '(log in first)' : isDemo ? '(demo orders)' : '(REAL funds)'}
                     </span>
                 </label>
+                <label className='algo-pro-toggle'>
+                    <input type='checkbox' checked={form.voiceAnnounce} onChange={e => onToggleVoice(e.target.checked)} />
+                    <span>Voice announcements (favourable signals, settlements and risk guards)</span>
+                </label>
+                <label className='hub-field algo-pro-cooldown'>
+                    Order cooldown (ms)
+                    <input
+                        type='number'
+                        min={0}
+                        max={60000}
+                        step={250}
+                        value={form.cooldownMs}
+                        onChange={e => onCooldownChange(Number(e.target.value))}
+                    />
+                    <small>Minimum gap between orders so one market cannot drain the balance in a burst.</small>
+                </label>
                 <div className='hub-actions'>
                     <button type='button' className='hub-btn hub-btn--primary' disabled={isRunning} onClick={onStart}>
                         {state.loading ? 'Starting…' : state.running ? 'Running…' : 'Start scanner'}
@@ -247,9 +283,16 @@ const AlgoProAiPage = observer(() => {
                 <div className='hub-stat'>
                     <span>Account balance{form.paperTrading ? ' (real — paper trades don\u2019t touch it)' : ''}</span>
                     <strong>
-                        {isLoggedIn && liveBalance !== null && Number.isFinite(liveBalance)
-                            ? `${liveBalance.toFixed(2)} ${client?.currency || 'USD'}`
-                            : '—'}
+                        {isLoggedIn && balanceConv ? (
+                            <>
+                                {balanceConv.formatted}
+                                {balanceConv.secondary && (
+                                    <span className='hub-stat__alt'>≈ {balanceConv.secondary}</span>
+                                )}
+                            </>
+                        ) : (
+                            '—'
+                        )}
                     </strong>
                 </div>
                 <div className='hub-stat'>

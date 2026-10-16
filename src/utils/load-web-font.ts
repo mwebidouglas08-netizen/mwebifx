@@ -12,6 +12,11 @@ const SUPPORTED_FONTS = new Set([
     'Montserrat',
     'Raleway',
     'Source Sans 3',
+    // Dollarvault classic set (loaded by index.html, kept here so the
+    // App Builder "Customise" step can still select them at runtime).
+    'Manrope',
+    'Playfair Display',
+    'JetBrains Mono',
 ]);
 
 const loaded = new Set<string>();

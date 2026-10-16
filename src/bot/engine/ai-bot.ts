@@ -42,6 +42,8 @@ import {
     isAuthorized,
 } from '../deriv/api';
 import { isDemoAccount } from '@/utils/account-helpers';
+import { buildTradeOutcome, evaluateCandidate } from '../core/intelligent-execution';
+import { voiceService } from '@/services/voice-service';
 
 export interface AIBotState {
     status: AIBotStatus;
@@ -628,6 +630,30 @@ export class AIBotEngine {
 
         const prob = this.empiricalProb(analysis, ct);
         const ev = prob * quote.payout - stake;
+        // Intelligent execution standard: never fire an order whose measured
+        // probability cannot clear the quoted payout — i.e. a structurally
+        // losing price. This mirrors the OU bot's EV threshold and Algo Pro's
+        // favourability filter so every bot behaves consistently.
+        const breakeven = stake > 0 && quote.payout > 0 ? stake / quote.payout : 1;
+        const verdict = evaluateCandidate(
+            {
+                symbol: analysis.symbol,
+                confidence: prob,
+                winRate: prob,
+                breakeven,
+                payoutRatio: stake > 0 ? quote.payout / stake : 0,
+            },
+            { minConfidence: 0, requirePositiveEv: true }
+        );
+        if (!verdict.ok) {
+            if (this.running) this.setStatus('scanning', `Holding: ${verdict.reason || 'negative expected value'}`);
+            this.logEvent(
+                'decision',
+                `Skipped ${analysis.displayName} ${ct}: ${verdict.reason || 'negative expected value'} — measured ${(prob * 100).toFixed(1)}% vs break-even ${(breakeven * 100).toFixed(1)}%`,
+                { symbol: analysis.symbol, contractType: ct }
+            );
+            return;
+        }
         const record: TradeRecord = {
             id: `ai-${Date.now()}`,
             symbol: analysis.symbol,
@@ -680,6 +706,13 @@ export class AIBotEngine {
             stats: { ...this.state.stats, trades: this.state.stats.trades + 1 },
         });
         this.logEvent('purchase', `Purchased #${buy.contractId}: ${analysis.displayName} ${ct} @ ${cfg.duration}${cfg.durationUnit}`, { symbol: analysis.symbol, contractId: buy.contractId, contractType: ct });
+        voiceService.announceSignal({
+            bot: 'AI Bot',
+            market: analysis.displayName,
+            signal: ct + (prediction !== undefined ? ` ${prediction}` : ''),
+            confidence: prob,
+            executed: true,
+        });
         this.setStatus('monitoring', `Monitoring #${buy.contractId}…`);
 
         const settlement = await monitorUntilSettled(
@@ -707,6 +740,10 @@ export class AIBotEngine {
             return;
         }
         const settled = applySettlementToRecord(confirmed, settlement);
+        const outcome = buildTradeOutcome(settled.result === 'win', settled.stake, settled.payout, settled.profit);
+        if (outcome.mismatch) {
+            this.logEvent('error', `Settlement mismatch on #${buy.contractId}: reported ${settled.profit.toFixed(2)}, expected ${outcome.expectedProfit.toFixed(2)}`);
+        }
         const remaining = this.state.trades.filter(t => t.id !== confirmed.id);
         const trades = [settled, ...remaining];
         const equity = accountBalance();
@@ -740,6 +777,7 @@ export class AIBotEngine {
             `${won ? 'WIN' : 'LOSS'}: #${buy.contractId} ${analysis.displayName} ${ct} — ${settled.profit >= 0 ? '+' : ''}${settled.profit.toFixed(2)}`,
             { symbol: analysis.symbol, contractId: buy.contractId, contractType: ct, result: settled.result, profit: settled.profit }
         );
+        voiceService.announceSettlement({ bot: 'AI Bot', won, profit: settled.profit, contractType: ct, market: analysis.displayName });
 
         // Never let a late settlement overwrite the stopped status (ghost
         // 'scanning' with no timer disables Start until a reload).
