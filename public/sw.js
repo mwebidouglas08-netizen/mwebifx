@@ -14,9 +14,13 @@ const SHELL = [
     '/',
     '/index.html',
     '/manifest.webmanifest',
+    '/favicon.svg',
+    '/favicon-32x32.png',
+    '/favicon-16x16.png',
     '/icon-192.png',
     '/icon-512.png',
-    '/favicon.svg',
+    '/icon-maskable-512.png',
+    '/apple-touch-icon.png',
 ];
 
 self.addEventListener('install', event => {
