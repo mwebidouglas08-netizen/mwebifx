@@ -1,10 +1,62 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Dollarvault">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#6366f1"/>
-      <stop offset="1" stop-color="#22d3ee"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#132148"/>
+      <stop offset="0.55" stop-color="#0a1226"/>
+      <stop offset="1" stop-color="#060a18"/>
     </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.44" r="0.62">
+      <stop offset="0" stop-color="#f6c34b" stop-opacity="0.34"/>
+      <stop offset="0.55" stop-color="#f6c34b" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#f6c34b" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffe9a3"/>
+      <stop offset="0.45" stop-color="#f6c34b"/>
+      <stop offset="1" stop-color="#c98a12"/>
+    </linearGradient>
+    <linearGradient id="goldLine" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#e0a92c"/>
+      <stop offset="1" stop-color="#fff3c4"/>
+    </linearGradient>
+    <linearGradient id="teal" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#2dd4bf"/>
+      <stop offset="1" stop-color="#5eead4"/>
+    </linearGradient>
+    <filter id="dotGlow" x="-120%" y="-120%" width="340%" height="340%">
+      <feGaussianBlur stdDeviation="14" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
   </defs>
-  <rect width="64" height="64" rx="16" fill="#0b1220"/>
-  <path d="M12 44 L24 22 L32 35 L39 25 L52 44 Z" fill="url(#g)"/>
+
+  <!-- vault plate -->
+  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="116" fill="url(#glow)"/>
+  <path d="M0 0 H512 L0 512 Z" fill="#ffffff" opacity="0.03"/>
+
+  <!-- framing ring -->
+  <circle cx="256" cy="256" r="228" fill="none" stroke="#f6c34b" stroke-width="6" opacity="0.3"/>
+
+  <!-- vault door ring -->
+  <circle cx="256" cy="256" r="148" fill="none" stroke="url(#gold)" stroke-width="26"/>
+  <!-- specular highlight arc (top-left) -->
+  <path d="M136 176 A148 148 0 0 1 236 108" fill="none" stroke="#fff8dd" stroke-width="7" stroke-linecap="round" opacity="0.85"/>
+  <!-- door bolts -->
+  <g fill="#7a5510">
+    <circle cx="256" cy="108" r="9.5"/>
+    <circle cx="361" cy="151" r="9.5"/>
+    <circle cx="404" cy="256" r="9.5"/>
+    <circle cx="361" cy="361" r="9.5"/>
+    <circle cx="256" cy="404" r="9.5"/>
+    <circle cx="151" cy="361" r="9.5"/>
+    <circle cx="108" cy="256" r="9.5"/>
+    <circle cx="151" cy="151" r="9.5"/>
+  </g>
+
+  <!-- market ascent -->
+  <path d="M176 318 L238 256 L278 292 L346 206" fill="none" stroke="url(#goldLine)" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="346" cy="206" r="15" fill="url(#teal)" filter="url(#dotGlow)"/>
 </svg>

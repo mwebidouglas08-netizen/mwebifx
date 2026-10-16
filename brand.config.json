@@ -79,7 +79,7 @@
         "css_variable_prefix": "--brand"
     },
     "platform": {
-        "name": "Mwebifx",
+        "name": "Dollarvault",
         "i18n": {
             "default_language": "EN"
         },
@@ -109,7 +109,7 @@
                 "derivatives": "derivatives/"
             }
         },
-        "show_name": false,
-        "logo_path": null
+        "show_name": true,
+        "logo_path": "/favicon.svg"
     }
 }

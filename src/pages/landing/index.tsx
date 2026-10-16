@@ -7,7 +7,7 @@ import './landing.scss';
  * badges and a final CTA — all dismissing into the trading hub via onEnter.
  */
 
-const BRAND = 'Mwebifx';
+const BRAND = 'Dollarvault';
 
 const HERO_TITLES = [
     'Automate Your Trades',
@@ -99,6 +99,74 @@ const TRUST = [
     { icon: '✓', text: 'Backtestable strategies' },
 ];
 
+/** Animated count-up for numeric stats (e.g. "28+", "24/7"). */
+const CountUp = ({ value, duration = 1400 }: { value: string; duration?: number }) => {
+    const ref = useRef<HTMLSpanElement | null>(null);
+    const [shown, setShown] = useState(() => value.replace(/^\d+/, '0'));
+
+    useEffect(() => {
+        const match = value.match(/^(\d+)/);
+        const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!match || reduced) {
+            setShown(value);
+            return;
+        }
+        const target = parseInt(match[1], 10);
+        const tail = value.slice(match[1].length);
+        const el = ref.current;
+        if (!el) return;
+        let raf = 0;
+        let start = 0;
+        const io = new IntersectionObserver(
+            entries => {
+                if (!entries[0]?.isIntersecting) return;
+                io.disconnect();
+                const step = ts => {
+                    if (!start) start = ts;
+                    const p = Math.min(1, (ts - start) / duration);
+                    const eased = 1 - Math.pow(1 - p, 3);
+                    setShown(`${Math.round(target * eased)}${tail}`);
+                    if (p < 1) raf = requestAnimationFrame(step);
+                };
+                raf = requestAnimationFrame(step);
+            },
+            { threshold: 0.4 }
+        );
+        io.observe(el);
+        return () => {
+            io.disconnect();
+            cancelAnimationFrame(raf);
+        };
+    }, [value, duration]);
+
+    return <span ref={ref}>{shown}</span>;
+};
+
+/** 3D tilt feature card that follows the pointer (skips until revealed). */
+const TiltCard = ({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) => {
+    const ref = useRef<HTMLDivElement | null>(null);
+    return (
+        <div
+            ref={ref}
+            className='landing__feature-card animated-element'
+            style={{ transitionDelay: `${delay}ms` }}
+            onPointerMove={e => {
+                const el = ref.current;
+                if (!el || !el.classList.contains('in')) return;
+                const r = el.getBoundingClientRect();
+                const px = (e.clientX - r.left) / r.width - 0.5;
+                const py = (e.clientY - r.top) / r.height - 0.5;
+                el.style.transform = `perspective(900px) rotateX(${(-py * 7).toFixed(2)}deg) rotateY(${(px * 7).toFixed(2)}deg) translateY(-4px)`;
+            }}
+            onPointerLeave={() => {
+                if (ref.current) ref.current.style.transform = '';
+            }}
+        >
+            {children}
+        </div>
+    );
+};
+
 /** Reveal-on-scroll: adds `.in` when the element enters the viewport. */
 const useReveal = () => {
     const ref = useRef<HTMLDivElement | null>(null);
@@ -184,12 +252,38 @@ interface LandingProps {
 
 const Landing = ({ onEnter }: LandingProps) => {
     const rootRef = useReveal();
+    const spotRef = useRef<HTMLDivElement | null>(null);
+    const progressRef = useRef<HTMLElement | null>(null);
     const [benefit, setBenefit] = useState(0);
 
     useEffect(() => {
         const t = setInterval(() => setBenefit(v => (v + 1) % BENEFITS.length), 2600);
         return () => clearInterval(t);
     }, []);
+
+    // Enter / Space dismisses into the hub.
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Enter' || e.key === ' ') onEnter();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [onEnter]);
+
+    // Scroll progress bar reflects the landing's own scroll.
+    useEffect(() => {
+        const el = rootRef.current;
+        if (!el) return;
+        const onScroll = () => {
+            const bar = progressRef.current;
+            if (!bar) return;
+            const max = el.scrollHeight - el.clientHeight;
+            bar.style.width = `${max > 0 ? (el.scrollTop / max) * 100 : 0}%`;
+        };
+        el.addEventListener('scroll', onScroll, { passive: true });
+        onScroll();
+        return () => el.removeEventListener('scroll', onScroll);
+    }, [rootRef]);
 
     // Lock the page scroll while the landing overlay owns the viewport, and
     // hide the layout's fixed footer — it lives outside .main-dashboard's
@@ -205,12 +299,31 @@ const Landing = ({ onEnter }: LandingProps) => {
     }, []);
 
     return (
-        <div className='landing' ref={rootRef} role='dialog' aria-label={`${BRAND} introduction`}>
+        <div
+            className='landing'
+            ref={rootRef}
+            role='dialog'
+            aria-label={`${BRAND} introduction`}
+            onPointerMove={e => {
+                const spot = spotRef.current;
+                if (spot) {
+                    spot.style.left = `${e.clientX}px`;
+                    spot.style.top = `${e.clientY}px`;
+                    spot.style.opacity = '1';
+                }
+            }}
+        >
             <div className='landing__bg' aria-hidden='true' />
+            <div className='landing__orb landing__orb--a' aria-hidden='true' />
+            <div className='landing__orb landing__orb--b' aria-hidden='true' />
+            <div className='landing__spotlight' ref={spotRef} aria-hidden='true' />
+            <div className='landing__scroll' aria-hidden='true'>
+                <i ref={progressRef} />
+            </div>
 
             <header className='landing__header'>
                 <div className='landing__logo'>
-                    <span className='landing__logo-mark' aria-hidden>M</span>
+                    <img className='landing__logo-icon' src='/favicon.svg' alt='' aria-hidden='true' />
                     <span className='landing__logo-word'>{BRAND}</span>
                 </div>
                 <button type='button' className='landing__login-btn' onClick={onEnter}>
@@ -258,7 +371,9 @@ const Landing = ({ onEnter }: LandingProps) => {
                     <div className='landing__stats animated-element'>
                         {STATS.map(s => (
                             <div key={s.label} className='landing__stat'>
-                                <div className='landing__stat-value'>{s.value}</div>
+                                <div className='landing__stat-value'>
+                                    <CountUp value={s.value} />
+                                </div>
                                 <div className='landing__stat-label'>{s.label}</div>
                             </div>
                         ))}
@@ -280,12 +395,12 @@ const Landing = ({ onEnter }: LandingProps) => {
                 </div>
                 <div className='landing__features-grid'>
                     {FEATURES.map((f, i) => (
-                        <div key={f.title} className='landing__feature-card animated-element' style={{ transitionDelay: `${i * 70}ms` }}>
+                        <TiltCard key={f.title} delay={i * 70}>
                             <span className='landing__feature-icon' aria-hidden>{f.icon}</span>
                             <h3 className='landing__feature-title'>{f.title}</h3>
                             <p className='landing__feature-tag'>{f.tagline}</p>
                             <p className='landing__feature-details'>{f.details}</p>
-                        </div>
+                        </TiltCard>
                     ))}
                 </div>
             </section>

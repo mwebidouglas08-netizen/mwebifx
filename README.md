@@ -1,4 +1,4 @@
-# Deriv Trading Bot
+# Dollarvault — Deriv Trading Bot
 
 A self-hosted, visual trading-bot builder on the Deriv WebSocket API. Drag-and-drop
 strategy building with Blockly, an interactive SmartCharts chart, automated strategy

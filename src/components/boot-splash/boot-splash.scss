@@ -1,5 +1,5 @@
 /* Cinematic boot loader — SmartFlip-class card over a dark aurora canvas,
-   Mwebifx teal/indigo identity. Overlays both themes. */
+   Dollarvault teal/indigo identity. Overlays both themes. */
 .sf-cinematic {
     position: fixed;
     inset: 0;
@@ -298,6 +298,16 @@
     letter-spacing: 0.04em;
 }
 
+.sf-cinematic__skip {
+    margin-top: 8px;
+    color: rgb(148 163 184 / 65%);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    animation: sfSkipPulse 1.8s ease-in-out infinite;
+}
+
 @keyframes sfFadeIn {
     from { opacity: 0; }
     to { opacity: 1; }
@@ -321,6 +331,11 @@
 @keyframes sfPulse {
     0% { transform: translateX(-60px); }
     100% { transform: translateX(460px); }
+}
+
+@keyframes sfSkipPulse {
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

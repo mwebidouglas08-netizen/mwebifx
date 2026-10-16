@@ -1,5 +1,5 @@
 /*
- * Mwebifx service worker — makes the app installable and resilient offline.
+ * Dollarvault service worker — makes the app installable and resilient offline.
  *
  * Strategy:
  *  - Same-origin only. Cross-origin traffic (Deriv WebSocket / REST) is never
@@ -9,7 +9,7 @@
  *  - Static assets (JS/CSS/images, content-hashed): cache-first, then network
  *    (hashed URLs are immutable, so this is safe and fast).
  */
-const CACHE = 'mwebifx-shell-v1';
+const CACHE = 'dollarvault-shell-v1';
 const SHELL = [
     '/',
     '/index.html',

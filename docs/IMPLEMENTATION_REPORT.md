@@ -1,4 +1,4 @@
-# Mwebifx — Production-Readiness Implementation Report
+# Dollarvault — Production-Readiness Implementation Report
 
 Date: 2026-10-13
 Commits in this effort: `b819a90`, `6f3257e`, `14fd264` (on top of `36c50e0`)

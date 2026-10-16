@@ -275,9 +275,9 @@ const HubSidebar = ({
             >
                 <div className='hub-sidebar__brand'>
                     <span className='hub-sidebar__mark' aria-hidden='true'>
-                        M
+                        D
                     </span>
-                    <span className='hub-sidebar__wordmark'>Mwebifx</span>
+                    <span className='hub-sidebar__wordmark'>Dollarvault</span>
                     <button
                         type='button'
                         className='hub-sidebar__collapse'

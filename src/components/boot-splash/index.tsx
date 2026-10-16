@@ -26,21 +26,42 @@ const TILES = [
     { label: 'Backtest', icon: '🧪' },
 ];
 
-const BRAND = 'Mwebifx';
+const BRAND = 'Dollarvault';
 /** Typewriter cadence: type fast, hold, (loader hides before delete). */
 const TYPE_MS = 70;
 
 /**
  * Cinematic boot loader. Typed wordmark, ringed badge, staged progress pills,
  * capability tiles, live status line and a pulsing progress bar — the app
- * content stays mounted underneath and is revealed when this leaves.
+ * content stays mounted underneath and is revealed when this leaves. A click
+ * or key press skips it, so returning users never wait out the full sequence.
  */
-const BootSplash = ({ onDone, minDurationMs = 6000 }: BootSplashProps) => {
+const BootSplash = ({ onDone, minDurationMs = 3200 }: BootSplashProps) => {
     const [typed, setTyped] = useState('');
     const [step, setStep] = useState(0);
     const [progress, setProgress] = useState(0);
     const [leaving, setLeaving] = useState(false);
     const doneRef = useRef(false);
+
+    const finish = () => {
+        if (doneRef.current) return;
+        doneRef.current = true;
+        setLeaving(true);
+        setTimeout(() => onDone?.(), 560);
+    };
+    const finishRef = useRef(finish);
+    finishRef.current = finish;
+
+    // Skip on any click / key press — the loader is decoration, not a gate.
+    useEffect(() => {
+        const skip = () => finishRef.current();
+        window.addEventListener('pointerdown', skip);
+        window.addEventListener('keydown', skip);
+        return () => {
+            window.removeEventListener('pointerdown', skip);
+            window.removeEventListener('keydown', skip);
+        };
+    }, []);
 
     // Typewriter: types the brand letter by letter, then holds.
     useEffect(() => {
@@ -64,11 +85,7 @@ const BootSplash = ({ onDone, minDurationMs = 6000 }: BootSplashProps) => {
             setProgress(pct);
             if (pct >= 100) {
                 clearInterval(p);
-                if (!doneRef.current) {
-                    doneRef.current = true;
-                    setLeaving(true);
-                    setTimeout(() => onDone?.(), 560);
-                }
+                finishRef.current();
             }
         }, tickMs);
         const s = setInterval(() => {
@@ -83,7 +100,7 @@ const BootSplash = ({ onDone, minDurationMs = 6000 }: BootSplashProps) => {
     const status = STATUS[Math.min(STATUS.length - 1, step)];
 
     return (
-        <div className={`boot-splash sf-cinematic ${leaving ? 'sf-cinematic--leave' : ''}`} role='status' aria-label='Loading Mwebifx'>
+        <div className={`boot-splash sf-cinematic ${leaving ? 'sf-cinematic--leave' : ''}`} role='status' aria-label='Loading Dollarvault'>
             <div className='sf-cinematic__grid' aria-hidden='true' />
             <div className='sf-cinematic__glow' aria-hidden='true' />
             <div className='sf-cinematic__wrap'>
@@ -91,7 +108,7 @@ const BootSplash = ({ onDone, minDurationMs = 6000 }: BootSplashProps) => {
                     <div className='sf-cinematic__badge' aria-hidden='true'>
                         <span className='sf-cinematic__badge-ring' />
                         <span className='sf-cinematic__badge-ring sf-cinematic__badge-ring--2' />
-                        <span className='sf-cinematic__badge-mono'>M</span>
+                        <span className='sf-cinematic__badge-mono'>{BRAND.charAt(0)}</span>
                     </div>
                     <div className='sf-cinematic__brand'>
                         <span className='sf-cinematic__brand-title' aria-label={BRAND}>
@@ -140,7 +157,8 @@ const BootSplash = ({ onDone, minDurationMs = 6000 }: BootSplashProps) => {
                         </div>
                         <div className='sf-cinematic__progress-counter'>{progress}%</div>
                     </div>
-                    <div className='sf-cinematic__footer'>© 2026 Mwebifx · Powered by Deriv</div>
+                    <div className='sf-cinematic__footer'>© 2026 {BRAND} · Powered by Deriv</div>
+                    <div className='sf-cinematic__skip'>Click anywhere to skip</div>
                 </div>
             </div>
         </div>
