@@ -22,6 +22,8 @@ import VersionBanner from '@/components/version-banner';
 import HubSidebar, { HUB_VIEW_LABELS, type HubViewId } from '@/components/hub-sidebar';
 import { voiceService } from '@/services/voice-service';
 import { soundService } from '@/services/sound-service';
+import { subscribeHubNavigation } from '@/services/hub-navigation';
+import VoiceAgentControl from '@/components/voice-agent';
 import AppWrapper from './main';
 import './main.scss';
 
@@ -72,6 +74,10 @@ const Main = observer(() => {
         return () => document.body.classList.remove('hub-view');
     }, [activeView, ui]);
 
+    // The voice agent switches views through an emitter because the active
+    // view lives here as component state — same path the bot dock uses.
+    useEffect(() => subscribeHubNavigation(setActiveView), []);
+
     // Re-applies the entrance animation whenever a view becomes visible —
     // wrappers stay mounted (display toggles), so the CSS animation alone would
     // only ever play once, hidden, at first paint.
@@ -109,6 +115,7 @@ const Main = observer(() => {
                         <span className='main-topbar__clock-dot' aria-hidden />
                         {clock} UTC
                     </span>
+                    <VoiceAgentControl />
                 </header>
                 <main className='main-content'>
                     {/* Both views stay mounted. Unmounting the hub on switch would

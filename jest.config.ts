@@ -98,6 +98,7 @@ const config: Config = {
         '@deriv-com/ui': derivComUiDir,
         '^@/external/(.*)$': '<rootDir>/src/external/$1',
         '^@/adapters/(.*)$': '<rootDir>/src/adapters/$1',
+        '^@/bot/(.*)$': '<rootDir>/src/bot/$1',
         '^@/utils/(.*)$': '<rootDir>/src/utils/$1',
         '^@/components/(.*)$': '<rootDir>/src/components/$1',
         '^@/constants/(.*)$': '<rootDir>/src/constants/$1',
