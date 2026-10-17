@@ -674,7 +674,6 @@ export class OUBotEngine {
                     this.logEvent('risk', `Holding: ${verdict.reason}`);
                     return;
                 }
-                this.announceOpportunity(best);
                 await this.execute(best, verdict.stake);
             } else {
                 // Confidence-driven execution: walk the ranked candidates and trade
@@ -701,7 +700,6 @@ export class OUBotEngine {
                         }
                         continue;
                     }
-                    this.announceOpportunity(opp);
                     await this.execute(opp, verdict.stake);
                     return;
                 }
@@ -731,18 +729,6 @@ export class OUBotEngine {
             isUniform: pValue > 0.05,
             significant: pValue <= 0.05,
         };
-    }
-
-    /** Voice: the setup cleared every gate and is about to be executed. */
-    private announceOpportunity(opp: ContractOpportunity) {
-        voiceService.announceSignal({
-            bot: 'OU Bot',
-            market: opp.displayName,
-            signal: `${opp.direction === 'over' ? 'Over' : 'Under'} ${opp.barrier}`,
-            confidence: opp.confidence,
-            strong: opp.confidence >= 0.8,
-            executed: false,
-        });
     }
 
     private async execute(opp: ContractOpportunity, stake: number) {

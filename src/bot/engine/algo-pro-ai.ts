@@ -198,8 +198,6 @@ export class AlgoProEngine {
     private pipSizes = new Map<string, number>();
     /** Production anti-thrash: timestamp of the last order we fired. */
     private lastOrderAt = 0;
-    /** Per-market throttle so a persistently favourable market is only spoken once. */
-    private lastDetectionAt = new Map<string, number>();
     /** Watchdog: last moment any tick arrived, used to self-heal a dead feed. */
     private lastTickAt = 0;
     private watchdogTimer: ReturnType<typeof setInterval> | null = null;
@@ -265,27 +263,6 @@ export class AlgoProEngine {
     private say(text: string, force = false) {
         if (!this.state.settings.voiceAnnounce) return;
         voiceService.speak(text, { force });
-    }
-
-    /**
-     * Announce a freshly-detected favourable signal (throttled per market so a
-     * market that stays favourable doesn't repeat itself every tick).
-     */
-    private announceDetection(m: AlgoProMarketState) {
-        if (!this.state.settings.voiceAnnounce) return;
-        const now = Date.now();
-        const last = this.lastDetectionAt.get(m.symbol) ?? 0;
-        if (now - last < 8000) return;
-        this.lastDetectionAt.set(m.symbol, now);
-        const strong = isStrongSignal(m.signalEdge, m.pairConfidence, this.state.settings.usePairScanner);
-        voiceService.announceSignal({
-            bot: 'Algo Pro AI',
-            market: m.displayName,
-            signal: m.signal?.label ?? contractSpokenLabel(m.signal?.contractType, m.signal?.barrier),
-            confidence: m.signal?.contractType ? m.pairConfidence : undefined,
-            strong,
-            executed: false,
-        });
     }
 
     configure(patch: Partial<AlgoProSettings>) {
@@ -514,7 +491,6 @@ export class AlgoProEngine {
         this.feed = null;
         this.disposers.forEach(d => d());
         this.disposers = [];
-        this.lastDetectionAt.clear();
         this.update({
             running: false,
             loading: false,
@@ -571,12 +547,6 @@ export class AlgoProEngine {
         if (waiters?.length) {
             this.tickWaiters.delete(symbol);
             waiters.forEach(cb => cb(lastDigit, quote));
-        }
-
-        // Voice: speak a newly-detected favourable signal (throttled) when the
-        // scanner is between trades, then let the ranking loop decide execution.
-        if (!this.state.activeContractId && !this.executionBusy && this.signalEligible(markets[idx])) {
-            this.announceDetection(markets[idx]);
         }
 
         this.maybeExecute(markets[idx], quote, lastDigit);

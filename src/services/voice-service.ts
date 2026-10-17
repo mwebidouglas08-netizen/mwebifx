@@ -33,8 +33,8 @@ const SETTING_KEY = 'voice_settings';
 
 export const DEFAULT_VOICE_SETTINGS: VoiceSettings = {
     enabled: true,
-    rate: 1.05,
-    pitch: 1.0,
+    rate: 1.04,
+    pitch: 1.1,
     volume: 1.0,
     minIntervalMs: 900,
 };
@@ -186,7 +186,11 @@ class VoiceService {
         this.cachedBest = null;
     }
 
-    /** Prefer a natural English voice (Google/Sapi/local), falling back to the first English one. */
+    /**
+     * Prefer a confident, sweet presenter: natural/neural voices first, then
+     * Google's voices, then female-named voices — falling back to whatever
+     * English (or any) voice the platform offers.
+     */
     private pickVoice(): SpeechSynthesisVoice | null {
         if (this.cachedBest) return this.cachedBest;
         if (!this.voices.length) this.refreshVoices();
@@ -198,10 +202,15 @@ class VoiceService {
         const score = (v: SpeechSynthesisVoice): number => {
             let s = 0;
             const name = (v.name || '').toLowerCase();
-            if (/google/i.test(name)) s += 6;
-            if (/natural|enhanced|neural/i.test(name)) s += 5;
-            if (/samantha|karen|daniel|serena|alex/i.test(name)) s += 3;
-            if (/microsoft|zira|david|aria/i.test(name)) s += 2;
+            const lang = (v.lang || '').toLowerCase();
+            if (/natural|neural|enhanced|wavenet|studio|siri/.test(name)) s += 8;
+            if (/google/.test(name)) s += 6;
+            // Sweet, confident presenters — prefer female-named voices when offered.
+            if (/samantha|aria|jenny|ava|sonia|zira|karen|serena|susan|female|allison|joanna/.test(name)) s += 5;
+            if (/male|guy|daniel|david|alex|ryan/.test(name)) s -= 2;
+            if (/^en-us/.test(lang)) s += 3;
+            else if (/^en-(gb|au|ie)/.test(lang)) s += 2;
+            else if (/^en/.test(lang)) s += 1;
             if (v.localService) s += 1;
             if (v.default) s += 1;
             return s;

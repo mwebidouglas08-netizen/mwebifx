@@ -345,16 +345,6 @@ const DualEdgePage = observer(() => {
             const state = sidesRef.current.find(s => s.side === side);
             if (!state) continue;
             const action: SignalAction = side === 'over' ? 'OVER' : 'UNDER';
-            // Voice: a fresh ladder round is entering the market — announce the
-            // side before the quote/order runs (throttled per market inside the
-            // voice service).
-            voiceService.announceSignal({
-                bot: 'Dual Edge',
-                market: activeSymbol,
-                signal: `${side === 'over' ? 'Over' : 'Under'} ${state.barrier}`,
-                strong: true,
-                executed: false,
-            });
             const req = {
                 symbol: activeSymbol,
                 family: 'over_under' as const,

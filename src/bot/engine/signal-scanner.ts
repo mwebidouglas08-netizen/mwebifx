@@ -632,20 +632,6 @@ export class SignalScannerEngine {
                 signalsGenerated: this.state.signalsGenerated + (signals.length ? 1 : 0),
             });
 
-            // Voice: announce the strongest threshold-clearing signal of this
-            // cycle (throttled per market inside the voice service), whether or
-            // not auto-trade is armed — watching the scanner should talk too.
-            const best = topSignals[0];
-            if (best && best.strength >= cfg.threshold) {
-                voiceService.announceSignal({
-                    bot: 'AI Signal Scanner',
-                    market: best.displayName,
-                    signal: `${ACTION_LABEL[best.action] ?? best.action}${best.barrier !== undefined ? ` ${best.barrier}` : ''}`,
-                    strength: best.strength,
-                    executed: false,
-                });
-            }
-
             if (!this.running) return;
             if (!cfg.autoTrade) {
                 this.setAutoTradeBlock(null);

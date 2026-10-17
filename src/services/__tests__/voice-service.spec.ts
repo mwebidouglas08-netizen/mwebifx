@@ -23,9 +23,15 @@ type FakeUtterance = {
 };
 
 let spoken: string[] = [];
+let lastSpokenVoice: SpeechSynthesisVoice | null = null;
 
-const installSpeech = (autoStart = false): void => {
+const DEFAULT_VOICES = [
+    { name: 'Test Voice', lang: 'en-US', localService: true, default: true, voiceURI: 'test' },
+];
+
+const installSpeech = (autoStart = false, voices: SpeechSynthesisVoice[] = DEFAULT_VOICES): void => {
     spoken = [];
+    lastSpokenVoice = null;
     class FakeUtteranceImpl {
         text: string;
         voice: SpeechSynthesisVoice | null = null;
@@ -43,21 +49,20 @@ const installSpeech = (autoStart = false): void => {
     const fake = {
         speak: (u: FakeUtterance) => {
             spoken.push(u.text);
+            lastSpokenVoice = u.voice;
             if (autoStart) u.onstart?.();
         },
         cancel: jest.fn(),
-        getVoices: () => [
-            { name: 'Test Voice', lang: 'en-US', localService: true, default: true, voiceURI: 'test' },
-        ],
+        getVoices: () => voices,
         addEventListener: jest.fn(),
         removeEventListener: jest.fn(),
     };
     Object.defineProperty(window, 'speechSynthesis', { value: fake, configurable: true, writable: true });
 };
 
-const loadVoice = (autoStart = false): VoiceModule => {
+const loadVoice = (autoStart = false, voices?: SpeechSynthesisVoice[]): VoiceModule => {
     jest.resetModules();
-    installSpeech(autoStart);
+    installSpeech(autoStart, voices);
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     return require('@/services/voice-service') as VoiceModule;
 };
@@ -189,6 +194,35 @@ describe('signal detection announcements', () => {
         expect(voiceService.announceSignal(signal())).toBe(false);
         expect(voiceService.announceWelcome()).toBe(false);
         expect(spoken).toHaveLength(0);
+    });
+});
+
+describe('voice selection', () => {
+    it('prefers a sweet natural voice over plainer English ones', () => {
+        const { voiceService } = loadVoice(false, [
+            { name: 'Daniel', lang: 'en-US', localService: true, default: true, voiceURI: 'daniel' },
+            { name: 'Google UK English Male', lang: 'en-GB', localService: false, default: false, voiceURI: 'guk' },
+            { name: 'Samantha', lang: 'en-US', localService: true, default: false, voiceURI: 'sam' },
+        ] as SpeechSynthesisVoice[]);
+
+        expect(voiceService.announceStatus('Voice selection check.')).toBe(true);
+        expect(lastSpokenVoice?.name).toBe('Samantha');
+    });
+
+    it('prefers a neural voice when one is available', () => {
+        const { voiceService } = loadVoice(false, [
+            { name: 'Samantha', lang: 'en-US', localService: true, default: false, voiceURI: 'sam' },
+            { name: 'Microsoft Jenny Neural', lang: 'en-US', localService: false, default: false, voiceURI: 'jenny' },
+        ] as SpeechSynthesisVoice[]);
+
+        expect(voiceService.announceStatus('Voice selection check.')).toBe(true);
+        expect(lastSpokenVoice?.name).toBe('Microsoft Jenny Neural');
+    });
+
+    it('speaks with the warmer default pitch and rate', () => {
+        const { voiceService } = loadVoice();
+        expect(voiceService.getSettings().pitch).toBeCloseTo(1.1, 5);
+        expect(voiceService.getSettings().rate).toBeCloseTo(1.04, 5);
     });
 });
 

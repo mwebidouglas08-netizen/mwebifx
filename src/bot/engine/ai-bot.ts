@@ -621,15 +621,6 @@ export class AIBotEngine {
 
             this.lastTradeAt = now;
             this.update({ stats: { ...stats, decisions: stats.decisions + 1 } });
-            // Voice: the decision survived confirmation, risk and limit gates —
-            // say so before the quote/order path runs.
-            voiceService.announceSignal({
-                bot: 'AI Bot',
-                market: analysis.displayName,
-                signal: match.contractType + (prediction !== undefined ? ` ${prediction}` : ''),
-                strong: true,
-                executed: false,
-            });
             await this.execute(analysis, match, prediction, stake);
         } catch (e: any) {
             this.setStatus('error', e?.message || 'Scan error');
