@@ -476,6 +476,17 @@ export const QUALITY_EDGE_MARGIN = 0.01;
 export const isFavourable = (q: SignalQuality): boolean =>
     q.sample >= QUALITY_MIN_SAMPLE && q.blended >= q.breakeven && q.recentRate >= q.breakeven + QUALITY_EDGE_MARGIN;
 
+/**
+ * "Trade NOW" gate — a signal strong enough to skip the production cooldown and
+ * fire the instant it is detected. Strong = measured edge of at least +2pp over
+ * house break-even (and, in pair mode, pair confidence of at least 0.8).
+ */
+export const STRONG_SIGNAL_EDGE = 0.02;
+export const STRONG_PAIR_CONFIDENCE = 0.8;
+
+export const isStrongSignal = (edge: number, pairConfidence: number, usePairScanner: boolean): boolean =>
+    edge >= STRONG_SIGNAL_EDGE && (!usePairScanner || pairConfidence >= STRONG_PAIR_CONFIDENCE);
+
 // ---------------------------------------------------------------------------
 // Infinity Algo 1 session (digit trigger + recovery, from infinity-algo-1.xml)
 // ---------------------------------------------------------------------------

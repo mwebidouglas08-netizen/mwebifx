@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useVoice } from '@/hooks/use-app-preferences';
+import { useSound, useVoice } from '@/hooks/use-app-preferences';
 import { voiceService } from '@/services/voice-service';
 import './voice-toggle.scss';
 
@@ -9,6 +9,7 @@ import './voice-toggle.scss';
  */
 const VoiceToggle = ({ className = '' }: { className?: string }) => {
     const { supported, enabled, setEnabled, settings, update, prime } = useVoice();
+    const { enabled: soundEnabled, setEnabled: setSoundEnabled } = useSound();
     const [showDetail, setShowDetail] = useState(false);
 
     if (!supported) {
@@ -58,6 +59,15 @@ const VoiceToggle = ({ className = '' }: { className?: string }) => {
             </button>
             {showDetail && (
                 <div className='voice-toggle__panel' role='dialog' aria-label='Voice settings'>
+                    <label className='voice-toggle__row voice-toggle__row--check'>
+                        <span>Sound FX</span>
+                        <input
+                            type='checkbox'
+                            checked={soundEnabled}
+                            onChange={e => setSoundEnabled(e.target.checked)}
+                        />
+                        <output>{soundEnabled ? 'On' : 'Off'}</output>
+                    </label>
                     <label className='voice-toggle__row'>
                         <span>Rate</span>
                         <input

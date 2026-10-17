@@ -23,6 +23,8 @@ import {
 } from '@/bot/core/dual-edge';
 import type { EventType, TickPoint } from '@/bot/core/types';
 import type { SignalAction } from '@/bot/core/signal-types';
+import { voiceService } from '@/services/voice-service';
+import { soundService } from '@/services/sound-service';
 import { HubNote, HubPage, HubPageHeader } from '@/components/hub-page';
 import './dual-edge.scss';
 
@@ -273,8 +275,10 @@ const DualEdgePage = observer(() => {
     };
 
     const stopEngine = (text: string, reason: string | null) => {
+        const wasRunning = runningRef.current;
         runningRef.current = false;
         busyRef.current = false;
+        if (wasRunning) soundService.play('botStop');
         const feed = feedRef.current;
         feedRef.current = null;
         feed?.stop();
@@ -304,6 +308,16 @@ const DualEdgePage = observer(() => {
             const state = sidesRef.current.find(s => s.side === side);
             if (!state) continue;
             const action: SignalAction = side === 'over' ? 'OVER' : 'UNDER';
+            // Voice: a fresh ladder round is entering the market — announce the
+            // side before the quote/order runs (throttled per market inside the
+            // voice service).
+            voiceService.announceSignal({
+                bot: 'Dual Edge',
+                market: activeSymbol,
+                signal: `${side === 'over' ? 'Over' : 'Under'} ${state.barrier}`,
+                strong: true,
+                executed: false,
+            });
             const req = {
                 symbol: activeSymbol,
                 family: 'over_under' as const,
@@ -420,6 +434,7 @@ const DualEdgePage = observer(() => {
         ticksRef.current = 0;
         busyRef.current = false;
         runningRef.current = true;
+        soundService.play('botStart');
         applyStatus('warming', `Connecting to ${symbol}…`);
         log(
             'status',

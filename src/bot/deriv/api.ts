@@ -44,6 +44,36 @@ export const accountCurrency = (): string => {
     return info?.currency || 'USD';
 };
 
+/**
+ * Ask the socket for a fresh balance and write it straight into the client
+ * store. The `balance` subscription already streams updates, but a settlement
+ * can land between pushes — engines call this after a live settlement so the
+ * header/account balance reflects the win (or loss) immediately.
+ * Best-effort: never throws, returns the balance when one arrived.
+ */
+export const refreshBalance = async (): Promise<number | null> => {
+    try {
+        const { data, error } = await request<any>({ balance: 1 }, 8000);
+        if (error) return null;
+        const value = data?.balance?.balance;
+        if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+        try {
+            const store = globalObserver.getState?.('client.store') as
+                | { setBalance?: (b: string) => void }
+                | null
+                | undefined;
+            store?.setBalance?.(String(value));
+        } catch {
+            /* store not registered yet — the stream will carry it */
+        }
+        const info = api_base.account_info as any;
+        if (info && typeof info === 'object') info.balance = value;
+        return value;
+    } catch {
+        return null;
+    }
+};
+
 const stringifyError = (value: unknown): string => {
     try {
         const json = JSON.stringify(value);

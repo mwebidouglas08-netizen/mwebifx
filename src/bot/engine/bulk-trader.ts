@@ -14,6 +14,7 @@ import { currentLoginId, getTicksHistory, isApiReady, isAuthorized } from '../de
 import { SymbolSeries, TickFeed } from '../deriv/ticks';
 import { isDemoAccount } from '@/utils/account-helpers';
 import { voiceService } from '@/services/voice-service';
+import { soundService } from '@/services/sound-service';
 import { paperWon } from './signal-scanner';
 
 /** Log line rendered by the bulk-trader page (mirrors the scanner event shape). */
@@ -271,6 +272,7 @@ export class BulkTraderEngine {
         this.queueDone = false;
         this.emergencyEngaged = false;
         this.tradeSeq = 0;
+        soundService.play('botStart');
         this.update({
             progress: { requested: cfg.count, bought: 0, settled: 0, won: 0, lost: 0, failed: 0 },
             trades: [],
@@ -321,7 +323,10 @@ export class BulkTraderEngine {
         }
         const wasRunning = this.running;
         this.running = false;
-        if (wasRunning) this.logEvent('info', 'Stopping — no new orders will be placed.');
+        if (wasRunning) {
+            soundService.play('botStop');
+            this.logEvent('info', 'Stopping — no new orders will be placed.');
+        }
         if (wasRunning || this.openMonitors > 0) {
             this.setStatus(
                 'stopping',

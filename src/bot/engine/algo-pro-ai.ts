@@ -9,6 +9,7 @@ import {
     PAIR_PROFILES,
     bestPairCandidate,
     isFavourable,
+    isStrongSignal,
     lastDigitAt,
     martingaleStake,
     pairCandidateToSignal,
@@ -28,9 +29,10 @@ import {
     requestContractQuote,
     settlementTimeoutMs,
 } from '../deriv/execution';
-import { currentLoginId, getTicksHistory, isApiReady, isAuthorized } from '../deriv/api';
+import { currentLoginId, getTicksHistory, isApiReady, isAuthorized, refreshBalance } from '../deriv/api';
 import { isDemoAccount } from '@/utils/account-helpers';
 import { contractSpokenLabel, voiceService } from '@/services/voice-service';
+import { soundService } from '@/services/sound-service';
 
 export interface AlgoProSettings {
     strategyId: AlgoProStrategyId;
@@ -263,11 +265,13 @@ export class AlgoProEngine {
         const last = this.lastDetectionAt.get(m.symbol) ?? 0;
         if (now - last < 8000) return;
         this.lastDetectionAt.set(m.symbol, now);
+        const strong = isStrongSignal(m.signalEdge, m.pairConfidence, this.state.settings.usePairScanner);
         voiceService.announceSignal({
             bot: 'Algo Pro AI',
             market: m.displayName,
             signal: m.signal?.label ?? contractSpokenLabel(m.signal?.contractType, m.signal?.barrier),
             confidence: m.signal?.contractType ? m.pairConfidence : undefined,
+            strong,
             executed: false,
         });
     }
@@ -311,6 +315,7 @@ export class AlgoProEngine {
         }
 
         const gen = ++this.generation;
+        soundService.play('botStart');
         this.update({
             loading: true,
             error: '',
@@ -443,6 +448,7 @@ export class AlgoProEngine {
             markets: this.state.markets.map(m => ({ ...m, trading: false, status: 'Scanning' })),
         });
         if (wasRunning) {
+            soundService.play('botStop');
             this.logEvent('status', reason || 'Scanner stopped.');
             if (reason) this.say(reason, true);
         }
@@ -541,10 +547,6 @@ export class AlgoProEngine {
         if (!this.state.running || !settings) return;
         if (this.state.activeContractId || this.executionBusy) return;
 
-        // Production anti-thrash: never fire two orders inside the cooldown
-        // window even when several markets are favourable simultaneously.
-        if (settings.cooldownMs > 0 && Date.now() - this.lastOrderAt < settings.cooldownMs) return;
-
         // Trade the MOST favourable eligible market, not whichever market's
         // tick happened to arrive first: rank by measured edge, then pair
         // confidence. Markets failing the favourability filter never enter.
@@ -554,6 +556,13 @@ export class AlgoProEngine {
         const m = eligible[0];
         const signal = m.signal;
         if (!signal) return;
+
+        // Production anti-thrash: never fire two orders inside the cooldown
+        // window — EXCEPT on a strong signal (measured edge ≥ +2pp, pair
+        // confidence ≥ 0.8), which executes immediately: analysis happened on
+        // this very tick, so waiting would only miss the setup.
+        const strong = isStrongSignal(m.signalEdge, m.pairConfidence, settings.usePairScanner);
+        if (!strong && settings.cooldownMs > 0 && Date.now() - this.lastOrderAt < settings.cooldownMs) return;
 
         // One trade per pattern tick: symbol:epoch:contract:barrier dedupe.
         const epoch = Math.floor(m.lastQuote * 100);
@@ -783,13 +792,26 @@ export class AlgoProEngine {
                 };
             }),
         });
+        const traded = this.state.trades.find(t => t.id === id);
+        // Production: report the stake the exchange actually took and the payout
+        // it returned (profit = payout − stake), and force a balance refresh so
+        // the header reflects the settlement immediately instead of waiting for
+        // the next socket push.
+        const stake = traded?.stake;
+        const payout = stake !== undefined && !traded?.simulated ? stake + profit : undefined;
         this.logEvent(
             'settlement',
-            `${won ? 'WIN' : 'LOSS'}: ${id} — ${profit >= 0 ? '+' : ''}${round2(profit).toFixed(2)}${exitDigit !== undefined ? ` (exit digit ${exitDigit})` : ''}`,
+            `${won ? 'WIN' : 'LOSS'}: ${id} — ${profit >= 0 ? '+' : ''}${round2(profit).toFixed(2)}` +
+                (stake !== undefined
+                    ? ` (stake ${round2(stake).toFixed(2)}${payout !== undefined ? ` → payout ${round2(payout).toFixed(2)}` : ''})`
+                    : '') +
+                `${exitDigit !== undefined ? ` (exit digit ${exitDigit})` : ''}`,
             { result: won ? 'win' : 'loss', profit }
         );
+        if (traded && !traded.simulated) {
+            void refreshBalance();
+        }
         if (this.state.settings.voiceAnnounce) {
-            const traded = this.state.trades.find(t => t.id === id);
             voiceService.announceSettlement({
                 bot: 'Algo Pro AI',
                 won,

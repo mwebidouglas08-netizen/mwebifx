@@ -1,6 +1,7 @@
 import type { EngineLogEvent } from './bulk-trader';
 import { WS_SERVERS, isProduction } from '@/components/shared/utils/config/config';
 import { voiceService } from '@/services/voice-service';
+import { soundService } from '@/services/sound-service';
 
 export interface CopierConfig {
     id: string;
@@ -330,6 +331,7 @@ export class CopyTradingEngine {
         this.reconnectAttempts = 0;
         this.seenContracts.clear();
         this.replicatedContracts.clear();
+        soundService.play('botStart');
         this.update({ stats: { observed: 0, copied: 0, failed: 0, skipped: 0 } });
         this.setStatus('connecting', 'Connecting to master account…');
         this.logEvent('info', 'Connecting to master account…');
@@ -367,6 +369,7 @@ export class CopyTradingEngine {
         // onclose: browsers do not guarantee onclose fires promptly (or at all)
         // after a local close, which left the status stuck on 'stopping'.
         if (wasActive) {
+            soundService.play('botStop');
             this.setStatus('idle', 'Stopped');
             this.logEvent('info', 'Copy trading stopped.');
         }

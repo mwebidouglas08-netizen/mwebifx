@@ -44,6 +44,7 @@ import { accountBalance, currentLoginId, isApiReady, isAuthorized, getTicksHisto
 import { isDemoAccount } from '@/utils/account-helpers';
 import { buildTradeOutcome } from '../core/intelligent-execution';
 import { voiceService } from '@/services/voice-service';
+import { soundService } from '@/services/sound-service';
 
 export interface EngineState {
     status: EngineStatus;
@@ -246,6 +247,7 @@ export class OUBotEngine {
 
         this.running = true;
         this.lastActiveTradeAt = 0;
+        soundService.play('botStart');
         this.update({ accountIsDemo, dryRun, manualHold: false, equity: accountBalance() });
         this.logEvent(
             'status',
@@ -299,7 +301,10 @@ export class OUBotEngine {
         if (this.state.status !== 'stopped') {
             this.setStatus('idle', 'Stopped');
         }
-        if (wasRunning) this.logEvent('status', 'Engine stopped.');
+        if (wasRunning) {
+            soundService.play('botStop');
+            this.logEvent('status', 'Engine stopped.');
+        }
     }
 
     resumeAfterSuspend() {
@@ -533,6 +538,7 @@ export class OUBotEngine {
                     this.logEvent('risk', `Holding: ${verdict.reason}`);
                     return;
                 }
+                this.announceOpportunity(best);
                 await this.execute(best, verdict.stake);
             } else {
                 // Confidence-driven execution: walk the ranked candidates and trade
@@ -559,6 +565,7 @@ export class OUBotEngine {
                         }
                         continue;
                     }
+                    this.announceOpportunity(opp);
                     await this.execute(opp, verdict.stake);
                     return;
                 }
@@ -588,6 +595,18 @@ export class OUBotEngine {
             isUniform: pValue > 0.05,
             significant: pValue <= 0.05,
         };
+    }
+
+    /** Voice: the setup cleared every gate and is about to be executed. */
+    private announceOpportunity(opp: ContractOpportunity) {
+        voiceService.announceSignal({
+            bot: 'OU Bot',
+            market: opp.displayName,
+            signal: `${opp.direction === 'over' ? 'Over' : 'Under'} ${opp.barrier}`,
+            confidence: opp.confidence,
+            strong: opp.confidence >= 0.8,
+            executed: false,
+        });
     }
 
     private async execute(opp: ContractOpportunity, stake: number) {

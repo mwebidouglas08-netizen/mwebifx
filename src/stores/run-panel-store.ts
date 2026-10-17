@@ -8,6 +8,7 @@ import { run_panel } from '@/constants/run-panel';
 import { ErrorTypes, MessageTypes, observer, unrecoverable_errors } from '@/external/bot-skeleton';
 import { getSelectedTradeType } from '@/external/bot-skeleton/scratch/utils';
 import { handleBackendError, isBackendError } from '@/utils/error-handler';
+import { soundService } from '@/services/sound-service';
 // import { journalError, switch_account_notification } from '@/utils/bot-notifications';
 import GTM from '@/utils/gtm';
 import { helpers } from '@/utils/store-helpers';
@@ -210,6 +211,7 @@ export default class RunPanelStore {
                 'Account switching is disabled while your bot is running. Please stop your bot before switching accounts.'
             )
         );
+        soundService.play('botStart');
         runInAction(() => {
             this.setIsRunning(true);
             ui.setPromptHandler(true);
@@ -252,6 +254,7 @@ export default class RunPanelStore {
     stopBot = () => {
         const { ui } = this.core;
 
+        soundService.play('botStop');
         this.dbot.stopBot();
 
         ui.setPromptHandler(false);

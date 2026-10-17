@@ -20,6 +20,8 @@ import BotDock from '@/components/bot-dock';
 import AIBotDock from '@/components/ai-bot';
 import VersionBanner from '@/components/version-banner';
 import HubSidebar, { HUB_VIEW_LABELS, type HubViewId } from '@/components/hub-sidebar';
+import { voiceService } from '@/services/voice-service';
+import { soundService } from '@/services/sound-service';
 import AppWrapper from './main';
 import './main.scss';
 
@@ -32,15 +34,29 @@ const useUtcClock = () => {
     return now.toLocaleTimeString('en-GB', { timeZone: 'UTC', hour12: false });
 };
 
+/** True once the welcome fanfare/voice has fired for this page load. */
+let welcomedThisLoad = false;
+
 const Main = observer(() => {
     const { ui } = useStore() ?? {};
     const { is_dark_mode_on, toggleTheme } = useThemeSwitcher();
     const [activeView, setActiveView] = useState<HubViewId>('ai-hub');
     const [navOpen, setNavOpen] = useState(false);
-    const [landingDone, setLandingDone] = useState(() => {
-        try { return localStorage.getItem('mwx_landing_seen') === '1'; } catch { return true; }
-    });
+    // The landing page greets every app open (fresh load or refresh) — the
+    // welcome fanfare below plays over it, and Enter/any CTA dismisses it.
+    const [landingDone, setLandingDone] = useState(false);
     const clock = useUtcClock();
+
+    // Welcome voice + chime when the app opens (or is refreshed). Both services
+    // no-op when muted/unsupported; the voice retries on the first gesture when
+    // the browser blocks speech before interaction. The module-level flag keeps
+    // StrictMode's double-invoke (and any remount) from repeating it.
+    useEffect(() => {
+        if (welcomedThisLoad) return;
+        welcomedThisLoad = true;
+        soundService.play('welcome');
+        voiceService.announceWelcome();
+    }, []);
 
     // Publish the active view so dashboard-only chrome (the onboarding tour)
     // knows to stay quiet while the hub is showing. Both views stay mounted —
@@ -196,7 +212,6 @@ const Main = observer(() => {
             {!landingDone && (
                 <Landing
                     onEnter={() => {
-                        try { localStorage.setItem('mwx_landing_seen', '1'); } catch { /* private mode */ }
                         setLandingDone(true);
                     }}
                 />

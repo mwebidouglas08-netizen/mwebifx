@@ -59,6 +59,7 @@ import {
     selectFallbackCandidates,
 } from '../core/intelligent-execution';
 import { voiceService } from '@/services/voice-service';
+import { soundService } from '@/services/sound-service';
 
 export interface SignalScannerState {
     status: ScannerStatus;
@@ -250,6 +251,7 @@ export class SignalScannerEngine {
         this.lastTradeAt = 0;
         this.martingaleStep = 0;
         this.setAutoTradeBlock(null);
+        soundService.play('botStart');
         // Paper and live bankrolls must never mix: paper always runs on the
         // nominal virtual bankroll (even when logged in — stacking simulated
         // P/L on the real balance produced "equity" figures that matched no
@@ -367,7 +369,10 @@ export class SignalScannerEngine {
         if (this.feed) this.feed.stop();
         this.feed = null;
         if (this.state.status !== 'stopped') this.setStatus('idle', 'Stopped');
-        if (wasRunning) this.logEvent('status', 'Scanner stopped.');
+        if (wasRunning) {
+            soundService.play('botStop');
+            this.logEvent('status', 'Scanner stopped.');
+        }
         this.setAutoTradeBlock(null);
     }
 
@@ -612,6 +617,20 @@ export class SignalScannerEngine {
                 signals: topSignals,
                 signalsGenerated: this.state.signalsGenerated + (signals.length ? 1 : 0),
             });
+
+            // Voice: announce the strongest threshold-clearing signal of this
+            // cycle (throttled per market inside the voice service), whether or
+            // not auto-trade is armed — watching the scanner should talk too.
+            const best = topSignals[0];
+            if (best && best.strength >= cfg.threshold) {
+                voiceService.announceSignal({
+                    bot: 'AI Signal Scanner',
+                    market: best.displayName,
+                    signal: `${ACTION_LABEL[best.action] ?? best.action}${best.barrier !== undefined ? ` ${best.barrier}` : ''}`,
+                    strength: best.strength,
+                    executed: false,
+                });
+            }
 
             if (!this.running) return;
             if (!cfg.autoTrade) {

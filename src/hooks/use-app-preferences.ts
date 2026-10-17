@@ -17,6 +17,13 @@ import {
     subscribeVoiceSettings,
     voiceService,
 } from '@/services/voice-service';
+import {
+    SoundSettings,
+    loadSoundSettings,
+    saveSoundSettings,
+    subscribeSoundSettings,
+    soundService,
+} from '@/services/sound-service';
 
 /**
  * Subscribes to the KSH/USD display-currency preference and returns a stable
@@ -96,3 +103,35 @@ export const useVoice = (): VoiceApi => {
 
 /** Non-hook helper for one-off conversions inside render. */
 export const convertOnce = convertAmount;
+
+/**
+ * Subscribes to the sound-effects settings (critical click sounds: bot
+ * start/stop, welcome fanfare, signal blips).
+ */
+export interface SoundApi {
+    settings: SoundSettings;
+    supported: boolean;
+    enabled: boolean;
+    setEnabled: (v: boolean) => void;
+    update: (patch: Partial<SoundSettings>) => void;
+    play: (name: Parameters<typeof soundService.play>[0]) => void;
+}
+
+export const useSound = (): SoundApi => {
+    const [settings, setSettings] = useState<SoundSettings>(() => loadSoundSettings());
+
+    useEffect(() => subscribeSoundSettings(() => setSettings(loadSoundSettings())), []);
+
+    const setEnabled = useCallback((v: boolean) => saveSoundSettings({ enabled: v }), []);
+    const update = useCallback((patch: Partial<SoundSettings>) => saveSoundSettings(patch), []);
+    const play = useCallback((name: Parameters<typeof soundService.play>[0]) => soundService.play(name), []);
+
+    return {
+        settings,
+        supported: soundService.isSupported(),
+        enabled: soundService.isEnabled(),
+        setEnabled,
+        update,
+        play,
+    };
+};

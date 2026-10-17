@@ -6,6 +6,8 @@ import useThemeSwitcher from '@/hooks/useThemeSwitcher';
 import { computeRsi, useLivePrices } from './use-live-data';
 import HubAccountSwitcher from './account-switcher';
 import { HUB_STRATEGIES, deployHubStrategy, type HubStrategy } from './deploy-strategy';
+import { voiceService } from '@/services/voice-service';
+import { soundService } from '@/services/sound-service';
 import './ai-trading-hub.scss';
 
 /**
@@ -50,6 +52,8 @@ const RISK_ORDER: Record<HubStrategy['risk'], number> = { 'Very Low': 0, Low: 1,
 const AUTO_TRADE_CONFIDENCE = 70;
 /** Minimum gap between automated deployments, in ms. */
 const AUTO_TRADE_COOLDOWN_MS = 60000;
+/** Strength at which the hub speaks the signal out loud ("strong signal"). */
+const STRONG_SIGNAL_CONFIDENCE = 85;
 
 interface Trade {
     id: string;
@@ -394,7 +398,27 @@ const AITradingHub: React.FC<TProps> = observer(({ onOpenDashboard }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [autoTradeEnabled, isLoggedIn, isEngineRunning, isDeploying, isAnalyzing, markets, runPanel]);
 
+    // Voice: call out a genuinely strong signal the moment the live feed
+    // produces one, whether or not Auto Trading is armed. The voice service
+    // throttles repeats (per market + globally), so watching the hub stays
+    // informative instead of chatty.
+    useEffect(() => {
+        const best = markets
+            .filter(m => m.price !== null && m.signal !== 'HOLD' && m.confidence >= STRONG_SIGNAL_CONFIDENCE)
+            .sort((a, b) => b.confidence - a.confidence)[0];
+        if (!best) return;
+        voiceService.announceSignal({
+            bot: 'AI Trading Hub',
+            market: best.name,
+            signal: best.signal === 'BUY' ? 'buy signal' : 'sell signal',
+            confidence: best.confidence / 100,
+            strong: true,
+            executed: false,
+        });
+    }, [markets]);
+
     const toggleAutoTrade = useCallback(() => {
+        soundService.play('click');
         const next = !autoTradeEnabled;
         setAutoTradeEnabled(next);
         if (next && !isLoggedIn) {

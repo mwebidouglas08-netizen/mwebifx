@@ -101,6 +101,16 @@
         }
     }
 
+    &__row--check {
+        input[type='checkbox'] {
+            justify-self: start;
+            width: 1.5rem;
+            height: 1.5rem;
+            accent-color: var(--status-success);
+            cursor: pointer;
+        }
+    }
+
     &__test {
         padding: 0.5rem 0.8rem;
         font-family: var(--brand-font-secondary, inherit);

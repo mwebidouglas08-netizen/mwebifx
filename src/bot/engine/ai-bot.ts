@@ -44,6 +44,7 @@ import {
 import { isDemoAccount } from '@/utils/account-helpers';
 import { buildTradeOutcome, evaluateCandidate } from '../core/intelligent-execution';
 import { voiceService } from '@/services/voice-service';
+import { soundService } from '@/services/sound-service';
 
 export interface AIBotState {
     status: AIBotStatus;
@@ -256,6 +257,7 @@ export class AIBotEngine {
         this.confirmCount = 0;
         this.decisionCounter = 0;
         this.lastTradeAt = 0;
+        soundService.play('botStart');
         this.update({
             accountIsDemo,
             liveTrading: authorized ? cfg.allowLiveTrading : false,
@@ -374,7 +376,10 @@ export class AIBotEngine {
         if (this.feed) this.feed.stop();
         this.feed = null;
         if (this.state.status !== 'stopped') this.setStatus('idle', 'Stopped');
-        if (wasRunning) this.logEvent('status', 'AI Bot stopped.');
+        if (wasRunning) {
+            soundService.play('botStop');
+            this.logEvent('status', 'AI Bot stopped.');
+        }
     }
 
     emergencyStop() {
@@ -535,6 +540,15 @@ export class AIBotEngine {
 
             this.lastTradeAt = now;
             this.update({ stats: { ...stats, decisions: stats.decisions + 1 } });
+            // Voice: the decision survived confirmation, risk and limit gates —
+            // say so before the quote/order path runs.
+            voiceService.announceSignal({
+                bot: 'AI Bot',
+                market: analysis.displayName,
+                signal: match.contractType + (prediction !== undefined ? ` ${prediction}` : ''),
+                strong: true,
+                executed: false,
+            });
             await this.execute(analysis, match, prediction, stake);
         } catch (e: any) {
             this.setStatus('error', e?.message || 'Scan error');
