@@ -8,17 +8,21 @@ import {
     PairProfileId,
     PAIR_PROFILES,
     bestPairCandidate,
+    filterUniverseByScope,
     isFavourable,
     isStrongSignal,
     lastDigitAt,
     martingaleStake,
     pairCandidateToSignal,
     pipSizeDefault,
+    resolveUniversePipSize,
     scopeMarkets,
     signalFromStrategy,
     signalQuality,
     tradeKey,
+    UniverseCandidate,
 } from '../core/algo-pro-ai';
+import { SyntheticSymbol } from '../core/types';
 import { paperWon } from './signal-scanner';
 import { SymbolSeries, TickFeed } from '../deriv/ticks';
 import {
@@ -29,7 +33,8 @@ import {
     requestContractQuote,
     settlementTimeoutMs,
 } from '../deriv/execution';
-import { currentLoginId, getTicksHistory, isApiReady, isAuthorized, refreshBalance } from '../deriv/api';
+import { discoverDigitContracts, discoverSyntheticSymbols } from '../deriv/discovery';
+import { accountBalance, currentLoginId, getTicksHistory, isApiReady, isAuthorized, refreshBalance } from '../deriv/api';
 import { isDemoAccount } from '@/utils/account-helpers';
 import { contractSpokenLabel, voiceService } from '@/services/voice-service';
 import { soundService } from '@/services/sound-service';
@@ -172,6 +177,13 @@ const normalizeSettings = (s: Partial<AlgoProSettings>): AlgoProSettings => {
 };
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+interface AlgoProUniverseEntry {
+    symbol: string;
+    displayName: string;
+    oneSecond: boolean;
+    pipSize: number;
+}
 
 export class AlgoProEngine {
     private listeners = new Set<AlgoProListener>();
@@ -332,12 +344,21 @@ export class AlgoProEngine {
                 : `Algo Pro AI starting on ${accountIsDemo ? 'DEMO' : 'REAL'} account (${loginid}).`
         );
 
-        const markets = scopeMarkets(settings.scope);
+        const markets = await this.buildUniverse(settings.scope);
+        if (gen !== this.generation) return;
+        if (!markets.length) {
+            const msg = `No digit-capable markets found for scope "${settings.scope}" right now.`;
+            this.update({ loading: false, error: msg, status: 'Scanner idle' });
+            this.logEvent('error', msg);
+            return;
+        }
+        this.pipSizes.clear();
+        for (const m of markets) this.pipSizes.set(m.symbol, m.pipSize);
         const states: AlgoProMarketState[] = markets.map(m => ({
             symbol: m.symbol,
             displayName: m.displayName,
             oneSecond: m.oneSecond,
-            pipSize: pipSizeDefault(m.symbol),
+            pipSize: m.pipSize,
             lastQuote: 0,
             lastDigit: -1,
             digits: [],
@@ -362,7 +383,6 @@ export class AlgoProEngine {
                     // warm-up is best-effort
                 }
                 const seed = this.feedSeed(m.symbol, prices);
-                this.pipSizes.set(m.symbol, pipSizeDefault(m.symbol));
                 const idx = this.state.markets.findIndex(x => x.symbol === m.symbol);
                 if (idx >= 0) {
                     const next = [...this.state.markets];
@@ -379,7 +399,7 @@ export class AlgoProEngine {
         this.lastTickAt = Date.now();
         this.startWatchdog(gen);
         this.update({ loading: false, running: true, status: 'Scanning' });
-        this.logEvent('discover', `Scanning ${markets.length} volatility markets (${settings.scope}) — strategy ${settings.strategyId}.`);
+        this.logEvent('discover', `Scanning ${markets.length} digit-capable markets (${settings.scope}) — strategy ${settings.strategyId}.`);
         this.say(`Algo Pro AI started. Scanning ${markets.length} markets.`);
     }
 
@@ -423,13 +443,67 @@ export class AlgoProEngine {
     }
 
     private feedSeed(symbol: string, prices: number[]): { digits: number[]; prices: number[] } {
-        const pip = this.pipSizes.get(symbol) ?? pipSizeDefault(symbol);
+        const pip = this.pipFor(symbol);
         const clean = prices.filter(p => Number.isFinite(p)).slice(-BUFFER);
         this.feed?.seed(symbol, pip, clean);
         return {
             prices: clean,
             digits: clean.map(p => lastDigitAt(p, pip)),
         };
+    }
+
+    private pipFor(symbol: string): number {
+        return this.pipSizes.get(symbol) ?? pipSizeDefault(symbol);
+    }
+
+    /**
+     * Dynamic market universe: discover synthetic symbols from the API, keep
+     * only the ones that offer DIGITOVER/DIGITUNDER (batched contract checks,
+     * same concurrency pattern as engine.ts discover()), and honour the user's
+     * scope as a CATEGORY filter over the discovered set. Falls back to the
+     * static ALGO_PRO_MARKETS catalog when discovery returns nothing
+     * (offline / mocked sessions) so paper trading keeps working.
+     */
+    private async buildUniverse(scope: AlgoProScope): Promise<AlgoProUniverseEntry[]> {
+        let discovered: SyntheticSymbol[] = [];
+        try {
+            discovered = await discoverSyntheticSymbols();
+        } catch {
+            discovered = [];
+        }
+        const open = discovered.filter(s => s.exchangeIsOpen && !s.isSuspended);
+        if (!open.length) {
+            return scopeMarkets(scope).map(m => ({
+                symbol: m.symbol,
+                displayName: m.displayName,
+                oneSecond: m.oneSecond,
+                pipSize: pipSizeDefault(m.symbol),
+            }));
+        }
+        const scoped = filterUniverseByScope(open, scope);
+        const kept: UniverseCandidate[] = [];
+        const CONCURRENCY = 8;
+        for (let i = 0; i < scoped.length; i += CONCURRENCY) {
+            const batch = scoped.slice(i, i + CONCURRENCY);
+            const resolved = await Promise.all(
+                batch.map(async s => {
+                    try {
+                        const contracts = await discoverDigitContracts(s.symbol);
+                        const digitCapable = contracts.some(c => c.contractType === 'DIGITOVER' || c.contractType === 'DIGITUNDER');
+                        return digitCapable ? s : null;
+                    } catch {
+                        return null;
+                    }
+                })
+            );
+            for (const r of resolved) if (r) kept.push(r);
+        }
+        return kept.map(s => ({
+            symbol: s.symbol,
+            displayName: s.displayName,
+            oneSecond: s.oneSecond,
+            pipSize: resolveUniversePipSize(s.symbol, s.pipSize),
+        }));
     }
 
     stop(reason?: string) {
@@ -459,7 +533,7 @@ export class AlgoProEngine {
         if (!this.state.running) return;
         this.lastTickAt = Date.now();
         const settings = this.settings!;
-        const pip = this.pipSizes.get(symbol) ?? pipSizeDefault(symbol);
+        const pip = this.pipFor(symbol);
         const quote = series.quotes[series.quotes.length - 1];
         const digits = series.digits.slice(-BUFFER);
         const prices = series.quotes.slice(-BUFFER);
@@ -548,11 +622,16 @@ export class AlgoProEngine {
         if (this.state.activeContractId || this.executionBusy) return;
 
         // Trade the MOST favourable eligible market, not whichever market's
-        // tick happened to arrive first: rank by measured edge, then pair
-        // confidence. Markets failing the favourability filter never enter.
+        // tick happened to arrive first. Strong signals (edge ≥ +2pp, and pair
+        // confidence ≥ 0.8 in pair mode) jump the queue ahead of merely
+        // favourable candidates; ties break by measured edge, then confidence.
+        // Markets failing the favourability filter never enter.
         const eligible = this.state.markets.filter(m => this.signalEligible(m));
         if (!eligible.length) return;
-        eligible.sort((a, b) => b.signalEdge - a.signalEdge || b.pairConfidence - a.pairConfidence);
+        const strongOf = (m: AlgoProMarketState) => isStrongSignal(m.signalEdge, m.pairConfidence, settings.usePairScanner);
+        eligible.sort(
+            (a, b) => (strongOf(b) ? 1 : 0) - (strongOf(a) ? 1 : 0) || b.signalEdge - a.signalEdge || b.pairConfidence - a.pairConfidence
+        );
         const m = eligible[0];
         const signal = m.signal;
         if (!signal) return;
@@ -561,7 +640,7 @@ export class AlgoProEngine {
         // window — EXCEPT on a strong signal (measured edge ≥ +2pp, pair
         // confidence ≥ 0.8), which executes immediately: analysis happened on
         // this very tick, so waiting would only miss the setup.
-        const strong = isStrongSignal(m.signalEdge, m.pairConfidence, settings.usePairScanner);
+        const strong = strongOf(m);
         if (!strong && settings.cooldownMs > 0 && Date.now() - this.lastOrderAt < settings.cooldownMs) return;
 
         // One trade per pattern tick: symbol:epoch:contract:barrier dedupe.
@@ -576,7 +655,9 @@ export class AlgoProEngine {
         }
 
         this.lastOrderAt = Date.now();
-        const stake = martingaleStake(settings.stake, settings.martingale, this.state.lossDepth);
+        const rawStake = martingaleStake(settings.stake, settings.martingale, this.state.lossDepth);
+        const equityCap = settings.paperTrading ? Infinity : accountBalance();
+        const stake = Number.isFinite(equityCap) && equityCap > 0 ? Math.min(rawStake, equityCap) : rawStake;
         // Never let an unexpected throw inside the order path wedge
         // executionBusy/activeContractId — that would silently kill the session.
         void this.executeSignal(m, signal, stake, key, m.lastDigit).catch(e => {
@@ -735,7 +816,7 @@ export class AlgoProEngine {
             contractId: buy.contractId,
         });
 
-        const settlement = await monitorUntilSettled(buy.contractId, this.pipSizes.get(m.symbol) ?? pipSizeDefault(m.symbol), undefined, settlementTimeoutMs(settings.ticks, 't'));
+        const settlement = await monitorUntilSettled(buy.contractId, this.pipFor(m.symbol), undefined, settlementTimeoutMs(settings.ticks, 't'));
         this.executionBusy = false;
         this.update({ activeContractId: null, activeMarket: '', activeSignal: '' });
         if ('error' in settlement) {
@@ -743,7 +824,7 @@ export class AlgoProEngine {
             return;
         }
         const won = settlement.profit > 1e-6;
-        const pip = this.pipSizes.get(m.symbol) ?? pipSizeDefault(m.symbol);
+        const pip = this.pipFor(m.symbol);
         const exitDigit = settlement.exitTick !== undefined ? lastDigitAt(settlement.exitTick, pip) : undefined;
         this.settle(recordId, won, settlement.profit, exitDigit);
     }

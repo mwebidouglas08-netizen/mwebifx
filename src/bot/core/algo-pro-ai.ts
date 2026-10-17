@@ -124,6 +124,9 @@ export const ALGO_PRO_MARKETS: AlgoProMarket[] = [
 
 export type AlgoProScope = 'all' | 'standard' | 'one-second';
 
+/** Static fallback universe — kept for backwards compatibility and for when
+ *  live discovery returns nothing (offline / mocked sessions). The engine's
+ *  primary universe is built from discoverSyntheticSymbols() at start(). */
 export const scopeMarkets = (scope: AlgoProScope): AlgoProMarket[] =>
     scope === 'standard'
         ? ALGO_PRO_MARKETS.filter(m => !m.oneSecond)
@@ -132,10 +135,74 @@ export const scopeMarkets = (scope: AlgoProScope): AlgoProMarket[] =>
           : [...ALGO_PRO_MARKETS];
 
 // ---------------------------------------------------------------------------
+// Dynamic universe — scope filter over discovered synthetic symbols
+// ---------------------------------------------------------------------------
+
+export type UniverseCategory = 'volatility' | 'crash' | 'boom' | 'jump' | 'step' | 'range' | 'other';
+
+export interface UniverseEntry {
+    symbol: string;
+    displayName?: string;
+    category?: string;
+    pipSize?: number;
+}
+
+export interface UniverseCandidate {
+    symbol: string;
+    displayName: string;
+    category: UniverseCategory;
+    oneSecond: boolean;
+    pipSize?: number;
+}
+
+export const isOneSecondMarket = (symbol: string): boolean => symbol.startsWith('1HZ');
+
+/** Mirrors deriv/discovery categorizeSymbol but works on plain strings, so it
+ *  stays pure and also classifies symbol-only entries like stpRNG / RDBULL. */
+export const classifyUniverseCategory = (symbol: string, displayName = ''): UniverseCategory => {
+    const hay = `${displayName} ${symbol}`.toLowerCase();
+    if (hay.includes('crash')) return 'crash';
+    if (hay.includes('boom')) return 'boom';
+    if (hay.includes('jump') || /^jd\d/.test(symbol.toLowerCase())) return 'jump';
+    if (hay.includes('stp') || hay.includes('step')) return 'step';
+    if (hay.includes('range') || hay.includes('rdbull') || hay.includes('rdbear')) return 'range';
+    if (
+        hay.includes('volatility') ||
+        hay.includes('vol index') ||
+        hay.includes('vix') ||
+        symbol.startsWith('R_') ||
+        symbol.startsWith('1HZ')
+    )
+        return 'volatility';
+    return 'other';
+};
+
+/** Scope semantics over discovered synthetics:
+ *  - 'standard'   → classic volatility indices (volatility, NOT 1HZ*)
+ *  - 'one-second' → 1HZ* (1s) volatility indices
+ *  - 'all'        → every synthetic; the engine then keeps only digit-capable ones */
+export const filterUniverseByScope = (candidates: ReadonlyArray<UniverseEntry>, scope: AlgoProScope): UniverseCandidate[] => {
+    const normalized: UniverseCandidate[] = candidates.map(c => ({
+        symbol: c.symbol,
+        displayName: c.displayName || c.symbol,
+        category: c.category ? (c.category as UniverseCategory) : classifyUniverseCategory(c.symbol, c.displayName),
+        oneSecond: isOneSecondMarket(c.symbol),
+        pipSize: c.pipSize,
+    }));
+    if (scope === 'standard') return normalized.filter(c => c.category === 'volatility' && !c.oneSecond);
+    if (scope === 'one-second') return normalized.filter(c => c.oneSecond);
+    return normalized;
+};
+
+// ---------------------------------------------------------------------------
 // Pip helpers (tw / orb defaults: 1HZ* → 2, standard → 3, fallback 2)
 // ---------------------------------------------------------------------------
 
 export const pipSizeDefault = (symbol: string): number => (symbol.startsWith('1HZ') ? 2 : 3);
+
+/** Discovery pipSize wins when valid; otherwise the static default (1HZ* → 2, else 3). */
+export const resolveUniversePipSize = (symbol: string, discoveredPipSize?: number): number =>
+    Number.isFinite(discoveredPipSize) && (discoveredPipSize as number) > 0 ? (discoveredPipSize as number) : pipSizeDefault(symbol);
 
 export const pipSizeFromActiveSymbol = (symbol: string, pip_size?: number, decimal_places?: number): number => {
     if (Number.isFinite(pip_size as number) && (pip_size as number) >= 0 && (pip_size as number) <= 10) {

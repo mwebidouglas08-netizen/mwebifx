@@ -10,7 +10,8 @@ import {
     requestContractQuote,
     settlementTimeoutMs,
 } from '../deriv/execution';
-import { currentLoginId, getTicksHistory, isApiReady, isAuthorized } from '../deriv/api';
+import { currentLoginId, getTicksHistory, isApiReady, isAuthorized, refreshBalance } from '../deriv/api';
+import { categorizeSymbol } from '../deriv/discovery';
 import { SymbolSeries, TickFeed } from '../deriv/ticks';
 import { isDemoAccount } from '@/utils/account-helpers';
 import { voiceService } from '@/services/voice-service';
@@ -110,8 +111,17 @@ const barrierNumber = (cfg: BulkTradeConfig): number | undefined => {
     return Number.isFinite(b) ? b : undefined;
 };
 
-const categoryFor = (symbol: string): MarketCategory =>
-    /^1HZ\d+V$/i.test(symbol) || /^R_\d+$/i.test(symbol) ? 'volatility' : 'other';
+const categoryFor = (symbol: string): MarketCategory => {
+    // categorizeSymbol scans display names; the bare exchange codes need their
+    // own pass (BOOM500/CRASH300 are self-describing, stpRNG/RDBULL are not).
+    if (/^boom/i.test(symbol)) return 'boom';
+    if (/^crash/i.test(symbol)) return 'crash';
+    if (/step|stprng/i.test(symbol)) return 'step';
+    if (/range|^rd(bull|bear)/i.test(symbol)) return 'range';
+    if (/^jump/i.test(symbol)) return 'jump';
+    if (/^1HZ\d+V$/i.test(symbol) || /^R_\d+$/i.test(symbol)) return 'volatility';
+    return typeof categorizeSymbol === 'function' ? categorizeSymbol({ symbol }) : 'other';
+};
 
 const empiricalProbFor = (cfg: BulkTradeConfig): number => {
     const b = Number(cfg.barrier);
@@ -295,7 +305,7 @@ export class BulkTraderEngine {
             try {
                 const hist = await getTicksHistory(cfg.symbol, 40);
                 const prices: number[] = hist?.history?.prices?.map((p: any) => Number(p)) || [];
-                this.feed.seed(cfg.symbol, 2, prices.filter(p => Number.isFinite(p)));
+                this.feed.seed(cfg.symbol, pipSizeDefault(cfg.symbol), prices.filter(p => Number.isFinite(p)));
             } catch {
                 // history warm-up is best-effort
             }
@@ -535,6 +545,9 @@ export class BulkTraderEngine {
                     `${won ? 'WIN' : 'LOSS'}: #${settled.contractId} ${settled.symbol} ${settled.contractType} — ${settled.profit >= 0 ? '+' : ''}${settled.profit.toFixed(2)}`,
                     { contractId: settled.contractId, result: settled.result, profit: settled.profit }
                 );
+                // Live settlement (paper never reaches monitorLive) — pull a
+                // fresh balance so the header reflects the result immediately.
+                void refreshBalance?.();
                 voiceService.announceSettlement({
                     bot: 'Bulk Trader',
                     won,

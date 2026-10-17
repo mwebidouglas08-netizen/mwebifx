@@ -48,14 +48,16 @@ import {
     executeBuyFresh,
     isMarketUnavailableError,
     monitorUntilSettled,
+    releaseQuote,
     requestContractQuote,
     settlementTimeoutMs,
 } from '../deriv/execution';
-import { accountBalance, currentLoginId, getContractsFor, getTicksHistory, isApiReady, isAuthorized } from '../deriv/api';
+import { accountBalance, currentLoginId, getContractsFor, getTicksHistory, isApiReady, isAuthorized, refreshBalance } from '../deriv/api';
 import { isDemoAccount } from '@/utils/account-helpers';
 import {
     SelectionGate,
     buildTradeOutcome,
+    evaluateCandidate,
     selectFallbackCandidates,
 } from '../core/intelligent-execution';
 import { voiceService } from '@/services/voice-service';
@@ -305,13 +307,25 @@ export class SignalScannerEngine {
                 batch.map(async s => {
                     let fams: ContractFamily[] = [];
                     try {
-                        fams = detectSupportedFamilies(await getContractsFor(s.symbol));
+                        const available = await getContractsFor(s.symbol);
+                        fams = detectSupportedFamilies(available);
+                        // Mean reversion trades DIGITOVER / DIGITUNDER contracts, so
+                        // any market offering over/under can run the MR strategy.
+                        if (fams.includes('over_under')) fams = [...fams, 'mean_reversion'];
+                        // Match/differ must be registered whenever the market sells
+                        // DIGITMATCH/DIGITDIFFER, even if the shared helper only
+                        // reported the other digit families.
+                        if (!fams.includes('match_differ')) {
+                            const types = new Set(
+                                (Array.isArray(available) ? available : []).map((c: any) => String(c?.contract_type || ''))
+                            );
+                            if (types.has('DIGITMATCH') || types.has('DIGITDIFF') || types.has('DIGITDIFFER')) {
+                                fams = [...fams, 'match_differ'];
+                            }
+                        }
                     } catch {
                         fams = [];
                     }
-                    // Mean reversion trades DIGITOVER / DIGITUNDER contracts, so
-                    // any market offering over/under can run the MR strategy.
-                    if (fams.includes('over_under')) fams = [...fams, 'mean_reversion'];
                     this.familiesBySymbol.set(s.symbol, fams);
                     return { s, fams };
                 })
@@ -668,7 +682,7 @@ export class SignalScannerEngine {
             // non-positive readings. Candidates are tried strongest-first: if one
             // can't be quoted (market closed, contract unavailable), we fall
             // through to the next instead of losing the whole scan cycle.
-            const selectionGate: SelectionGate = { minConfidence: 0, minSample: 0, requirePositiveEv: false };
+            const selectionGate: SelectionGate = { minConfidence: 0, minSample: 0, requirePositiveEv: true };
             const candidates = selectFallbackCandidates(
                 topSignals
                     .filter(s => s.confidence > 0 && s.strength >= cfg.threshold && !this.quoteBlocked.has(s.symbol))
@@ -762,6 +776,33 @@ export class SignalScannerEngine {
             return false;
         }
         this.logEvent('quote', `Quote: ${signal.displayName} ${ACTION_LABEL[signal.action]} — payout ${quote.payout.toFixed(2)} (stake ${stake.toFixed(2)})`, { symbol: signal.symbol, action: signal.action });
+
+        // Intelligent execution standard (same as the AI Bot): never fire an
+        // order whose measured probability cannot clear the quoted payout —
+        // a structurally losing price. The pre-quote selection gate cannot do
+        // this (no payout yet), so the EV check runs here against the real quote.
+        const prob = signal.strength / 100;
+        const breakeven = stake > 0 && quote.payout > 0 ? stake / quote.payout : 1;
+        const verdict = evaluateCandidate(
+            {
+                symbol: signal.symbol,
+                confidence: prob,
+                winRate: prob,
+                breakeven,
+                payoutRatio: stake > 0 ? quote.payout / stake : 0,
+            },
+            { minConfidence: 0, requirePositiveEv: true }
+        );
+        if (!verdict.ok) {
+            releaseQuote(quote);
+            if (this.running) this.setStatus('scanning', `Holding: ${verdict.reason || 'negative expected value'}`);
+            this.logEvent(
+                'signal',
+                `Skipped ${signal.displayName} ${ACTION_LABEL[signal.action]}: ${verdict.reason || 'negative expected value'} — measured ${(prob * 100).toFixed(1)}% vs break-even ${(breakeven * 100).toFixed(1)}%`,
+                { symbol: signal.symbol }
+            );
+            return false;
+        }
 
         const record: TradeRecord = {
             id: `sig-${Date.now()}`,
@@ -876,6 +917,9 @@ export class SignalScannerEngine {
             `${settled.result === 'win' ? 'WIN' : 'LOSS'}: #${buy.contractId} ${signal.displayName} ${ACTION_LABEL[signal.action]} — ${settled.profit >= 0 ? '+' : ''}${settled.profit.toFixed(2)}`,
             { symbol: signal.symbol, contractId: buy.contractId, action: signal.action, result: settled.result, profit: settled.profit }
         );
+        // Live/demo settlement only (paper settles in executePaper) — pull a
+        // fresh balance so the header reflects the result immediately.
+        void refreshBalance?.();
         voiceService.announceSettlement({
             bot: 'Signal Scanner',
             won: settled.result === 'win',

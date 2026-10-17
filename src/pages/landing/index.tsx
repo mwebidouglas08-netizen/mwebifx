@@ -27,28 +27,38 @@ const STATS = [
 const FEATURES = [
     {
         icon: '🤖',
+        img: 'https://picsum.photos/seed/dollarvault-bot/800/520',
         title: 'AI-Powered Trading Bots',
         tagline: 'Automate your success',
         details: 'Deploy the Over/Under engine, the AI bot and the multi-family signal scanner. Configure risk, arm auto-trade, and let them work tick by tick.',
     },
     {
         icon: '📊',
+        img: 'https://picsum.photos/seed/dollarvault-charts/800/520',
         title: 'Real-Time Market Analysis',
         tagline: 'Data-driven decisions',
         details: 'Live synthetic and forex streams, RSI, digit distributions and confidence scores — every setup ranked before a single order is placed.',
     },
     {
         icon: '🧠',
+        img: 'https://picsum.photos/seed/dollarvault-scanner/800/520',
         title: 'Signal Scanner Engine',
         tagline: 'Five families, one loop',
         details: 'Rise/Fall, Even/Odd, Over/Under, Match/Differ and mean-reversion signals scored continuously, with paper trades to prove the flow first.',
     },
     {
         icon: '🛡️',
+        img: 'https://picsum.photos/seed/dollarvault-shield/800/520',
         title: 'Risk Management Tools',
         tagline: 'Protect your capital',
         details: 'Stake limits, max open positions, cooldowns, session stop-loss and martingale controls. Live trading stays behind an explicit confirm.',
     },
+];
+
+const MOMENTS = [
+    { seed: 'moment-1', src: 'https://picsum.photos/seed/dollarvault-moment-1/900/600' },
+    { seed: 'moment-2', src: 'https://picsum.photos/seed/dollarvault-moment-2/900/600' },
+    { seed: 'moment-3', src: 'https://picsum.photos/seed/dollarvault-moment-3/900/600' },
 ];
 
 const BENEFITS = [
@@ -98,6 +108,39 @@ const TRUST = [
     { icon: '✓', text: 'Risk controls built-in' },
     { icon: '✓', text: 'Backtestable strategies' },
 ];
+
+/** Remote image that removes itself on load failure so the CSS gradient fallback shows. */
+const SmartImage = ({
+    src,
+    width,
+    height,
+    alt = '',
+    eager = false,
+    className,
+}: {
+    src: string;
+    width: number;
+    height: number;
+    alt?: string;
+    eager?: boolean;
+    className?: string;
+}) => {
+    const [failed, setFailed] = useState(false);
+    if (failed) return null;
+    return (
+        <img
+            className={className}
+            src={src}
+            alt={alt}
+            width={width}
+            height={height}
+            loading={eager ? 'eager' : 'lazy'}
+            decoding='async'
+            aria-hidden={alt ? undefined : 'true'}
+            onError={() => setFailed(true)}
+        />
+    );
+};
 
 /** Animated count-up for numeric stats (e.g. "28+", "24/7"). */
 const CountUp = ({ value, duration = 1400 }: { value: string; duration?: number }) => {
@@ -335,6 +378,16 @@ const Landing = ({ onEnter }: LandingProps) => {
             </header>
 
             <section className='landing__hero'>
+                <div className='landing__hero-media' aria-hidden='true'>
+                    <SmartImage
+                        className='landing__hero-img'
+                        src='https://picsum.photos/seed/dollarvault-hero/2400/1400'
+                        width={2400}
+                        height={1400}
+                        eager
+                    />
+                    <div className='landing__hero-scrim' />
+                </div>
                 <div className='landing__hero-inner'>
                     <div className='landing__badge animated-text'>
                         <svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' aria-hidden>
@@ -396,11 +449,26 @@ const Landing = ({ onEnter }: LandingProps) => {
                 <div className='landing__features-grid'>
                     {FEATURES.map((f, i) => (
                         <TiltCard key={f.title} delay={i * 70}>
-                            <span className='landing__feature-icon' aria-hidden>{f.icon}</span>
-                            <h3 className='landing__feature-title'>{f.title}</h3>
-                            <p className='landing__feature-tag'>{f.tagline}</p>
-                            <p className='landing__feature-details'>{f.details}</p>
+                            <div className='landing__feature-media'>
+                                <SmartImage src={f.img} width={800} height={520} />
+                                <span className='landing__feature-icon' aria-hidden>{f.icon}</span>
+                            </div>
+                            <div className='landing__feature-body'>
+                                <h3 className='landing__feature-title'>{f.title}</h3>
+                                <p className='landing__feature-tag'>{f.tagline}</p>
+                                <p className='landing__feature-details'>{f.details}</p>
+                            </div>
                         </TiltCard>
+                    ))}
+                </div>
+            </section>
+
+            <section className='landing__moments' aria-hidden='true'>
+                <div className='landing__moments-row'>
+                    {MOMENTS.map((m, i) => (
+                        <div key={m.seed} className='landing__moment animated-element' style={{ transitionDelay: `${i * 90}ms` }}>
+                            <SmartImage src={m.src} width={900} height={600} />
+                        </div>
                     ))}
                 </div>
             </section>
@@ -418,36 +486,47 @@ const Landing = ({ onEnter }: LandingProps) => {
                     </ul>
                 </div>
                 <div className='landing__benefits-panel animated-element' aria-hidden='true'>
-                    <div className='landing__mini-card'>
-                        <div className='landing__mini-row'>
-                            <span>Scanner</span>
-                            <span className='landing__mini-live'>● auto-trade armed</span>
-                        </div>
-                        <div className='landing__mini-bar'><i style={{ width: '78%' }} /></div>
-                        <div className='landing__mini-row landing__mini-row--muted'>
-                            <span>Confidence 0.82</span>
-                            <span>EV +4.1%</span>
-                        </div>
-                    </div>
-                    <div className='landing__mini-card'>
-                        <div className='landing__mini-row'>
-                            <span>Risk gate</span>
-                            <span className='landing__mini-ok'>passed</span>
-                        </div>
-                        <div className='landing__mini-chips'>
-                            <span>max 1 open</span>
-                            <span>cooldown 2s</span>
-                            <span>stop-loss armed</span>
-                        </div>
-                    </div>
-                    <div className='landing__mini-card'>
-                        <div className='landing__mini-row'>
-                            <span>Backtest</span>
-                            <span className='landing__mini-ok'>out-of-sample ✓</span>
-                        </div>
-                        <div className='landing__mini-row landing__mini-row--muted'>
-                            <span>Train 70% · Test 30%</span>
-                            <span>Deterministic</span>
+                    <div className='landing__benefits-frame'>
+                        <SmartImage
+                            className='landing__benefits-img'
+                            src='https://picsum.photos/seed/dollarvault-terminal/1200/1400'
+                            width={1200}
+                            height={1400}
+                        />
+                        <div className='landing__benefits-scrim' />
+                        <div className='landing__mini-stack'>
+                            <div className='landing__mini-card'>
+                                <div className='landing__mini-row'>
+                                    <span>Scanner</span>
+                                    <span className='landing__mini-live'>● auto-trade armed</span>
+                                </div>
+                                <div className='landing__mini-bar'><i style={{ width: '78%' }} /></div>
+                                <div className='landing__mini-row landing__mini-row--muted'>
+                                    <span>Confidence 0.82</span>
+                                    <span>EV +4.1%</span>
+                                </div>
+                            </div>
+                            <div className='landing__mini-card'>
+                                <div className='landing__mini-row'>
+                                    <span>Risk gate</span>
+                                    <span className='landing__mini-ok'>passed</span>
+                                </div>
+                                <div className='landing__mini-chips'>
+                                    <span>max 1 open</span>
+                                    <span>cooldown 2s</span>
+                                    <span>stop-loss armed</span>
+                                </div>
+                            </div>
+                            <div className='landing__mini-card'>
+                                <div className='landing__mini-row'>
+                                    <span>Backtest</span>
+                                    <span className='landing__mini-ok'>out-of-sample ✓</span>
+                                </div>
+                                <div className='landing__mini-row landing__mini-row--muted'>
+                                    <span>Train 70% · Test 30%</span>
+                                    <span>Deterministic</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -470,6 +549,15 @@ const Landing = ({ onEnter }: LandingProps) => {
             </section>
 
             <section className='landing__final'>
+                <div className='landing__final-media' aria-hidden='true'>
+                    <SmartImage
+                        className='landing__final-img'
+                        src='https://picsum.photos/seed/dollarvault-cta/2000/900'
+                        width={2000}
+                        height={900}
+                    />
+                    <div className='landing__final-scrim' />
+                </div>
                 <div className='landing__final-inner'>
                     <span className='landing__eyebrow animated-text'>Get started</span>
                     <h2 className='landing__section-title animated-text'>Ready to transform your trading?</h2>

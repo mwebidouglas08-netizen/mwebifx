@@ -63,6 +63,8 @@ const OUBotPage = observer(() => {
     const [minSample, setMinSample] = useState(state.config.limits.minSampleSize);
     const [maxDailyLoss, setMaxDailyLoss] = useState(state.config.limits.maxDailyLoss);
     const [maxConsec, setMaxConsec] = useState(state.config.limits.maxConsecutiveLosses);
+    const [takeProfit, setTakeProfit] = useState(state.config.takeProfit ?? 0);
+    const [stopLoss, setStopLoss] = useState(state.config.stopLoss ?? 0);
     const [barriersOver, setBarriersOver] = useState(state.config.barriersOver.join(','));
     const [barriersUnder, setBarriersUnder] = useState(state.config.barriersUnder.join(','));
     const [mode, setMode] = useState<BotMode>(state.config.mode);
@@ -89,6 +91,9 @@ const OUBotPage = observer(() => {
                 maxDailyLoss: Number(maxDailyLoss) || 20,
                 maxConsecutiveLosses: Number(maxConsec) || 3,
             },
+            // 0 disables the respective session guard.
+            takeProfit: Math.max(0, Number(takeProfit) || 0),
+            stopLoss: Math.max(0, Number(stopLoss) || 0),
         });
     };
 
@@ -266,6 +271,8 @@ const OUBotPage = observer(() => {
                 <Field label='Min sample size' value={minSample} onChange={v => setMinSample(Number(v))} />
                 <Field label='Max daily loss' value={maxDailyLoss} onChange={v => setMaxDailyLoss(Number(v))} />
                 <Field label='Max consec. losses' value={maxConsec} onChange={v => setMaxConsec(Number(v))} />
+                <Field label='Take profit (0 = off)' value={takeProfit} onChange={v => setTakeProfit(Number(v))} />
+                <Field label='Stop loss (0 = off)' value={stopLoss} onChange={v => setStopLoss(Number(v))} />
                 {mode === 'active' && (
                     <Field label='Active trade every (s)' value={activeEvery} onChange={v => setActiveEvery(Number(v))} />
                 )}

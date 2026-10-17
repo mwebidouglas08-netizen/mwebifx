@@ -16,6 +16,7 @@ jest.mock('../../deriv/api', () => ({
     currentLoginId: jest.fn(() => 'VRTC1'),
     accountBalance: jest.fn(() => 1000),
     accountCurrency: jest.fn(() => 'USD'),
+    refreshBalance: jest.fn(() => Promise.resolve()),
     getTicksHistory: jest.fn(),
     getContractsFor: jest.fn(),
     getActiveSymbols: jest.fn(),

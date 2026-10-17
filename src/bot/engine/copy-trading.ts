@@ -37,7 +37,16 @@ export interface CopyTradingState {
     copiers: CopierStatus[];
     settings: CopySettings;
     events: EngineLogEvent[];
-    stats: { observed: number; copied: number; failed: number; skipped: number };
+    stats: {
+        observed: number;
+        copied: number;
+        failed: number;
+        skipped: number;
+        settled: number;
+        won: number;
+        lost: number;
+        profit: number;
+    };
 }
 
 const STORAGE_KEY = 'mwx_copy_trading_v1';
@@ -45,9 +54,38 @@ const EVENT_CAP = 240;
 /** Deriv's minimum order stake — smaller replications are skipped, not rejected. */
 const MIN_STAKE = 0.35;
 const SOCKET_TIMEOUT_MS = 15000;
+/** Deriv rate-limits order traffic — space buy attempts per copier account. */
+const BUY_SPACING_MS = 300;
 const RECONNECT_BASE_MS = 2500;
 const RECONNECT_MAX_MS = 30000;
 const MAX_RECONNECT_ATTEMPTS = 6;
+
+/** Same semantics as execution.ts isRetryableBuyError — a stale proposal a fresh quote can fix. */
+const RETRYABLE_BUY_RE =
+    /price\s*moved|proposal\s*(expired|not\s*found|invalid)|proposal.*expired|unknown\s+contract\s+proposal|invalidcontractproposal|rate\s*limit/i;
+
+/**
+ * Wall-clock window to keep watching a copied contract, mirroring
+ * execution.settlementTimeoutMs (duration + head-room). Unknown/invalid
+ * durations fall back to 90s.
+ */
+const settlementWatchMs = (duration: number, durationUnit: string): number => {
+    const d = Number.isFinite(duration) && duration >= 1 ? Math.floor(duration) : 1;
+    const headRoom = 90000;
+    switch (durationUnit) {
+        case 's':
+            return d * 1000 + headRoom;
+        case 'm':
+            return d * 60000 + headRoom;
+        case 'h':
+            return d * 3600000 + headRoom;
+        case 'd':
+            return d * 86400000 + headRoom;
+        case 't':
+        default:
+            return d * 5000 + headRoom;
+    }
+};
 
 const DEFAULT_SETTINGS: CopySettings = {
     replicationEnabled: true,
@@ -135,6 +173,10 @@ export class CopyTradingEngine {
     private copierSeq = 0;
     private reconnectAttempts = 0;
     private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    /** Last buy-attempt timestamp per copier — enforces BUY_SPACING_MS pacing. */
+    private lastBuyAttemptAt = new Map<string, number>();
+    /** Buy sockets kept open after a fill to watch their contracts settle. */
+    private watchSockets = new Set<WebSocket>();
 
     constructor() {
         this.state = {
@@ -144,7 +186,7 @@ export class CopyTradingEngine {
             copiers: [],
             settings: { ...DEFAULT_SETTINGS },
             events: [],
-            stats: { observed: 0, copied: 0, failed: 0, skipped: 0 },
+            stats: { observed: 0, copied: 0, failed: 0, skipped: 0, settled: 0, won: 0, lost: 0, profit: 0 },
         };
         this.loadPersisted();
     }
@@ -332,7 +374,9 @@ export class CopyTradingEngine {
         this.seenContracts.clear();
         this.replicatedContracts.clear();
         soundService.play('botStart');
-        this.update({ stats: { observed: 0, copied: 0, failed: 0, skipped: 0 } });
+        this.update({
+            stats: { observed: 0, copied: 0, failed: 0, skipped: 0, settled: 0, won: 0, lost: 0, profit: 0 },
+        });
         this.setStatus('connecting', 'Connecting to master account…');
         this.logEvent('info', 'Connecting to master account…');
 
@@ -364,6 +408,15 @@ export class CopyTradingEngine {
                 /* already closed */
             }
         }
+        // Close settlement-watch sockets so their timers cannot outlive stop().
+        for (const socket of [...this.watchSockets]) {
+            try {
+                socket.close();
+            } catch {
+                /* already closed */
+            }
+        }
+        this.watchSockets.clear();
         this.update({ master: { connected: false, loginid: null, balance: null, isVirtual: null } });
         // Settle to idle directly instead of waiting on the socket's async
         // onclose: browsers do not guarantee onclose fires promptly (or at all)
@@ -677,7 +730,7 @@ export class CopyTradingEngine {
                 this.skipCopier(copier, `stake ${stake} below the ${MIN_STAKE} minimum after multiplier/cap`);
                 continue;
             }
-            const ok = await this.buyOnCopier(copier, token, {
+            const boughtId = await this.buyOnCopier(copier, token, {
                 symbol,
                 contractType,
                 barrier: barrierFor(contractType, poc.barrier),
@@ -686,7 +739,7 @@ export class CopyTradingEngine {
                 durationUnit,
                 currency: meta.currency || currency,
             });
-            if (ok) {
+            if (boughtId !== null) {
                 this.logEvent(
                     'purchase',
                     `${copier.label}: copied #${contractId} → ${contractType}${poc.barrier ? `(${poc.barrier})` : ''} ${symbol} @ ${stake}`,
@@ -714,92 +767,285 @@ export class CopyTradingEngine {
             durationUnit: string;
             currency: string;
         }
-    ): Promise<boolean> {
+    ): Promise<number | null> {
         return new Promise(resolve => {
-            let settled = false;
-            let ws: WebSocket | null = null;
-            const done = (ok: boolean, error?: string) => {
-                if (settled) return;
-                settled = true;
-                if (!ok) {
-                    const reason = error || 'copy failed';
-                    this.bumpCopier(copier.id, 'failed');
-                    this.bumpStat('failed');
-                    this.patchCopier(copier.id, { lastError: reason });
-                    this.logEvent('error', `${copier.label}: copy failed — ${reason}`);
-                }
-                if (ws) {
-                    try {
-                        ws.close();
-                    } catch {
-                        /* already closed */
-                    }
-                }
-                resolve(ok);
-            };
-            try {
-                ws = this.openSocket(token, {
-                    timeoutMs: SOCKET_TIMEOUT_MS,
-                    onOpen: s => {
-                        const params: Record<string, unknown> = {
-                            proposal: 1,
-                            amount: order.stake,
-                            basis: 'stake',
-                            contract_type: order.contractType,
-                            duration: order.duration,
-                            duration_unit: order.durationUnit,
-                            symbol: order.symbol,
-                        };
-                        if (order.currency) params.currency = order.currency;
-                        if (order.barrier !== undefined) params.barrier = order.barrier;
-                        try {
-                            s.send(JSON.stringify(params));
-                        } catch {
-                            done(false, 'socket send failed');
-                        }
-                    },
-                    onMessage: (msg, s) => {
-                        if (msg?.error) {
-                            done(false, msg.error.message || msg.error.code || 'request failed');
-                            return;
-                        }
-                        if (msg?.proposal) {
-                            const p = msg.proposal;
-                            const ask = Number(p.ask_price);
-                            const payout = Number(p.payout);
-                            if (!Number.isFinite(ask) || !Number.isFinite(payout)) {
-                                done(false, 'malformed proposal response');
-                                return;
-                            }
-                            if (payout <= ask) {
-                                done(false, `no return: payout ${payout} never exceeds the ${ask} stake`);
-                                return;
-                            }
-                            try {
-                                s.send(JSON.stringify({ buy: p.id, price: ask }));
-                            } catch {
-                                done(false, 'socket send failed');
-                            }
-                            return;
-                        }
-                        if (msg?.buy) {
-                            const boughtId = Number(msg.buy.contract_id);
-                            if (!Number.isFinite(boughtId)) {
-                                done(false, 'no contract_id in buy response');
-                                return;
-                            }
-                            this.bumpCopier(copier.id, 'copied');
-                            this.bumpStat('copied');
-                            this.patchCopier(copier.id, { lastError: null, lastSeen: Date.now() });
-                            done(true);
-                        }
-                    },
-                    onClose: () => done(false, 'connection closed before the buy completed'),
-                });
-            } catch (e: any) {
-                done(false, e?.message || 'socket error');
-            }
+            // Per-copier pacing: successive buy attempts on the same account are
+            // spaced at least BUY_SPACING_MS apart (Deriv rate-limits order traffic).
+            const now = Date.now();
+            const last = this.lastBuyAttemptAt.get(copier.id) ?? 0;
+            const wait = Math.max(0, BUY_SPACING_MS - (now - last));
+            this.lastBuyAttemptAt.set(copier.id, now + wait);
+            const begin = () => this.openBuySocket(copier, token, order, resolve);
+            if (wait > 0) setTimeout(begin, wait);
+            else begin();
         });
+    }
+
+    /**
+     * Buy on the copier's own socket with the trading/v1-safe sequence:
+     * SUBSCRIBED proposal (`subscribe: 1` keeps the id valid on the socket) →
+     * `buy` against the streamed id → keep the socket open and watch the
+     * contract via `proposal_open_contract` until it settles. A one-shot
+     * proposal id is refused by the time buy lands ("Unknown contract
+     * proposal" — see api.ts requestLive). A retryable buy rejection gets ONE
+     * fresh proposal, mirroring executeBuyFresh.
+     */
+    private openBuySocket(
+        copier: CopierStatus,
+        token: string,
+        order: {
+            symbol: string;
+            contractType: string;
+            barrier?: string;
+            stake: number;
+            duration: number;
+            durationUnit: string;
+            currency: string;
+        },
+        resolve: (contractId: number | null) => void
+    ): void {
+        let resolved = false;
+        let phase: 'proposal' | 'buy' | 'monitoring' | 'done' = 'proposal';
+        let retried = false;
+        let contractId: number | null = null;
+        let ws: WebSocket | null = null;
+        let timer: ReturnType<typeof setTimeout> | null = null;
+
+        const clearTimer = () => {
+            if (timer) {
+                clearTimeout(timer);
+                timer = null;
+            }
+        };
+        const close = () => {
+            const socket = ws;
+            ws = null;
+            if (socket) {
+                this.watchSockets.delete(socket);
+                try {
+                    socket.close();
+                } catch {
+                    /* already closed */
+                }
+            }
+        };
+        const finishBuy = (id: number | null, error?: string) => {
+            if (resolved) return;
+            resolved = true;
+            clearTimer();
+            if (id === null) {
+                const reason = error || 'copy failed';
+                this.bumpCopier(copier.id, 'failed');
+                this.bumpStat('failed');
+                this.patchCopier(copier.id, { lastError: reason });
+                this.logEvent('error', `${copier.label}: copy failed — ${reason}`);
+                close();
+            }
+            resolve(id);
+        };
+        const sendProposal = (s: WebSocket) => {
+            const params: Record<string, unknown> = {
+                proposal: 1,
+                // Subscribed proposals stay purchasable on this socket; a
+                // one-shot id is dead by the time buy is issued.
+                subscribe: 1,
+                amount: order.stake,
+                basis: 'stake',
+                contract_type: order.contractType,
+                duration: order.duration,
+                duration_unit: order.durationUnit,
+                symbol: order.symbol,
+            };
+            if (order.currency) params.currency = order.currency;
+            if (order.barrier !== undefined) params.barrier = order.barrier;
+            s.send(JSON.stringify(params));
+        };
+        const settleCopierContract = (poc: any) => {
+            // Mirror execution.settleFrom: a sold contract with NO outcome data
+            // becomes unknown — never fabricated into a win or loss.
+            const hasWinFlag = poc.is_won !== undefined && poc.is_won !== null;
+            const hasProfit = poc.profit !== undefined && poc.profit !== null;
+            const hasSellPrice = poc.sell_price !== undefined || poc.bid_price !== undefined;
+            const sellPrice = Number(poc.sell_price ?? poc.bid_price ?? 0);
+            const buyPrice = Number(poc.buy_price ?? order.stake);
+            const id = contractId as number;
+            if (!hasWinFlag && !hasProfit && !hasSellPrice) {
+                this.logEvent(
+                    'warn',
+                    `${copier.label}: #${id} sold but the server sent no outcome (is_won/profit/sell_price missing) — settlement not recorded.`
+                );
+                phase = 'done';
+                clearTimer();
+                close();
+                return;
+            }
+            const profit = hasProfit ? Number(poc.profit) : sellPrice - buyPrice;
+            if (!Number.isFinite(profit)) {
+                this.logEvent('warn', `${copier.label}: #${id} settlement profit unreadable — settlement not recorded.`);
+                phase = 'done';
+                clearTimer();
+                close();
+                return;
+            }
+            const won = hasWinFlag ? poc.is_won === 1 || poc.is_won === true : profit > 0;
+            phase = 'done';
+            clearTimer();
+            close();
+            this.recordSettlement(copier, id, won, profit, order.symbol);
+        };
+
+        try {
+            ws = this.openSocket(token, {
+                onOpen: s => {
+                    try {
+                        sendProposal(s);
+                    } catch {
+                        finishBuy(null, 'socket send failed');
+                        return;
+                    }
+                    timer = setTimeout(() => {
+                        finishBuy(
+                            null,
+                            phase === 'proposal' ? 'no proposal response before the timeout' : 'buy timed out'
+                        );
+                    }, SOCKET_TIMEOUT_MS);
+                },
+                onMessage: (msg, s) => {
+                    if (phase === 'monitoring') {
+                        if (msg?.error) {
+                            // Transient watch error — keep waiting for the
+                            // settlement deadline instead of faking a result.
+                            this.logEvent(
+                                'warn',
+                                `${copier.label}: contract watch error — ${msg.error.message || msg.error.code || 'request failed'}`
+                            );
+                            return;
+                        }
+                        const poc = msg?.proposal_open_contract;
+                        if (!poc) return;
+                        const sold = poc.is_sold === 1 || poc.is_sold === true || poc.is_expired === 1;
+                        if (sold) settleCopierContract(poc);
+                        return;
+                    }
+                    if (phase === 'done') return;
+                    if (msg?.error) {
+                        const detail = msg.error.message || msg.error.code || 'request failed';
+                        if (phase === 'buy' && !retried && RETRYABLE_BUY_RE.test(detail)) {
+                            // Stale proposal (price moved / expired): re-subscribe
+                            // a fresh proposal once, like executeBuyFresh's retry.
+                            retried = true;
+                            phase = 'proposal';
+                            try {
+                                sendProposal(s);
+                            } catch {
+                                finishBuy(null, 'socket send failed');
+                            }
+                            return;
+                        }
+                        finishBuy(null, detail);
+                        return;
+                    }
+                    if (msg?.proposal) {
+                        if (phase !== 'proposal') return; // live stream refresh — already bought
+                        const p = msg.proposal;
+                        const ask = Number(p.ask_price);
+                        const payout = Number(p.payout);
+                        if (!Number.isFinite(ask) || !Number.isFinite(payout)) {
+                            finishBuy(null, 'malformed proposal response');
+                            return;
+                        }
+                        if (payout <= ask) {
+                            finishBuy(null, `no return: payout ${payout} never exceeds the ${ask} stake`);
+                            return;
+                        }
+                        phase = 'buy';
+                        try {
+                            s.send(JSON.stringify({ buy: p.id, price: ask }));
+                        } catch {
+                            finishBuy(null, 'socket send failed');
+                        }
+                        return;
+                    }
+                    if (msg?.buy) {
+                        if (phase !== 'buy') return;
+                        const boughtId = Number(msg.buy.contract_id);
+                        if (!Number.isFinite(boughtId)) {
+                            finishBuy(null, 'no contract_id in buy response');
+                            return;
+                        }
+                        contractId = boughtId;
+                        this.bumpCopier(copier.id, 'copied');
+                        this.bumpStat('copied');
+                        this.patchCopier(copier.id, { lastError: null, lastSeen: Date.now() });
+                        phase = 'monitoring';
+                        finishBuy(boughtId);
+                        // Keep the socket open and follow the contract to settlement.
+                        this.watchSockets.add(s);
+                        try {
+                            s.send(
+                                JSON.stringify({
+                                    proposal_open_contract: 1,
+                                    contract_id: boughtId,
+                                    subscribe: 1,
+                                })
+                            );
+                            timer = setTimeout(() => {
+                                this.logEvent(
+                                    'warn',
+                                    `${copier.label}: #${boughtId} did not settle within the tracking window — outcome unknown.`
+                                );
+                                phase = 'done';
+                                clearTimer();
+                                close();
+                            }, settlementWatchMs(order.duration, order.durationUnit));
+                        } catch {
+                            this.logEvent(
+                                'warn',
+                                `${copier.label}: could not subscribe to contract #${boughtId} — settlement will not be tracked.`
+                            );
+                        }
+                        return;
+                    }
+                },
+                onClose: s => {
+                    this.watchSockets.delete(s);
+                    if (!resolved) {
+                        finishBuy(null, 'connection closed before the buy completed');
+                        return;
+                    }
+                    if (phase === 'monitoring' && contractId !== null) {
+                        clearTimer();
+                        this.logEvent(
+                            'warn',
+                            `${copier.label}: connection closed while monitoring #${contractId} — settlement unknown.`
+                        );
+                        phase = 'done';
+                    }
+                },
+            });
+        } catch (e: any) {
+            finishBuy(null, e?.message || 'socket error');
+        }
+    }
+
+    /** Record a settled copy: PnL counters, event log and voice announcement. */
+    private recordSettlement(copier: CopierStatus, contractId: number, won: boolean, profit: number, symbol: string) {
+        this.update({
+            stats: {
+                ...this.state.stats,
+                settled: this.state.stats.settled + 1,
+                won: this.state.stats.won + (won ? 1 : 0),
+                lost: this.state.stats.lost + (won ? 0 : 1),
+                profit: this.state.stats.profit + profit,
+            },
+        });
+        this.patchCopier(copier.id, { lastSeen: Date.now() });
+        this.logEvent(
+            'settlement',
+            `${copier.label}: ${won ? 'WIN' : 'LOSS'} #${contractId}${symbol ? ` ${symbol}` : ''} — ${profit >= 0 ? '+' : ''}${profit.toFixed(2)}`,
+            { contractId, result: won ? 'win' : 'loss', profit }
+        );
+        voiceService.announceSettlement({ bot: 'Copy Trading', won, profit, market: symbol || undefined });
     }
 }
 

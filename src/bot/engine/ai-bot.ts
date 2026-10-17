@@ -40,6 +40,7 @@ import {
     getTicksHistory,
     isApiReady,
     isAuthorized,
+    refreshBalance,
 } from '../deriv/api';
 import { isDemoAccount } from '@/utils/account-helpers';
 import { buildTradeOutcome, evaluateCandidate } from '../core/intelligent-execution';
@@ -130,6 +131,8 @@ export const DEFAULT_AI_BOT_CONFIG: AIBotConfig = {
 
 const EVENT_CAP = 240;
 const PROBE_CONCURRENCY = 8;
+/** Default number of tradable markets watched when the config lists no symbols. */
+const DEFAULT_WATCH_CAP = 12;
 /** Deriv's minimum order stake — the equity cap never blocks a trade this small. */
 const MIN_ORDER_STAKE = 0.35;
 
@@ -150,6 +153,9 @@ export class AIBotEngine {
     private confirmCount = 0;
     private decisionCounter = 0;
     private lastTradeAt = 0;
+    private watchdogTimer: ReturnType<typeof setInterval> | null = null;
+    private lastTickAt = 0;
+    private generation = 0;
     private state: AIBotState;
 
     constructor() {
@@ -324,7 +330,7 @@ export class AIBotEngine {
 
         const watch = configured.length
             ? tradable.filter(s => configured.includes(s.symbol))
-            : tradable.slice(0, 6);
+            : tradable.slice(0, DEFAULT_WATCH_CAP);
         if (!watch.length) {
             this.running = false;
             const fams = [...neededFamilies].join(', ') || 'digit';
@@ -337,7 +343,7 @@ export class AIBotEngine {
 
         this.setStatus('starting', `Warming ${watch.length} markets…`);
         this.feed = new TickFeed({
-            onTick: () => undefined,
+            onTick: () => this.onFeedTick(),
         });
         this.feed.setSymbols(watch.map(s => s.symbol));
 
@@ -361,6 +367,7 @@ export class AIBotEngine {
         );
 
         this.feed.start();
+        this.startWatchdog();
         this.update({ equity: accountBalance() });
         this.logEvent('scan', `Scanning ${watch.length} markets with ${this.activeRules().length} purchase rules.`);
         this.setStatus('scanning', 'Scanning markets for signals…');
@@ -371,6 +378,8 @@ export class AIBotEngine {
     stop() {
         const wasRunning = this.running;
         this.running = false;
+        this.generation++;
+        this.stopWatchdog();
         if (this.scanTimer) clearInterval(this.scanTimer);
         this.scanTimer = null;
         if (this.feed) this.feed.stop();
@@ -380,6 +389,78 @@ export class AIBotEngine {
             soundService.play('botStop');
             this.logEvent('status', 'AI Bot stopped.');
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Production reliability: tick watchdog
+    // -----------------------------------------------------------------------
+
+    /** Probe interval; if every watched market is silent for TICK_STALL_MS, rebuild. */
+    private static readonly WATCHDOG_INTERVAL_MS = 15000;
+    private static readonly TICK_STALL_MS = 45000;
+
+    private onFeedTick() {
+        this.lastTickAt = Date.now();
+    }
+
+    private startWatchdog() {
+        this.stopWatchdog();
+        const gen = this.generation;
+        this.lastTickAt = Date.now();
+        this.watchdogTimer = setInterval(() => {
+            if (gen !== this.generation || !this.running) {
+                this.stopWatchdog();
+                return;
+            }
+            const stalled = Date.now() - this.lastTickAt;
+            if (stalled < AIBotEngine.TICK_STALL_MS) return;
+            this.logEvent('error', `No ticks for ${Math.round(stalled / 1000)}s — rebuilding the market feed.`);
+            this.rebuildFeed();
+        }, AIBotEngine.WATCHDOG_INTERVAL_MS);
+    }
+
+    private stopWatchdog() {
+        if (this.watchdogTimer !== null) {
+            clearInterval(this.watchdogTimer);
+            this.watchdogTimer = null;
+        }
+    }
+
+    /** Rebuild the feed on a fresh connection and re-seed recent history (best-effort). */
+    private rebuildFeed() {
+        if (!this.running) return;
+        const symbols = this.symbols;
+        try {
+            this.feed?.stop();
+        } catch {
+            /* already stopped */
+        }
+        this.feed = new TickFeed({
+            onTick: () => this.onFeedTick(),
+        });
+        this.feed.setSymbols(symbols.map(s => s.symbol));
+        this.feed.start();
+        this.lastTickAt = Date.now();
+        this.logEvent(
+            'status',
+            `Market feed rebuilt for ${symbols.length} watched market(s) — re-seeding recent history.`
+        );
+        void this.reseedHistory(symbols);
+    }
+
+    private async reseedHistory(symbols: SyntheticSymbol[]) {
+        const cfg = this.state.config;
+        await Promise.all(
+            symbols.map(async s => {
+                try {
+                    const hist = await getTicksHistory(s.symbol, Math.max(cfg.sampleSize, cfg.minTicks) + 20);
+                    const prices: number[] = hist?.history?.prices?.map((p: any) => Number(p)) || [];
+                    this.feed?.seed(s.symbol, s.pipSize, prices.filter(p => Number.isFinite(p)));
+                } catch {
+                    // best-effort warm-up
+                }
+            })
+        );
     }
 
     emergencyStop() {
@@ -791,6 +872,9 @@ export class AIBotEngine {
             `${won ? 'WIN' : 'LOSS'}: #${buy.contractId} ${analysis.displayName} ${ct} — ${settled.profit >= 0 ? '+' : ''}${settled.profit.toFixed(2)}`,
             { symbol: analysis.symbol, contractId: buy.contractId, contractType: ct, result: settled.result, profit: settled.profit }
         );
+        // Live/demo settlement — pull a fresh balance so the header reflects
+        // the result immediately instead of waiting for the next socket push.
+        void refreshBalance?.();
         voiceService.announceSettlement({ bot: 'AI Bot', won, profit: settled.profit, contractType: ct, market: analysis.displayName });
 
         // Never let a late settlement overwrite the stopped status (ghost

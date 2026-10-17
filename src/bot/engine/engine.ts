@@ -18,15 +18,17 @@ import {
     analyzeMomentum,
     analyzeVolatility,
 } from '../core/digit-stats';
-import { assessEdge } from '../core/ev';
+import { assessEdge, EdgeAssessment } from '../core/ev';
 import {
     DEFAULT_RISK_LIMITS,
+    MIN_ORDER_STAKE,
     applySettlement,
     evaluateOpportunity,
     initialRiskState,
     resumeTrading,
     suspendTrading,
 } from '../core/risk';
+import { evaluateSessionGuard, fairPayoutRatio, rankBarriers } from '../core/digit-edge';
 import { computePerformance } from '../core/performance';
 import { discoverDigitContracts, discoverSyntheticSymbols } from '../deriv/discovery';
 import { TickFeed, SymbolSeries } from '../deriv/ticks';
@@ -40,7 +42,7 @@ import {
     settlementTimeoutMs,
     ProposalQuote,
 } from '../deriv/execution';
-import { accountBalance, currentLoginId, isApiReady, isAuthorized, getTicksHistory } from '../deriv/api';
+import { accountBalance, currentLoginId, isApiReady, isAuthorized, getTicksHistory, refreshBalance } from '../deriv/api';
 import { isDemoAccount } from '@/utils/account-helpers';
 import { buildTradeOutcome } from '../core/intelligent-execution';
 import { voiceService } from '@/services/voice-service';
@@ -67,6 +69,21 @@ export interface EngineState {
 
 export type EngineListener = (state: EngineState) => void;
 
+// Session take-profit / stop-loss live on EngineConfig itself (0 = disabled)
+// without touching core/types for every engine.
+declare module '../core/types' {
+    interface EngineConfig {
+        /** Session take-profit in account currency; 0 (or unset) disables it. */
+        takeProfit?: number;
+        /** Session stop-loss in account currency; 0 (or unset) disables it. */
+        stopLoss?: number;
+    }
+}
+
+/** Session guard defaults — both enabled, both in account currency. */
+const DEFAULT_TAKE_PROFIT = 10;
+const DEFAULT_STOP_LOSS = 10;
+
 const DEFAULT_CONFIG: EngineConfig = {
     symbols: [],
     categories: ['volatility', 'crash', 'boom', 'jump', 'step', 'range', 'other'],
@@ -78,16 +95,25 @@ const DEFAULT_CONFIG: EngineConfig = {
     durationUnit: 't',
     limits: { ...DEFAULT_RISK_LIMITS },
     scanIntervalMs: 3000,
-    minTicksForAnalysis: 300,
+    // Kept in lock-step with the risk gate so the warm-up buffer and the
+    // scan's minSampleSize gate can never drift apart.
+    minTicksForAnalysis: DEFAULT_RISK_LIMITS.minSampleSize,
     allowLiveTrading: false,
     mode: 'edge',
     activeIntervalMs: 12000,
+    takeProfit: DEFAULT_TAKE_PROFIT,
+    stopLoss: DEFAULT_STOP_LOSS,
 };
 
 const QUOTE_TTL_MS = 12000;
 const MAX_CANDIDATES_PER_SCAN = 12;
 const PROPOSAL_DELAY_MS = 200;
 const PROPOSALS_PER_SCAN = 20;
+const WATCHDOG_INTERVAL_MS = 15000;
+/** If every market has been silent this long, the socket/feed is stuck. */
+const TICK_STALL_MS = 45000;
+/** Max discovered-but-unconfigured barriers quoted per symbol per direction. */
+const EXPANDED_BARRIERS_PER_DIRECTION = 2;
 
 interface CachedQuote {
     quote: ProposalQuote;
@@ -122,6 +148,16 @@ export class OUBotEngine {
     private running = false;
     private lastActiveTradeAt = 0;
     private eventSeq = 0;
+    /** Any-symbol tick heartbeat for the stall watchdog. */
+    private lastTickAt = 0;
+    private watchdogTimer: ReturnType<typeof setInterval> | null = null;
+    /** Bumped on every start()/stop() so async work cannot resurrect a dead session. */
+    private generation = 0;
+    private rebuildingFeed = false;
+    /** Candidates skipped this scan because the proposal budget hit zero. */
+    private scanUnquoted = 0;
+    /** Equity observed at start(); session profit is measured against it. */
+    private startingEquity = 0;
     private state: EngineState;
 
     constructor() {
@@ -221,6 +257,17 @@ export class OUBotEngine {
         this.logEvent('risk', 'Emergency stop engaged — all activity halted.');
     }
 
+    private createFeed(): TickFeed {
+        return new TickFeed({
+            onTick: (symbol, point, series) => this.onTick(symbol, point, series),
+            onStatus: (connected, error) => {
+                if (!connected && this.running) {
+                    this.setStatus('scanning', `Reconnecting to market data… ${error || ''}`.trim());
+                }
+            },
+        });
+    }
+
     async start(config?: Partial<EngineConfig>): Promise<void> {
         if (this.running) return;
         if (config) this.configure(config);
@@ -246,6 +293,7 @@ export class OUBotEngine {
         }
 
         this.running = true;
+        const gen = ++this.generation;
         this.lastActiveTradeAt = 0;
         soundService.play('botStart');
         this.update({ accountIsDemo, dryRun, manualHold: false, equity: accountBalance() });
@@ -270,21 +318,17 @@ export class OUBotEngine {
 
         // The feed must exist before warm-up: bootstrapDigits() writes into the series
         // objects owned by the feed, and a null feed silently discarded the history.
-        this.feed = new TickFeed({
-            onTick: (symbol, point, series) => this.onTick(symbol, point, series),
-            onStatus: (connected, error) => {
-                if (!connected && this.running) {
-                    this.setStatus('scanning', `Reconnecting to market data… ${error || ''}`.trim());
-                }
-            },
-        });
+        this.feed = this.createFeed();
         this.feed.setSymbols(this.symbols.map(s => s.symbol));
 
         await this.bootstrapDigits();
         this.logEvent('discover', `Discovered ${this.symbols.length} synthetic markets. Digit buffers warmed.`);
 
         this.feed.start();
+        this.lastTickAt = Date.now();
+        this.startWatchdog(gen);
 
+        this.startingEquity = accountBalance();
         this.update({ equity: accountBalance(), risk: initialRiskState(accountBalance()) });
         this.setStatus('scanning', cfg.mode === 'active' ? 'Active practice: placing trades on a cadence…' : 'Scanning for statistically defensible edges…');
         this.scanTimer = setInterval(() => this.scan(), cfg.scanIntervalMs);
@@ -294,6 +338,8 @@ export class OUBotEngine {
     stop() {
         const wasRunning = this.running;
         this.running = false;
+        this.generation++;
+        this.stopWatchdog();
         if (this.scanTimer) clearInterval(this.scanTimer);
         this.scanTimer = null;
         if (this.feed) this.feed.stop();
@@ -304,6 +350,65 @@ export class OUBotEngine {
         if (wasRunning) {
             soundService.play('botStop');
             this.logEvent('status', 'Engine stopped.');
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Production reliability: tick watchdog (ported from Algo Pro)
+    // -----------------------------------------------------------------------
+
+    private startWatchdog(gen: number) {
+        this.stopWatchdog();
+        this.watchdogTimer = setInterval(() => {
+            if (gen !== this.generation || !this.running) {
+                this.stopWatchdog();
+                return;
+            }
+            const stalled = Date.now() - this.lastTickAt;
+            if (stalled < TICK_STALL_MS || this.rebuildingFeed) return;
+            void this.rebuildFeed(gen);
+        }, WATCHDOG_INTERVAL_MS);
+    }
+
+    private stopWatchdog() {
+        if (this.watchdogTimer !== null) {
+            clearInterval(this.watchdogTimer);
+            this.watchdogTimer = null;
+        }
+    }
+
+    /**
+     * Every market silent at once means the feed is stuck: tear it down and
+     * rebuild in place (stop → new feed → re-subscribe → re-seed digit history
+     * → start). The generation check keeps a rebuild from resurrecting the
+     * engine after stop(), and rebuildingFeed blocks overlapping rebuilds.
+     */
+    private async rebuildFeed(gen: number): Promise<void> {
+        this.rebuildingFeed = true;
+        try {
+            this.feed?.stop();
+            if (gen !== this.generation || !this.running) return;
+            const feed = this.createFeed();
+            this.feed = feed;
+            feed.setSymbols(this.symbols.map(s => s.symbol));
+            this.lastTickAt = Date.now(); // hold the stall clock while history re-seeds
+            await this.bootstrapDigits(feed);
+            if (gen !== this.generation || !this.running) {
+                // Only tear down the feed this rebuild created — a newer
+                // start() may already own this.feed.
+                if (this.feed === feed) {
+                    feed.stop();
+                    this.feed = null;
+                }
+                return;
+            }
+            feed.start();
+            this.lastTickAt = Date.now();
+            this.logEvent('error', 'Market data stalled — feed restarted');
+        } catch (e: any) {
+            this.logEvent('error', `Feed restart failed: ${e?.message || String(e)}`);
+        } finally {
+            this.rebuildingFeed = false;
         }
     }
 
@@ -350,13 +455,14 @@ export class OUBotEngine {
         });
     }
 
-    private async bootstrapDigits() {
+    private async bootstrapDigits(feed: TickFeed | null = this.feed) {
         const cfg = this.state.config;
         await Promise.all(
             this.symbols.map(async s => {
                 try {
                     // Seed at least as many samples as the scan gate requires, otherwise
-                    // the bot idles waiting for live ticks to reach minSampleSize.
+                    // the bot idles waiting for live ticks to reach minSampleSize. The
+                    // bootstrap never drifts below limits.minSampleSize.
                     const need = Math.max(cfg.minTicksForAnalysis, cfg.limits.minSampleSize) + 20;
                     const hist = await getTicksHistory(s.symbol, need);
                     const history = (hist?.history?.prices ?? []) as string[];
@@ -366,7 +472,7 @@ export class OUBotEngine {
                         const fixed = Number(p).toFixed(pipSize);
                         digits.push(Number(fixed[fixed.length - 1]));
                     }
-                    const series = this.feed?.getSeries(s.symbol);
+                    const series = feed?.getSeries(s.symbol);
                     if (series && digits.length) {
                         series.digits = digits.slice(-2000);
                         series.quotes = history.slice(-500).map(Number);
@@ -382,6 +488,9 @@ export class OUBotEngine {
 
     private onTick(symbol: string, _point: TickPoint, _series: SymbolSeries) {
         if (!this.running) return;
+        // Heartbeat for the stall watchdog — tracked in dry-run too, so an
+        // unauthorized session still detects (and rebuilds) a dead feed.
+        this.lastTickAt = Date.now();
         if (this.state.dryRun) return;
         void symbol;
     }
@@ -429,7 +538,12 @@ export class OUBotEngine {
         const key = `${req.symbol}|${req.direction}|${req.barrier}|${req.duration}${req.durationUnit}`;
         const cached = this.quoteCache.get(key);
         if (cached && Date.now() - cached.at < QUOTE_TTL_MS) return cached.quote;
-        if (this.proposalBudget <= 0) return null;
+        if (this.proposalBudget <= 0) {
+            // Counted so the scan can report exactly how many ranked candidates
+            // went unquoted this pass instead of failing silently.
+            this.scanUnquoted += 1;
+            return null;
+        }
         const sinceLast = Date.now() - this.lastProposalAt;
         if (sinceLast < PROPOSAL_DELAY_MS) {
             await new Promise(r => setTimeout(r, PROPOSAL_DELAY_MS - sinceLast));
@@ -460,6 +574,7 @@ export class OUBotEngine {
         try {
             const cfg = this.state.config;
             this.proposalBudget = PROPOSALS_PER_SCAN;
+            this.scanUnquoted = 0;
             const seriesMap = new Map<string, SymbolSeries>();
             const seriesStats: EngineState['series'] = {};
             for (const s of this.symbols) {
@@ -486,9 +601,22 @@ export class OUBotEngine {
                 const stats = this.statsFrom(series);
                 const barriers = this.digitContracts.get(symbol);
                 for (const direction of cfg.directions) {
-                    const allowed = direction === 'over'
-                        ? barriers?.over.filter(b => cfg.barriersOver.includes(b)) ?? []
-                        : barriers?.under.filter(b => cfg.barriersUnder.includes(b)) ?? [];
+                    const discovered = (direction === 'over' ? barriers?.over : barriers?.under) ?? [];
+                    const configured = direction === 'over' ? cfg.barriersOver : cfg.barriersUnder;
+                    const allowed = discovered.filter(b => configured.includes(b));
+                    // Barrier auto-expansion: discovered barriers outside the
+                    // configured list join the scan only when they rank in the
+                    // top-2 by |empirical − breakeven| on recent digits, so new
+                    // contract ranges get attention without burning the budget.
+                    const extras = discovered.filter(b => !configured.includes(b));
+                    const rankedExtras = rankBarriers(
+                        series.digits,
+                        direction,
+                        extras,
+                        b => fairPayoutRatio(direction, b),
+                        EXPANDED_BARRIERS_PER_DIRECTION
+                    );
+                    for (const candidate of rankedExtras) allowed.push(candidate.barrier);
                     for (const barrier of allowed) {
                         const quote = await this.getQuoteCached({
                             symbol,
@@ -507,6 +635,9 @@ export class OUBotEngine {
                     }
                 }
             }
+            if (this.scanUnquoted > 0) {
+                this.logEvent('scan', `Scan budget exhausted — ${this.scanUnquoted} candidate(s) unquoted`);
+            }
             // High confidence first; EV breaks ties.
             opportunities.sort((a, b) => b.confidence - a.confidence || b.expectedValuePct - a.expectedValuePct);
             const top = opportunities.slice(0, MAX_CANDIDATES_PER_SCAN);
@@ -515,6 +646,11 @@ export class OUBotEngine {
             if (!this.running) return;
             if (this.state.risk.suspended) return;
             this.refreshAccountGate();
+            // Keep tracked equity fresh so the session guards below (and the
+            // stake sanity check in execute) always see the current balance.
+            const equity = accountBalance();
+            if (equity !== this.state.equity) this.update({ equity });
+            if (this.enforceSessionGuard()) return;
             if (this.state.dryRun) {
                 const why = isAuthorized()
                     ? 'Holding: enable Live trading to place real orders'
@@ -612,11 +748,22 @@ export class OUBotEngine {
     private async execute(opp: ContractOpportunity, stake: number) {
         const cfg = this.state.config;
         const active = cfg.mode === 'active';
+        // Stake sanity: floor at Deriv's minimum and never stake more than the
+        // account can cover. Tracked equity is refreshed every scan; fall back
+        // to the API snapshot before the first scan has run.
+        const trackedEquity = this.state.equity > 0 ? this.state.equity : accountBalance();
+        const orderStake = Math.max(stake, MIN_ORDER_STAKE);
+        if (orderStake > trackedEquity) {
+            const reason = `Stake ${orderStake.toFixed(2)} exceeds available equity ${trackedEquity.toFixed(2)}`;
+            this.logEvent('risk', `Holding on ${opp.displayName} ${opp.direction} ${opp.barrier}: ${reason}`);
+            if (this.running) this.setStatus('scanning', `Holding: ${reason}`);
+            return;
+        }
         const quoteReq: OverUnderRequest = {
             symbol: opp.symbol,
             direction: opp.direction,
             barrier: opp.barrier,
-            amount: stake,
+            amount: orderStake,
             duration: cfg.duration,
             durationUnit: cfg.durationUnit,
         };
@@ -627,14 +774,15 @@ export class OUBotEngine {
             this.logEvent('error', `Quote failed on ${opp.displayName}: ${error || 'no quote'}`);
             return;
         }
-        const finalEdge = assessEdge(opp.empiricalProb, quote.payout, stake, cfg.limits.minExpectedValue);
-        // The confidence gate at scan time already selected this setup; at buy
-        // time only refuse a live payout that is outright negative EV (the
-        // strict minEV floor belongs to ranking, not to blocking trades the
-        // confidence gate approved).
-        if (!active && finalEdge.expectedValuePct < 0) {
+        const finalEdge = assessEdge(opp.empiricalProb, quote.payout, orderStake, cfg.limits.minExpectedValue);
+        // Re-check the rank-time gates against the FRESH payout — the market
+        // can move between scan and buy. Active mode keeps its skipEdgeGates
+        // behaviour but must still refuse an outright negative-EV payout.
+        const gateFailure = this.buyGateFailure(finalEdge, opp, active);
+        if (gateFailure) {
             releaseQuote(quote);
-            if (this.running) this.setStatus('scanning', 'Quote no longer meets EV threshold. Skipping.');
+            this.logEvent('risk', `Holding on ${opp.displayName} ${opp.direction} ${opp.barrier}: ${gateFailure}`);
+            if (this.running) this.setStatus('scanning', `Holding: ${gateFailure}`);
             return;
         }
 
@@ -648,7 +796,7 @@ export class OUBotEngine {
             barrier: opp.barrier,
             duration: cfg.duration,
             durationUnit: cfg.durationUnit,
-            stake,
+            stake: orderStake,
             payout: quote.payout,
             payoutRatio: finalEdge.payoutRatio,
             empiricalProb: opp.empiricalProb,
@@ -658,9 +806,9 @@ export class OUBotEngine {
             openedAt: Date.now(),
             simulated: false,
         };
-        this.logEvent('quote', `Quote: ${opp.displayName} ${opp.direction} ${opp.barrier} — payout ${finalEdge.payoutRatio.toFixed(2)}× (stake ${stake.toFixed(2)} → ${quote.payout.toFixed(2)})`, { symbol: opp.symbol, direction: opp.direction, barrier: opp.barrier, stake, payout: quote.payout });
+        this.logEvent('quote', `Quote: ${opp.displayName} ${opp.direction} ${opp.barrier} — payout ${finalEdge.payoutRatio.toFixed(2)}× (stake ${orderStake.toFixed(2)} → ${quote.payout.toFixed(2)})`, { symbol: opp.symbol, direction: opp.direction, barrier: opp.barrier, stake: orderStake, payout: quote.payout });
         this.setStatus('buying', `Submitting order: ${opp.direction} ${opp.barrier} on ${opp.displayName}`);
-        const buy = await executeBuyFresh(quote, stake, () => requestQuote(quoteReq));
+        const buy = await executeBuyFresh(quote, orderStake, () => requestQuote(quoteReq));
         if (buy.error || buy.contractId === undefined) {
             this.update({
                 trades: [{ ...record, stage: 'rejected', error: buy.error, closedAt: Date.now() }, ...this.state.trades],
@@ -669,7 +817,7 @@ export class OUBotEngine {
             this.logEvent('error', `Order rejected: ${buy.error}`, { symbol: opp.symbol });
             return;
         }
-        const confirmedStake = buy.buyPrice ?? stake;
+        const confirmedStake = buy.buyPrice ?? orderStake;
         const confirmedPayout = buy.payout ?? quote.payout;
         const confirmed: TradeRecord = {
             ...record,
@@ -735,6 +883,10 @@ export class OUBotEngine {
             `${settled.result === 'win' ? 'WIN' : 'LOSS'}: #${buy.contractId} ${opp.displayName} ${opp.direction} ${opp.barrier} — exit digit ${settled.exitDigit ?? '—'}, ${settled.profit >= 0 ? '+' : ''}${settled.profit.toFixed(2)}`,
             { symbol: opp.symbol, contractId: buy.contractId, direction: opp.direction, barrier: opp.barrier, result: settled.result, profit: settled.profit, exitDigit: settled.exitDigit, payout: settled.payout }
         );
+        // Mirror Algo Pro: force a balance refresh after a live settlement so
+        // equity accounting (and the header) reflects it immediately instead
+        // of waiting for the next socket push.
+        if (!settled.simulated) void refreshBalance();
         voiceService.announceSettlement({
             bot: 'OU Bot',
             won: settled.result === 'win',
@@ -748,6 +900,64 @@ export class OUBotEngine {
             if (risk.suspended) this.setStatus('suspended', risk.suspensionReason || 'Risk limit reached');
             else this.setStatus('scanning', `Settled ${settled.result}: ${settled.profit?.toFixed(2)}. Reassessing market…`);
         }
+        // Session take-profit / stop-loss — last, so a fired guard is the
+        // final word on the engine's status.
+        this.enforceSessionGuard();
+    }
+
+    /** Buy-time re-check of the rank-time gates on the FRESH edge. Active
+     * mode keeps skipEdgeGates but must still refuse negative EV. Returns the
+     * failed gate as a human-readable reason, or null to proceed. */
+    private buyGateFailure(edge: EdgeAssessment, opp: ContractOpportunity, active: boolean): string | null {
+        const limits = this.state.config.limits;
+        if (active) {
+            return edge.expectedValuePct < 0
+                ? `EV ${edge.expectedValuePct.toFixed(3)} is negative on the live quote`
+                : null;
+        }
+        if (edge.expectedValuePct < limits.minExpectedValue) {
+            return `EV ${edge.expectedValuePct.toFixed(3)} below ${limits.minExpectedValue}`;
+        }
+        if (edge.payoutRatio < limits.minPayoutRatio) {
+            return `Payout ratio ${edge.payoutRatio.toFixed(2)} below ${limits.minPayoutRatio}`;
+        }
+        if (opp.confidence < limits.minConfidence) {
+            return `Confidence ${opp.confidence.toFixed(2)} below ${limits.minConfidence}`;
+        }
+        return null;
+    }
+
+    /**
+     * Session take-profit / stop-loss: session profit is equity minus the
+     * equity observed at start(). A risk suspension already halts trading and
+     * keeps its own status, so it takes precedence. Returns true when a guard
+     * fired and the engine was stopped.
+     */
+    private enforceSessionGuard(): boolean {
+        if (!this.running || this.state.risk.suspended) return false;
+        const cfg = this.state.config;
+        const equity = this.state.equity > 0 ? this.state.equity : accountBalance();
+        if (this.startingEquity <= 0) {
+            // Anchor the session on the first observed balance (signals-only
+            // starts have none) so a late login cannot look like instant profit.
+            this.startingEquity = equity;
+            if (equity <= 0) return false;
+        }
+        const sessionProfit = equity - this.startingEquity;
+        const verdict = evaluateSessionGuard(
+            sessionProfit,
+            cfg.takeProfit ?? DEFAULT_TAKE_PROFIT,
+            cfg.stopLoss ?? DEFAULT_STOP_LOSS
+        );
+        if (!verdict.stop || !verdict.reason) return false;
+        this.logEvent(
+            'risk',
+            `${verdict.reason} — session profit ${sessionProfit >= 0 ? '+' : ''}${sessionProfit.toFixed(2)}`
+        );
+        voiceService.announceGuard(verdict.reason, 'OU Bot');
+        this.stop();
+        this.update({ status: 'stopped', message: verdict.reason });
+        return true;
     }
 
     getPerformance() {

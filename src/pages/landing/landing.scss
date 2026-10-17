@@ -184,8 +184,34 @@ body.landing-open .app-footer {
     }
 }
 
+.landing__hero-media {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    background: linear-gradient(150deg, #0d1530 0%, #070d1f 60%, #0a1024 100%);
+}
+
+.landing__hero-img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 38%;
+    animation: landingKenBurns 30s ease-in-out infinite alternate;
+}
+
+.landing__hero-scrim {
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(900px 500px at 50% 16%, rgb(20 184 166 / 14%), transparent 65%),
+        linear-gradient(180deg, rgb(7 13 31 / 80%) 0%, rgb(5 10 24 / 88%) 55%, #050a18 100%);
+}
+
 .landing__hero-inner {
     position: relative;
+    z-index: 1;
     max-width: 860px;
     margin: 0 auto;
 }
@@ -339,6 +365,7 @@ body.landing-open .app-footer {
 
 .landing__marquee {
     position: relative;
+    z-index: 1;
     overflow: hidden;
     margin-top: 4rem;
     -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
@@ -462,7 +489,8 @@ body.landing-open .app-footer {
 }
 
 .landing__feature-card {
-    padding: 2.2rem 1.8rem;
+    overflow: hidden;
+    padding: 0;
     text-align: left;
     background: rgb(255 255 255 / 3%);
     border: 1px solid rgb(99 132 246 / 14%);
@@ -472,6 +500,10 @@ body.landing-open .app-footer {
     &:hover {
         border-color: rgb(94 234 212 / 40%);
         box-shadow: 0 18px 40px rgb(0 0 0 / 35%);
+
+        .landing__feature-media img {
+            transform: scale(1.07);
+        }
     }
 
     /* Once revealed, transform tracks the pointer with a light trailing ease. */
@@ -480,18 +512,61 @@ body.landing-open .app-footer {
     }
 }
 
+.landing__feature-media {
+    position: relative;
+    aspect-ratio: 16 / 10;
+    overflow: hidden;
+    background: linear-gradient(135deg, rgb(20 184 166 / 20%), rgb(99 102 241 / 20%));
+
+    img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transition: transform 0.55s ease;
+    }
+
+    &::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, rgb(5 10 24 / 15%) 25%, rgb(5 10 24 / 78%) 100%);
+    }
+
+    /* Gold accent line along the media's bottom edge. */
+    &::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 2;
+        height: 3px;
+        background: linear-gradient(90deg, #14b8a6, #6366f1 55%, #fbbf24);
+    }
+}
+
 .landing__feature-icon {
+    position: absolute;
+    left: 1.2rem;
+    bottom: 1.2rem;
+    z-index: 3;
     display: grid;
     place-items: center;
-    width: 4.6rem;
-    height: 4.6rem;
-    font-size: 2rem;
-    background: rgb(20 184 166 / 12%);
-    border-radius: 12px;
+    width: 3.8rem;
+    height: 3.8rem;
+    font-size: 1.8rem;
+    background: rgb(7 13 31 / 65%);
+    border: 1px solid rgb(255 255 255 / 14%);
+    border-radius: 11px;
+    backdrop-filter: blur(8px);
+}
+
+.landing__feature-body {
+    padding: 1.5rem 1.8rem 2rem;
 }
 
 .landing__feature-title {
-    margin: 1.4rem 0 0.3rem;
+    margin: 0 0 0.3rem;
     color: #fff;
     font-size: 1.55rem;
     font-weight: 800;
@@ -509,6 +584,56 @@ body.landing-open .app-footer {
     color: rgb(203 213 225 / 75%);
     font-size: 1.25rem;
     line-height: 1.6;
+}
+
+/* ----------------------------------------------------------------- moments */
+
+.landing__moments {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 5.4rem 2.4rem 0;
+
+    @media (max-width: 640px) {
+        padding: 4rem 1.6rem 0;
+    }
+}
+
+.landing__moments-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.4rem;
+
+    @media (max-width: 760px) {
+        grid-template-columns: 1fr;
+    }
+}
+
+.landing__moment {
+    position: relative;
+    aspect-ratio: 3 / 2;
+    overflow: hidden;
+    background: linear-gradient(135deg, rgb(20 184 166 / 16%), rgb(99 102 241 / 16%));
+    border: 1px solid rgb(99 132 246 / 16%);
+    border-radius: 16px;
+
+    img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transition: transform 0.55s ease;
+    }
+
+    &::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, rgb(5 10 24 / 20%), rgb(5 10 24 / 55%));
+    }
+
+    &:hover img {
+        transform: scale(1.05);
+    }
 }
 
 /* ----------------------------------------------------------------- benefits */
@@ -574,8 +699,43 @@ body.landing-open .app-footer {
 }
 
 .landing__benefits-panel {
+    display: block;
+}
+
+.landing__benefits-frame {
+    position: relative;
+    aspect-ratio: 4 / 5;
+    overflow: hidden;
+    background: linear-gradient(160deg, #0d1933, #070e1e);
+    border: 1px solid rgb(99 132 246 / 20%);
+    border-radius: 20px;
+    box-shadow: 0 24px 60px rgb(0 0 0 / 40%);
+}
+
+.landing__benefits-img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+}
+
+.landing__benefits-scrim {
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(480px 320px at 28% 18%, rgb(20 184 166 / 16%), transparent 70%),
+        linear-gradient(180deg, rgb(5 10 24 / 35%) 0%, rgb(5 10 24 / 55%) 45%, rgb(5 10 24 / 88%) 100%);
+}
+
+.landing__mini-stack {
+    position: absolute;
+    left: 1.4rem;
+    right: 1.4rem;
+    bottom: 1.4rem;
+    z-index: 2;
     display: grid;
-    gap: 1.2rem;
+    gap: 1rem;
 }
 
 .landing__mini-card {
@@ -683,8 +843,9 @@ body.landing-open .app-footer {
 
 .landing__final {
     position: relative;
+    overflow: hidden;
     margin-top: 7rem;
-    padding: 7rem 2.4rem 3rem;
+    padding: 8rem 2.4rem 3rem;
     text-align: center;
     background:
         radial-gradient(700px 320px at 50% 0%, rgb(20 184 166 / 14%), transparent 70%),
@@ -692,7 +853,32 @@ body.landing-open .app-footer {
     border-top: 1px solid rgb(99 132 246 / 12%);
 }
 
+.landing__final-media {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(180deg, #0a1224, #050a18);
+}
+
+.landing__final-img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 55%;
+}
+
+.landing__final-scrim {
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(700px 320px at 50% 0%, rgb(20 184 166 / 18%), transparent 70%),
+        linear-gradient(180deg, rgb(5 10 24 / 80%) 0%, rgb(5 10 24 / 92%) 60%, #050a18 100%);
+}
+
 .landing__final-inner {
+    position: relative;
+    z-index: 1;
     max-width: 640px;
     margin: 0 auto;
 }
@@ -705,6 +891,8 @@ body.landing-open .app-footer {
 }
 
 .landing__footer {
+    position: relative;
+    z-index: 1;
     margin-top: 5rem;
     color: rgb(148 163 184 / 55%);
     font-size: 1.1rem;
@@ -748,6 +936,11 @@ body.landing-open .app-footer {
 @keyframes landingFloat {
     from { transform: translate3d(0, 0, 0) scale(1); }
     to { transform: translate3d(7vw, 5vh, 0) scale(1.18); }
+}
+
+@keyframes landingKenBurns {
+    from { transform: scale(1) translate3d(0, 0, 0); }
+    to { transform: scale(1.1) translate3d(-1.5%, -1%, 0); }
 }
 
 @media (prefers-reduced-motion: reduce) {

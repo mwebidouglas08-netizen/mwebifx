@@ -4,7 +4,7 @@ import { useStore } from '@/hooks/useStore';
 import { isDemoAccount } from '@/utils/account-helpers';
 import { fetchHistoricalTicks } from '@/bot/deriv/history';
 import { TickFeed } from '@/bot/deriv/ticks';
-import { isAuthorized } from '@/bot/deriv/api';
+import { currentLoginId, isAuthorized, refreshBalance } from '@/bot/deriv/api';
 import { executeBuyFresh, monitorUntilSettled, requestContractQuote, settlementTimeoutMs } from '@/bot/deriv/execution';
 import { winsFor } from '@/bot/core/digit-stats';
 import {
@@ -42,6 +42,9 @@ const SYMBOLS = [
 ];
 
 type DualStatus = 'idle' | 'warming' | 'running' | 'stopped' | 'error';
+
+/** Minimum spacing between rounds — protects the proposal budget on 1s markets. */
+const ROUNDS_MIN_INTERVAL_MS = 1200;
 
 interface LogEvent {
     id: string;
@@ -224,6 +227,10 @@ const DualEdgePage = observer(() => {
     const eventSeqRef = useRef(0);
     const pipSizeRef = useRef(2);
     const liveRef = useRef(false);
+    const lastRoundAtRef = useRef(0);
+    const liveLoginRef = useRef('');
+    const allowLiveRef = useRef(allowLive);
+    allowLiveRef.current = allowLive;
     const symbolRef = useRef('R_50');
     const profileRef = useRef<DualProfile | null>(null);
     const configRef = useRef<DualConfig | null>(null);
@@ -301,6 +308,36 @@ const DualEdgePage = observer(() => {
         return false;
     };
 
+    // The Start-time liveOK snapshot goes stale: the session can be dropped or
+    // switched mid-run. Re-evaluate the gate every round — a lost session pauses
+    // live orders (paper continues) and a re-authorized session resumes them.
+    const liveGate = (): boolean => {
+        const authorized = isAuthorized();
+        const loginid = authorized ? currentLoginId() : '';
+        const demo = authorized ? isDemoAccount(loginid) : false;
+        if (!allowLiveRef.current || !authorized) {
+            if (liveRef.current) {
+                liveRef.current = false;
+                setLiveArmed(false);
+                setNotice(
+                    'Live orders paused — the Deriv session is no longer authorized. Paper mode continues; live resumes automatically once the session is authorized again.'
+                );
+                log('risk', 'Live gate: session no longer authorized — live orders paused; continuing in paper mode.');
+            }
+            return false;
+        }
+        if (!liveRef.current) {
+            liveRef.current = true;
+            setLiveArmed(true);
+            setNotice(null);
+            log('status', `Live gate: orders resumed on ${demo ? 'DEMO' : 'REAL'} account (${loginid}).`);
+        } else if (loginid && loginid !== liveLoginRef.current) {
+            log('status', `Live gate: active account is now ${demo ? 'DEMO' : 'REAL'} (${loginid}).`);
+        }
+        liveLoginRef.current = loginid;
+        return true;
+    };
+
     const runLiveRound = async (activeProfile: DualProfile, config: DualConfig): Promise<void> => {
         const activeSymbol = symbolRef.current;
         for (const side of ['over', 'under'] as const) {
@@ -365,6 +402,13 @@ const DualEdgePage = observer(() => {
                     settlement.exitDigit ?? '—'
                 }, ${settlement.profit >= 0 ? '+' : ''}${settlement.profit.toFixed(2)}`
             );
+            void refreshBalance?.();
+            voiceService.announceSettlement({
+                bot: 'Dual Edge',
+                won,
+                profit: settlement.profit,
+                market: activeSymbol,
+            });
             const next = sidesRef.current.map(s =>
                 s.side === side
                     ? applySideResult(s, activeProfile, config, { won, profit: settlement.profit, payoutRatio: quote.askPrice > 0 ? quote.payout / quote.askPrice : undefined })
@@ -392,7 +436,9 @@ const DualEdgePage = observer(() => {
         const activeProfile = profileRef.current;
         const config = configRef.current;
         if (!activeProfile || !config) return;
-        if (liveRef.current) await runLiveRound(activeProfile, config);
+        // The live gate is re-evaluated every round — a dropped session pauses
+        // live orders (paper continues) instead of trusting the Start snapshot.
+        if (liveGate()) await runLiveRound(activeProfile, config);
         else runPaperRound(digit, activeProfile, config);
     };
 
@@ -409,6 +455,10 @@ const DualEdgePage = observer(() => {
             return;
         }
         if (busyRef.current) return;
+        // Minimum cadence between rounds — skip eligible ticks that arrive too
+        // soon so the proposal budget is not drained on 1s markets.
+        if (Date.now() - lastRoundAtRef.current < ROUNDS_MIN_INTERVAL_MS) return;
+        lastRoundAtRef.current = Date.now();
         busyRef.current = true;
         runRound(point.digit).finally(() => {
             busyRef.current = false;
@@ -426,6 +476,8 @@ const DualEdgePage = observer(() => {
         profileRef.current = activeProfile;
         configRef.current = config;
         liveRef.current = liveOK;
+        liveLoginRef.current = liveOK ? currentLoginId() : '';
+        lastRoundAtRef.current = 0;
         symbolRef.current = symbol;
         pipSizeRef.current = 2;
         commit(initialSides(activeProfile, config));
