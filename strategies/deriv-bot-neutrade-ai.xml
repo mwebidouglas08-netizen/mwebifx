@@ -1,0 +1,1347 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<xml xmlns="http://www.w3.org/1999/xhtml" collection="false" is_dbot="true">
+  <variables>
+    <variable type="" id="var_stake" islocal="false" iscloud="false">Stake</variable>
+    <variable type="" id="var_initial" islocal="false" iscloud="false">Initial Stake</variable>
+    <variable type="" id="var_mart" islocal="false" iscloud="false">Martangle</variable>
+    <variable type="" id="var_tp" islocal="false" iscloud="false">Take Profit</variable>
+    <variable type="" id="var_sl" islocal="false" iscloud="false">Stop Loss</variable>
+    <variable type="" id="var_usemart" islocal="false" iscloud="false">Use Martingale</variable>
+    <variable type="" id="var_recovery" islocal="false" iscloud="false">Recovery Mode</variable>
+    <variable type="" id="var_predict" islocal="false" iscloud="false">Predict</variable>
+    <variable type="" id="var_digits" islocal="false" iscloud="false">Digits</variable>
+    <variable type="" id="var_over2" islocal="false" iscloud="false">Over2Cnt</variable>
+    <variable type="" id="var_under7" islocal="false" iscloud="false">Under7Cnt</variable>
+    <variable type="" id="var_over4" islocal="false" iscloud="false">Over4Cnt</variable>
+    <variable type="" id="var_under5" islocal="false" iscloud="false">Under5Cnt</variable>
+    <variable type="" id="var_mode60" islocal="false" iscloud="false">Mode60</variable>
+    <variable type="" id="var_tmp" islocal="false" iscloud="false">TMP</variable>
+    <variable type="" id="var_i" islocal="false" iscloud="false">i</variable>
+  </variables>
+  <block type="trade_definition" id="blk_td" x="0" y="0">
+    <statement name="TRADE_OPTIONS">
+      <block type="trade_definition_market" id="blk_m1" deletable="false" movable="false">
+        <field name="MARKET_LIST">synthetic_index</field>
+        <field name="SUBMARKET_LIST">random_index</field>
+        <field name="SYMBOL_LIST">1HZ25V</field>
+        <next>
+          <block type="trade_definition_tradetype" id="blk_t1" deletable="false" movable="false">
+            <field name="TRADETYPECAT_LIST">digits</field>
+            <field name="TRADETYPE_LIST">overunder</field>
+            <next>
+              <block type="trade_definition_contracttype" id="blk_c1" deletable="false" movable="false">
+                <field name="TYPE_LIST">both</field>
+                <next>
+                  <block type="trade_definition_candleinterval" id="blk_d1" deletable="false" movable="false">
+                    <field name="CANDLEINTERVAL_LIST">60</field>
+                    <next>
+                      <block type="trade_definition_restartbuysell" id="blk_r1" deletable="false" movable="false">
+                        <field name="TIME_MACHINE_ENABLED">FALSE</field>
+                        <next>
+                          <block type="trade_definition_restartonerror" id="blk_r2" deletable="false" movable="false">
+                            <field name="RESTARTONERROR">TRUE</field>
+                          </block>
+                        </next>
+                      </block>
+                    </next>
+                  </block>
+                </next>
+              </block>
+            </next>
+          </block>
+        </next>
+      </block>
+    </statement>
+    <statement name="INITIALIZATION">
+      <block type="variables_set" id="blk_i1">
+        <field name="VAR">Stake</field>
+        <value name="VALUE">
+          <shadow type="math_number">
+            <field name="NUM">0.5</field>
+          </shadow>
+        </value>
+        <next>
+          <block type="variables_set" id="blk_i2">
+            <field name="VAR">Martangle</field>
+            <value name="VALUE">
+              <shadow type="math_number">
+                <field name="NUM">2</field>
+              </shadow>
+            </value>
+            <next>
+              <block type="variables_set" id="blk_i3">
+                <field name="VAR">Take Profit</field>
+                <value name="VALUE">
+                  <shadow type="math_number">
+                    <field name="NUM">10</field>
+                  </shadow>
+                </value>
+                <next>
+                  <block type="variables_set" id="blk_i4">
+                    <field name="VAR">Stop Loss</field>
+                    <value name="VALUE">
+                      <shadow type="math_number">
+                        <field name="NUM">50</field>
+                      </shadow>
+                    </value>
+                    <next>
+                      <block type="variables_set" id="blk_i5">
+                        <field name="VAR">Use Martingale</field>
+                        <value name="VALUE">
+                          <shadow type="logic_boolean">
+                            <field name="BOOL">TRUE</field>
+                          </shadow>
+                        </value>
+                        <next>
+                          <block type="variables_set" id="blk_i6">
+                            <field name="VAR">Recovery Mode</field>
+                            <value name="VALUE">
+                              <shadow type="logic_boolean">
+                                <field name="BOOL">FALSE</field>
+                              </shadow>
+                            </value>
+                            <next>
+                              <block type="variables_set" id="blk_i7">
+                                <field name="VAR">Initial Stake</field>
+                                <value name="VALUE">
+                                  <block type="variables_get">
+                                    <field name="VAR">Stake</field>
+                                  </block>
+                                </value>
+                                <next>
+                                  <block type="variables_set" id="blk_i8">
+                                    <field name="VAR">Predict</field>
+                                    <value name="VALUE">
+                                      <shadow type="math_number">
+                                        <field name="NUM">0</field>
+                                      </shadow>
+                                    </value>
+                                  </block>
+                                </next>
+                              </block>
+                            </next>
+                          </block>
+                        </next>
+                      </block>
+                    </next>
+                  </block>
+                </next>
+              </block>
+            </next>
+          </block>
+        </next>
+      </block>
+    </statement>
+    <statement name="SUBMARKET">
+      <block type="controls_if" id="blk_sm1">
+        <value name="IF0">
+          <block type="logic_compare" id="blk_sm2">
+            <field name="OP">GT</field>
+            <value name="A">
+              <block type="procedures_callreturn" id="blk_sm3">
+                <mutation name="signals"></mutation>
+                <data>blk_sig</data>
+              </block>
+            </value>
+            <value name="B">
+              <shadow type="math_number">
+                <field name="NUM">0</field>
+              </shadow>
+            </value>
+          </block>
+        </value>
+        <statement name="DO0">
+          <block type="trade_definition_tradeoptions" id="blk_to1">
+            <mutation xmlns="http://www.w3.org/1999/xhtml" has_first_barrier="false" has_second_barrier="false" has_prediction="true"></mutation>
+            <field name="DURATIONTYPE_LIST">t</field>
+            <field name="CURRENCY_LIST">USD</field>
+            <value name="DURATION">
+              <shadow type="math_number_positive">
+                <field name="NUM">1</field>
+              </shadow>
+            </value>
+            <value name="AMOUNT">
+              <block type="variables_get">
+                <field name="VAR">Stake</field>
+              </block>
+            </value>
+            <value name="PREDICTION">
+              <block type="variables_get">
+                <field name="VAR">Predict</field>
+              </block>
+            </value>
+          </block>
+        </statement>
+      </block>
+    </statement>
+  </block>
+  <block type="before_purchase" id="blk_bp" x="0" y="1550">
+    <statement name="BEFOREPURCHASE_STACK">
+      <block type="controls_if" id="blk_bp1">
+        <mutation elseif="3"></mutation>
+        <value name="IF0">
+          <block type="logic_compare" id="blk_bp2">
+            <field name="OP">EQ</field>
+            <value name="A">
+              <block type="variables_get">
+                <field name="VAR">Predict</field>
+              </block>
+            </value>
+            <value name="B">
+              <shadow type="math_number">
+                <field name="NUM">2</field>
+              </shadow>
+            </value>
+          </block>
+        </value>
+        <statement name="DO0">
+          <block type="purchase" id="blk_bp3">
+            <field name="PURCHASE_LIST">DIGITOVER</field>
+          </block>
+        </statement>
+        <value name="IF1">
+          <block type="logic_compare" id="blk_bp4">
+            <field name="OP">EQ</field>
+            <value name="A">
+              <block type="variables_get">
+                <field name="VAR">Predict</field>
+              </block>
+            </value>
+            <value name="B">
+              <shadow type="math_number">
+                <field name="NUM">7</field>
+              </shadow>
+            </value>
+          </block>
+        </value>
+        <statement name="DO1">
+          <block type="purchase" id="blk_bp5">
+            <field name="PURCHASE_LIST">DIGITUNDER</field>
+          </block>
+        </statement>
+        <value name="IF2">
+          <block type="logic_compare" id="blk_bp6">
+            <field name="OP">EQ</field>
+            <value name="A">
+              <block type="variables_get">
+                <field name="VAR">Predict</field>
+              </block>
+            </value>
+            <value name="B">
+              <shadow type="math_number">
+                <field name="NUM">4</field>
+              </shadow>
+            </value>
+          </block>
+        </value>
+        <statement name="DO2">
+          <block type="purchase" id="blk_bp7">
+            <field name="PURCHASE_LIST">DIGITOVER</field>
+          </block>
+        </statement>
+        <value name="IF3">
+          <block type="logic_compare" id="blk_bp8">
+            <field name="OP">EQ</field>
+            <value name="A">
+              <block type="variables_get">
+                <field name="VAR">Predict</field>
+              </block>
+            </value>
+            <value name="B">
+              <shadow type="math_number">
+                <field name="NUM">5</field>
+              </shadow>
+            </value>
+          </block>
+        </value>
+        <statement name="DO3">
+          <block type="purchase" id="blk_bp9">
+            <field name="PURCHASE_LIST">DIGITUNDER</field>
+          </block>
+        </statement>
+      </block>
+    </statement>
+  </block>
+  <block type="after_purchase" id="blk_ap" x="1000" y="1550">
+    <statement name="AFTERPURCHASE_STACK">
+      <block type="controls_if" id="blk_ap1">
+        <mutation else="1"></mutation>
+        <value name="IF0">
+          <block type="contract_check_result" id="blk_ap2">
+            <field name="CHECK_RESULT">win</field>
+          </block>
+        </value>
+        <statement name="DO0">
+          <block type="variables_set" id="blk_ap3">
+            <field name="VAR">Stake</field>
+            <value name="VALUE">
+              <block type="variables_get">
+                <field name="VAR">Initial Stake</field>
+              </block>
+            </value>
+            <next>
+              <block type="variables_set" id="blk_ap4">
+                <field name="VAR">Recovery Mode</field>
+                <value name="VALUE">
+                  <shadow type="logic_boolean">
+                    <field name="BOOL">FALSE</field>
+                  </shadow>
+                </value>
+              </block>
+            </next>
+          </block>
+        </statement>
+        <statement name="ELSE">
+          <block type="variables_set" id="blk_ap5">
+            <field name="VAR">Recovery Mode</field>
+            <value name="VALUE">
+              <shadow type="logic_boolean">
+                <field name="BOOL">TRUE</field>
+              </shadow>
+            </value>
+            <next>
+              <block type="controls_if" id="blk_ap6">
+                <mutation else="1"></mutation>
+                <value name="IF0">
+                  <block type="logic_compare" id="blk_ap7">
+                    <field name="OP">EQ</field>
+                    <value name="A">
+                      <block type="variables_get">
+                        <field name="VAR">Use Martingale</field>
+                      </block>
+                    </value>
+                    <value name="B">
+                      <shadow type="logic_boolean">
+                        <field name="BOOL">TRUE</field>
+                      </shadow>
+                    </value>
+                  </block>
+                </value>
+                <statement name="DO0">
+                  <block type="variables_set" id="blk_ap8">
+                    <field name="VAR">Stake</field>
+                    <value name="VALUE">
+                      <block type="math_arithmetic" id="blk_ap9">
+                        <field name="OP">MULTIPLY</field>
+                        <value name="A">
+                          <block type="variables_get">
+                            <field name="VAR">Stake</field>
+                          </block>
+                        </value>
+                        <value name="B">
+                          <block type="variables_get">
+                            <field name="VAR">Martangle</field>
+                          </block>
+                        </value>
+                      </block>
+                    </value>
+                  </block>
+                </statement>
+                <statement name="ELSE">
+                  <block type="variables_set" id="blk_ap10">
+                    <field name="VAR">Stake</field>
+                    <value name="VALUE">
+                      <block type="variables_get">
+                        <field name="VAR">Initial Stake</field>
+                      </block>
+                    </value>
+                  </block>
+                </statement>
+              </block>
+            </next>
+          </block>
+        </statement>
+        <next>
+          <block type="controls_if" id="blk_ap11">
+            <mutation elseif="1" else="1"></mutation>
+            <value name="IF0">
+              <block type="logic_compare" id="blk_ap12">
+                <field name="OP">GTE</field>
+                <value name="A">
+                  <block type="total_profit" id="blk_ap13"></block>
+                </value>
+                <value name="B">
+                  <block type="variables_get">
+                    <field name="VAR">Take Profit</field>
+                  </block>
+                </value>
+              </block>
+            </value>
+            <statement name="DO0">
+              <block type="notify" id="blk_ap14">
+                <field name="NOTIFICATION_TYPE">success</field>
+                <field name="NOTIFICATION_SOUND">silent</field>
+                <value name="MESSAGE">
+                  <block type="text" id="blk_ap15">
+                    <field name="TEXT">Take profit reached. Stopping the bot.</field>
+                  </block>
+                </value>
+              </block>
+            </statement>
+            <value name="IF1">
+              <block type="logic_compare" id="blk_ap16">
+                <field name="OP">LTE</field>
+                <value name="A">
+                  <block type="total_profit" id="blk_ap17"></block>
+                </value>
+                <value name="B">
+                  <block type="math_single" id="blk_ap18">
+                    <field name="OP">NEG</field>
+                    <value name="NUM">
+                      <block type="variables_get">
+                        <field name="VAR">Stop Loss</field>
+                      </block>
+                    </value>
+                  </block>
+                </value>
+              </block>
+            </value>
+            <statement name="DO1">
+              <block type="notify" id="blk_ap19">
+                <field name="NOTIFICATION_TYPE">warn</field>
+                <field name="NOTIFICATION_SOUND">silent</field>
+                <value name="MESSAGE">
+                  <block type="text" id="blk_ap20">
+                    <field name="TEXT">Stop loss hit. Stopping the bot.</field>
+                  </block>
+                </value>
+              </block>
+            </statement>
+            <statement name="ELSE">
+              <block type="trade_again" id="blk_ap21"></block>
+            </statement>
+          </block>
+        </next>
+      </block>
+    </statement>
+  </block>
+  <block type="procedures_defreturn" id="blk_sig" x="0" y="2150">
+    <field name="NAME">signals</field>
+    <statement name="STACK">
+      <block type="variables_set" id="blk_s1">
+        <field name="VAR">Digits</field>
+        <value name="VALUE">
+          <block type="lists_getSublist" id="blk_s2">
+            <mutation xmlns="http://www.w3.org/1999/xhtml" at1="true" at2="false"></mutation>
+            <field name="WHERE1">FROM_END</field>
+            <field name="WHERE2">LAST</field>
+            <value name="LIST">
+              <block type="lastDigitList" id="blk_s3"></block>
+            </value>
+            <value name="AT1">
+              <shadow type="math_number">
+                <field name="NUM">60</field>
+              </shadow>
+            </value>
+          </block>
+        </value>
+        <next>
+          <block type="variables_set" id="blk_s4">
+            <field name="VAR">Over2Cnt</field>
+            <value name="VALUE">
+              <shadow type="math_number">
+                <field name="NUM">0</field>
+              </shadow>
+            </value>
+            <next>
+              <block type="variables_set" id="blk_s5">
+                <field name="VAR">Under7Cnt</field>
+                <value name="VALUE">
+                  <shadow type="math_number">
+                    <field name="NUM">0</field>
+                  </shadow>
+                </value>
+                <next>
+                  <block type="variables_set" id="blk_s6">
+                    <field name="VAR">Over4Cnt</field>
+                    <value name="VALUE">
+                      <shadow type="math_number">
+                        <field name="NUM">0</field>
+                      </shadow>
+                    </value>
+                    <next>
+                      <block type="variables_set" id="blk_s7">
+                        <field name="VAR">Under5Cnt</field>
+                        <value name="VALUE">
+                          <shadow type="math_number">
+                            <field name="NUM">0</field>
+                          </shadow>
+                        </value>
+                        <next>
+                          <block type="controls_for" id="blk_s8">
+                            <field name="VAR">i</field>
+                            <value name="FROM">
+                              <shadow type="math_number">
+                                <field name="NUM">1</field>
+                              </shadow>
+                            </value>
+                            <value name="TO">
+                              <block type="math_constrain" id="blk_s9">
+                                <value name="VALUE">
+                                  <block type="lists_length" id="blk_s10">
+                                    <value name="VALUE">
+                                      <block type="variables_get">
+                                        <field name="VAR">Digits</field>
+                                      </block>
+                                    </value>
+                                  </block>
+                                </value>
+                                <value name="LOW">
+                                  <shadow type="math_number">
+                                    <field name="NUM">0</field>
+                                  </shadow>
+                                </value>
+                                <value name="HIGH">
+                                  <shadow type="math_number">
+                                    <field name="NUM">60</field>
+                                  </shadow>
+                                </value>
+                              </block>
+                            </value>
+                            <value name="BY">
+                              <shadow type="math_number">
+                                <field name="NUM">1</field>
+                              </shadow>
+                            </value>
+                            <statement name="DO">
+                              <block type="variables_set" id="blk_s11">
+                                <field name="VAR">TMP</field>
+                                <value name="VALUE">
+                                  <block type="lists_getIndex" id="blk_s12">
+                                    <mutation xmlns="http://www.w3.org/1999/xhtml" statement="false" at="true"></mutation>
+                                    <field name="MODE">GET</field>
+                                    <field name="WHERE">FROM_START</field>
+                                    <value name="VALUE">
+                                      <block type="variables_get">
+                                        <field name="VAR">Digits</field>
+                                      </block>
+                                    </value>
+                                    <value name="AT">
+                                      <block type="variables_get">
+                                        <field name="VAR">i</field>
+                                      </block>
+                                    </value>
+                                  </block>
+                                </value>
+                                <next>
+                                  <block type="controls_if" id="blk_s13">
+                                    <value name="IF0">
+                                      <block type="logic_compare" id="blk_s14">
+                                        <field name="OP">GT</field>
+                                        <value name="A">
+                                          <block type="variables_get">
+                                            <field name="VAR">TMP</field>
+                                          </block>
+                                        </value>
+                                        <value name="B">
+                                          <shadow type="math_number">
+                                            <field name="NUM">2</field>
+                                          </shadow>
+                                        </value>
+                                      </block>
+                                    </value>
+                                    <statement name="DO0">
+                                      <block type="math_change" id="blk_s15">
+                                        <field name="VAR">Over2Cnt</field>
+                                        <value name="DELTA">
+                                          <shadow type="math_number">
+                                            <field name="NUM">1</field>
+                                          </shadow>
+                                        </value>
+                                      </block>
+                                    </statement>
+                                    <next>
+                                      <block type="controls_if" id="blk_s16">
+                                        <value name="IF0">
+                                          <block type="logic_compare" id="blk_s17">
+                                            <field name="OP">LT</field>
+                                            <value name="A">
+                                              <block type="variables_get">
+                                                <field name="VAR">TMP</field>
+                                              </block>
+                                            </value>
+                                            <value name="B">
+                                              <shadow type="math_number">
+                                                <field name="NUM">7</field>
+                                              </shadow>
+                                            </value>
+                                          </block>
+                                        </value>
+                                        <statement name="DO0">
+                                          <block type="math_change" id="blk_s18">
+                                            <field name="VAR">Under7Cnt</field>
+                                            <value name="DELTA">
+                                              <shadow type="math_number">
+                                                <field name="NUM">1</field>
+                                              </shadow>
+                                            </value>
+                                          </block>
+                                        </statement>
+                                        <next>
+                                          <block type="controls_if" id="blk_s19">
+                                            <value name="IF0">
+                                              <block type="logic_compare" id="blk_s20">
+                                                <field name="OP">GT</field>
+                                                <value name="A">
+                                                  <block type="variables_get">
+                                                    <field name="VAR">TMP</field>
+                                                  </block>
+                                                </value>
+                                                <value name="B">
+                                                  <shadow type="math_number">
+                                                    <field name="NUM">4</field>
+                                                  </shadow>
+                                                </value>
+                                              </block>
+                                            </value>
+                                            <statement name="DO0">
+                                              <block type="math_change" id="blk_s21">
+                                                <field name="VAR">Over4Cnt</field>
+                                                <value name="DELTA">
+                                                  <shadow type="math_number">
+                                                    <field name="NUM">1</field>
+                                                  </shadow>
+                                                </value>
+                                              </block>
+                                            </statement>
+                                            <next>
+                                              <block type="controls_if" id="blk_s22">
+                                                <value name="IF0">
+                                                  <block type="logic_compare" id="blk_s23">
+                                                    <field name="OP">LT</field>
+                                                    <value name="A">
+                                                      <block type="variables_get">
+                                                        <field name="VAR">TMP</field>
+                                                      </block>
+                                                    </value>
+                                                    <value name="B">
+                                                      <shadow type="math_number">
+                                                        <field name="NUM">5</field>
+                                                      </shadow>
+                                                    </value>
+                                                  </block>
+                                                </value>
+                                                <statement name="DO0">
+                                                  <block type="math_change" id="blk_s24">
+                                                    <field name="VAR">Under5Cnt</field>
+                                                    <value name="DELTA">
+                                                      <shadow type="math_number">
+                                                        <field name="NUM">1</field>
+                                                      </shadow>
+                                                    </value>
+                                                  </block>
+                                                </statement>
+                                              </block>
+                                            </next>
+                                          </block>
+                                        </next>
+                                      </block>
+                                    </next>
+                                  </block>
+                                </next>
+                              </block>
+                            </statement>
+                          </block>
+                          <next>
+                            <block type="variables_set" id="blk_s25">
+                              <field name="VAR">Mode60</field>
+                              <value name="VALUE">
+                                <block type="math_on_list" id="blk_s26">
+                                  <field name="OP">MODE</field>
+                                  <value name="LIST">
+                                    <block type="variables_get">
+                                      <field name="VAR">Digits</field>
+                                    </block>
+                                  </value>
+                                </block>
+                              </value>
+                              <next>
+                                <block type="variables_set" id="blk_s27">
+                                  <field name="VAR">Predict</field>
+                                  <value name="VALUE">
+                                    <shadow type="math_number">
+                                      <field name="NUM">0</field>
+                                    </shadow>
+                                  </value>
+                                  <next>
+                                    <block type="controls_if" id="blk_s28">
+                                      <mutation else="1"></mutation>
+                                      <value name="IF0">
+                                        <block type="logic_compare" id="blk_s29">
+                                          <field name="OP">EQ</field>
+                                          <value name="A">
+                                            <block type="variables_get">
+                                              <field name="VAR">Recovery Mode</field>
+                                            </block>
+                                          </value>
+                                          <value name="B">
+                                            <shadow type="logic_boolean">
+                                              <field name="BOOL">FALSE</field>
+                                            </shadow>
+                                          </value>
+                                        </block>
+                                      </value>
+                                      <statement name="DO0">
+                                        <block type="controls_if" id="blk_s30">
+                                          <mutation elseif="3"></mutation>
+                                          <value name="IF0">
+                                            <block type="logic_operation" id="blk_s31">
+                                              <field name="OP">AND</field>
+                                              <value name="A">
+                                                <block type="logic_operation" id="blk_s32">
+                                                  <field name="OP">AND</field>
+                                                  <value name="A">
+                                                    <block type="logic_compare" id="blk_s33">
+                                                      <field name="OP">LTE</field>
+                                                      <value name="A">
+                                                        <block type="lists_getIndex" id="blk_s34">
+                                                          <mutation xmlns="http://www.w3.org/1999/xhtml" statement="false" at="true"></mutation>
+                                                          <field name="MODE">GET</field>
+                                                          <field name="WHERE">FROM_END</field>
+                                                          <value name="VALUE">
+                                                            <block type="variables_get">
+                                                              <field name="VAR">Digits</field>
+                                                            </block>
+                                                          </value>
+                                                          <value name="AT">
+                                                            <shadow type="math_number_positive">
+                                                              <field name="NUM">1</field>
+                                                            </shadow>
+                                                          </value>
+                                                        </block>
+                                                      </value>
+                                                      <value name="B">
+                                                        <shadow type="math_number">
+                                                          <field name="NUM">2</field>
+                                                        </shadow>
+                                                      </value>
+                                                    </block>
+                                                  </value>
+                                                  <value name="B">
+                                                    <block type="logic_compare" id="blk_s35">
+                                                      <field name="OP">LTE</field>
+                                                      <value name="A">
+                                                        <block type="lists_getIndex" id="blk_s36">
+                                                          <mutation xmlns="http://www.w3.org/1999/xhtml" statement="false" at="true"></mutation>
+                                                          <field name="MODE">GET</field>
+                                                          <field name="WHERE">FROM_END</field>
+                                                          <value name="VALUE">
+                                                            <block type="variables_get">
+                                                              <field name="VAR">Digits</field>
+                                                            </block>
+                                                          </value>
+                                                          <value name="AT">
+                                                            <shadow type="math_number_positive">
+                                                              <field name="NUM">2</field>
+                                                            </shadow>
+                                                          </value>
+                                                        </block>
+                                                      </value>
+                                                      <value name="B">
+                                                        <shadow type="math_number">
+                                                          <field name="NUM">2</field>
+                                                        </shadow>
+                                                      </value>
+                                                    </block>
+                                                  </value>
+                                                </block>
+                                              </value>
+                                              <value name="B">
+                                                <block type="logic_compare" id="blk_s37">
+                                                  <field name="OP">GTE</field>
+                                                  <value name="A">
+                                                    <block type="math_arithmetic" id="blk_s38">
+                                                      <field name="OP">MULTIPLY</field>
+                                                      <value name="A">
+                                                        <block type="variables_get">
+                                                          <field name="VAR">Over2Cnt</field>
+                                                        </block>
+                                                      </value>
+                                                      <value name="B">
+                                                        <shadow type="math_number">
+                                                          <field name="NUM">100</field>
+                                                        </shadow>
+                                                      </value>
+                                                    </block>
+                                                  </value>
+                                                  <value name="B">
+                                                    <block type="math_arithmetic" id="blk_s39">
+                                                      <field name="OP">MULTIPLY</field>
+                                                      <value name="A">
+                                                        <shadow type="math_number">
+                                                          <field name="NUM">75</field>
+                                                        </shadow>
+                                                      </value>
+                                                      <value name="B">
+                                                        <block type="lists_length" id="blk_s40">
+                                                          <value name="VALUE">
+                                                            <block type="variables_get">
+                                                              <field name="VAR">Digits</field>
+                                                            </block>
+                                                          </value>
+                                                        </block>
+                                                      </value>
+                                                    </block>
+                                                  </value>
+                                                </block>
+                                              </value>
+                                            </block>
+                                          </value>
+                                          <statement name="DO0">
+                                            <block type="variables_set" id="blk_s41">
+                                              <field name="VAR">Predict</field>
+                                              <value name="VALUE">
+                                                <shadow type="math_number">
+                                                  <field name="NUM">2</field>
+                                                </shadow>
+                                              </value>
+                                            </block>
+                                          </statement>
+                                          <value name="IF1">
+                                            <block type="logic_operation" id="blk_s42">
+                                              <field name="OP">AND</field>
+                                              <value name="A">
+                                                <block type="logic_operation" id="blk_s43">
+                                                  <field name="OP">AND</field>
+                                                  <value name="A">
+                                                    <block type="logic_compare" id="blk_s44">
+                                                      <field name="OP">LTE</field>
+                                                      <value name="A">
+                                                        <block type="lists_getIndex" id="blk_s45">
+                                                          <mutation xmlns="http://www.w3.org/1999/xhtml" statement="false" at="true"></mutation>
+                                                          <field name="MODE">GET</field>
+                                                          <field name="WHERE">FROM_END</field>
+                                                          <value name="VALUE">
+                                                            <block type="variables_get">
+                                                              <field name="VAR">Digits</field>
+                                                            </block>
+                                                          </value>
+                                                          <value name="AT">
+                                                            <shadow type="math_number_positive">
+                                                              <field name="NUM">1</field>
+                                                            </shadow>
+                                                          </value>
+                                                        </block>
+                                                      </value>
+                                                      <value name="B">
+                                                        <shadow type="math_number">
+                                                          <field name="NUM">2</field>
+                                                        </shadow>
+                                                      </value>
+                                                    </block>
+                                                  </value>
+                                                  <value name="B">
+                                                    <block type="logic_compare" id="blk_s46">
+                                                      <field name="OP">LTE</field>
+                                                      <value name="A">
+                                                        <block type="lists_getIndex" id="blk_s47">
+                                                          <mutation xmlns="http://www.w3.org/1999/xhtml" statement="false" at="true"></mutation>
+                                                          <field name="MODE">GET</field>
+                                                          <field name="WHERE">FROM_END</field>
+                                                          <value name="VALUE">
+                                                            <block type="variables_get">
+                                                              <field name="VAR">Digits</field>
+                                                            </block>
+                                                          </value>
+                                                          <value name="AT">
+                                                            <shadow type="math_number_positive">
+                                                              <field name="NUM">2</field>
+                                                            </shadow>
+                                                          </value>
+                                                        </block>
+                                                      </value>
+                                                      <value name="B">
+                                                        <shadow type="math_number">
+                                                          <field name="NUM">2</field>
+                                                        </shadow>
+                                                      </value>
+                                                    </block>
+                                                  </value>
+                                                </block>
+                                              </value>
+                                              <value name="B">
+                                                <block type="logic_compare" id="blk_s48">
+                                                  <field name="OP">GT</field>
+                                                  <value name="A">
+                                                    <block type="variables_get">
+                                                      <field name="VAR">Mode60</field>
+                                                    </block>
+                                                  </value>
+                                                  <value name="B">
+                                                    <shadow type="math_number">
+                                                      <field name="NUM">5</field>
+                                                    </shadow>
+                                                  </value>
+                                                </block>
+                                              </value>
+                                            </block>
+                                          </value>
+                                          <statement name="DO1">
+                                            <block type="variables_set" id="blk_s49">
+                                              <field name="VAR">Predict</field>
+                                              <value name="VALUE">
+                                                <shadow type="math_number">
+                                                  <field name="NUM">2</field>
+                                                </shadow>
+                                              </value>
+                                            </block>
+                                          </statement>
+                                          <value name="IF2">
+                                            <block type="logic_operation" id="blk_s50">
+                                              <field name="OP">AND</field>
+                                              <value name="A">
+                                                <block type="logic_operation" id="blk_s51">
+                                                  <field name="OP">AND</field>
+                                                  <value name="A">
+                                                    <block type="logic_compare" id="blk_s52">
+                                                      <field name="OP">GTE</field>
+                                                      <value name="A">
+                                                        <block type="lists_getIndex" id="blk_s53">
+                                                          <mutation xmlns="http://www.w3.org/1999/xhtml" statement="false" at="true"></mutation>
+                                                          <field name="MODE">GET</field>
+                                                          <field name="WHERE">FROM_END</field>
+                                                          <value name="VALUE">
+                                                            <block type="variables_get">
+                                                              <field name="VAR">Digits</field>
+                                                            </block>
+                                                          </value>
+                                                          <value name="AT">
+                                                            <shadow type="math_number_positive">
+                                                              <field name="NUM">1</field>
+                                                            </shadow>
+                                                          </value>
+                                                        </block>
+                                                      </value>
+                                                      <value name="B">
+                                                        <shadow type="math_number">
+                                                          <field name="NUM">7</field>
+                                                        </shadow>
+                                                      </value>
+                                                    </block>
+                                                  </value>
+                                                  <value name="B">
+                                                    <block type="logic_compare" id="blk_s54">
+                                                      <field name="OP">GTE</field>
+                                                      <value name="A">
+                                                        <block type="lists_getIndex" id="blk_s55">
+                                                          <mutation xmlns="http://www.w3.org/1999/xhtml" statement="false" at="true"></mutation>
+                                                          <field name="MODE">GET</field>
+                                                          <field name="WHERE">FROM_END</field>
+                                                          <value name="VALUE">
+                                                            <block type="variables_get">
+                                                              <field name="VAR">Digits</field>
+                                                            </block>
+                                                          </value>
+                                                          <value name="AT">
+                                                            <shadow type="math_number_positive">
+                                                              <field name="NUM">2</field>
+                                                            </shadow>
+                                                          </value>
+                                                        </block>
+                                                      </value>
+                                                      <value name="B">
+                                                        <shadow type="math_number">
+                                                          <field name="NUM">7</field>
+                                                        </shadow>
+                                                      </value>
+                                                    </block>
+                                                  </value>
+                                                </block>
+                                              </value>
+                                              <value name="B">
+                                                <block type="logic_compare" id="blk_s56">
+                                                  <field name="OP">GTE</field>
+                                                  <value name="A">
+                                                    <block type="math_arithmetic" id="blk_s57">
+                                                      <field name="OP">MULTIPLY</field>
+                                                      <value name="A">
+                                                        <block type="variables_get">
+                                                          <field name="VAR">Under7Cnt</field>
+                                                        </block>
+                                                      </value>
+                                                      <value name="B">
+                                                        <shadow type="math_number">
+                                                          <field name="NUM">100</field>
+                                                        </shadow>
+                                                      </value>
+                                                    </block>
+                                                  </value>
+                                                  <value name="B">
+                                                    <block type="math_arithmetic" id="blk_s58">
+                                                      <field name="OP">MULTIPLY</field>
+                                                      <value name="A">
+                                                        <shadow type="math_number">
+                                                          <field name="NUM">75</field>
+                                                        </shadow>
+                                                      </value>
+                                                      <value name="B">
+                                                        <block type="lists_length" id="blk_s59">
+                                                          <value name="VALUE">
+                                                            <block type="variables_get">
+                                                              <field name="VAR">Digits</field>
+                                                            </block>
+                                                          </value>
+                                                        </block>
+                                                      </value>
+                                                    </block>
+                                                  </value>
+                                                </block>
+                                              </value>
+                                            </block>
+                                          </value>
+                                          <statement name="DO2">
+                                            <block type="variables_set" id="blk_s60">
+                                              <field name="VAR">Predict</field>
+                                              <value name="VALUE">
+                                                <shadow type="math_number">
+                                                  <field name="NUM">7</field>
+                                                </shadow>
+                                              </value>
+                                            </block>
+                                          </statement>
+                                          <value name="IF3">
+                                            <block type="logic_operation" id="blk_s61">
+                                              <field name="OP">AND</field>
+                                              <value name="A">
+                                                <block type="logic_operation" id="blk_s62">
+                                                  <field name="OP">AND</field>
+                                                  <value name="A">
+                                                    <block type="logic_compare" id="blk_s63">
+                                                      <field name="OP">GTE</field>
+                                                      <value name="A">
+                                                        <block type="lists_getIndex" id="blk_s64">
+                                                          <mutation xmlns="http://www.w3.org/1999/xhtml" statement="false" at="true"></mutation>
+                                                          <field name="MODE">GET</field>
+                                                          <field name="WHERE">FROM_END</field>
+                                                          <value name="VALUE">
+                                                            <block type="variables_get">
+                                                              <field name="VAR">Digits</field>
+                                                            </block>
+                                                          </value>
+                                                          <value name="AT">
+                                                            <shadow type="math_number_positive">
+                                                              <field name="NUM">1</field>
+                                                            </shadow>
+                                                          </value>
+                                                        </block>
+                                                      </value>
+                                                      <value name="B">
+                                                        <shadow type="math_number">
+                                                          <field name="NUM">7</field>
+                                                        </shadow>
+                                                      </value>
+                                                    </block>
+                                                  </value>
+                                                  <value name="B">
+                                                    <block type="logic_compare" id="blk_s65">
+                                                      <field name="OP">GTE</field>
+                                                      <value name="A">
+                                                        <block type="lists_getIndex" id="blk_s66">
+                                                          <mutation xmlns="http://www.w3.org/1999/xhtml" statement="false" at="true"></mutation>
+                                                          <field name="MODE">GET</field>
+                                                          <field name="WHERE">FROM_END</field>
+                                                          <value name="VALUE">
+                                                            <block type="variables_get">
+                                                              <field name="VAR">Digits</field>
+                                                            </block>
+                                                          </value>
+                                                          <value name="AT">
+                                                            <shadow type="math_number_positive">
+                                                              <field name="NUM">2</field>
+                                                            </shadow>
+                                                          </value>
+                                                        </block>
+                                                      </value>
+                                                      <value name="B">
+                                                        <shadow type="math_number">
+                                                          <field name="NUM">7</field>
+                                                        </shadow>
+                                                      </value>
+                                                    </block>
+                                                  </value>
+                                                </block>
+                                              </value>
+                                              <value name="B">
+                                                <block type="logic_compare" id="blk_s67">
+                                                  <field name="OP">LT</field>
+                                                  <value name="A">
+                                                    <block type="variables_get">
+                                                      <field name="VAR">Mode60</field>
+                                                    </block>
+                                                  </value>
+                                                  <value name="B">
+                                                    <shadow type="math_number">
+                                                      <field name="NUM">4</field>
+                                                    </shadow>
+                                                  </value>
+                                                </block>
+                                              </value>
+                                            </block>
+                                          </value>
+                                          <statement name="DO3">
+                                            <block type="variables_set" id="blk_s68">
+                                              <field name="VAR">Predict</field>
+                                              <value name="VALUE">
+                                                <shadow type="math_number">
+                                                  <field name="NUM">7</field>
+                                                </shadow>
+                                              </value>
+                                            </block>
+                                          </statement>
+                                        </block>
+                                      </statement>
+                                      <statement name="ELSE">
+                                        <block type="controls_if" id="blk_s69">
+                                          <mutation elseif="1"></mutation>
+                                          <value name="IF0">
+                                            <block type="logic_operation" id="blk_s70">
+                                              <field name="OP">AND</field>
+                                              <value name="A">
+                                                <block type="logic_operation" id="blk_s71">
+                                                  <field name="OP">AND</field>
+                                                  <value name="A">
+                                                    <block type="logic_compare" id="blk_s72">
+                                                      <field name="OP">LTE</field>
+                                                      <value name="A">
+                                                        <block type="lists_getIndex" id="blk_s73">
+                                                          <mutation xmlns="http://www.w3.org/1999/xhtml" statement="false" at="true"></mutation>
+                                                          <field name="MODE">GET</field>
+                                                          <field name="WHERE">FROM_END</field>
+                                                          <value name="VALUE">
+                                                            <block type="variables_get">
+                                                              <field name="VAR">Digits</field>
+                                                            </block>
+                                                          </value>
+                                                          <value name="AT">
+                                                            <shadow type="math_number_positive">
+                                                              <field name="NUM">1</field>
+                                                            </shadow>
+                                                          </value>
+                                                        </block>
+                                                      </value>
+                                                      <value name="B">
+                                                        <shadow type="math_number">
+                                                          <field name="NUM">4</field>
+                                                        </shadow>
+                                                      </value>
+                                                    </block>
+                                                  </value>
+                                                  <value name="B">
+                                                    <block type="logic_compare" id="blk_s74">
+                                                      <field name="OP">LTE</field>
+                                                      <value name="A">
+                                                        <block type="lists_getIndex" id="blk_s75">
+                                                          <mutation xmlns="http://www.w3.org/1999/xhtml" statement="false" at="true"></mutation>
+                                                          <field name="MODE">GET</field>
+                                                          <field name="WHERE">FROM_END</field>
+                                                          <value name="VALUE">
+                                                            <block type="variables_get">
+                                                              <field name="VAR">Digits</field>
+                                                            </block>
+                                                          </value>
+                                                          <value name="AT">
+                                                            <shadow type="math_number_positive">
+                                                              <field name="NUM">2</field>
+                                                            </shadow>
+                                                          </value>
+                                                        </block>
+                                                      </value>
+                                                      <value name="B">
+                                                        <shadow type="math_number">
+                                                          <field name="NUM">4</field>
+                                                        </shadow>
+                                                      </value>
+                                                    </block>
+                                                  </value>
+                                                </block>
+                                              </value>
+                                              <value name="B">
+                                                <block type="logic_compare" id="blk_s76">
+                                                  <field name="OP">GTE</field>
+                                                  <value name="A">
+                                                    <block type="math_arithmetic" id="blk_s77">
+                                                      <field name="OP">MULTIPLY</field>
+                                                      <value name="A">
+                                                        <block type="variables_get">
+                                                          <field name="VAR">Over4Cnt</field>
+                                                        </block>
+                                                      </value>
+                                                      <value name="B">
+                                                        <shadow type="math_number">
+                                                          <field name="NUM">100</field>
+                                                        </shadow>
+                                                      </value>
+                                                    </block>
+                                                  </value>
+                                                  <value name="B">
+                                                    <block type="math_arithmetic" id="blk_s78">
+                                                      <field name="OP">MULTIPLY</field>
+                                                      <value name="A">
+                                                        <shadow type="math_number">
+                                                          <field name="NUM">55</field>
+                                                        </shadow>
+                                                      </value>
+                                                      <value name="B">
+                                                        <block type="lists_length" id="blk_s79">
+                                                          <value name="VALUE">
+                                                            <block type="variables_get">
+                                                              <field name="VAR">Digits</field>
+                                                            </block>
+                                                          </value>
+                                                        </block>
+                                                      </value>
+                                                    </block>
+                                                  </value>
+                                                </block>
+                                              </value>
+                                            </block>
+                                          </value>
+                                          <statement name="DO0">
+                                            <block type="variables_set" id="blk_s80">
+                                              <field name="VAR">Predict</field>
+                                              <value name="VALUE">
+                                                <shadow type="math_number">
+                                                  <field name="NUM">4</field>
+                                                </shadow>
+                                              </value>
+                                            </block>
+                                          </statement>
+                                          <value name="IF1">
+                                            <block type="logic_operation" id="blk_s81">
+                                              <field name="OP">AND</field>
+                                              <value name="A">
+                                                <block type="logic_operation" id="blk_s82">
+                                                  <field name="OP">AND</field>
+                                                  <value name="A">
+                                                    <block type="logic_compare" id="blk_s83">
+                                                      <field name="OP">GTE</field>
+                                                      <value name="A">
+                                                        <block type="lists_getIndex" id="blk_s84">
+                                                          <mutation xmlns="http://www.w3.org/1999/xhtml" statement="false" at="true"></mutation>
+                                                          <field name="MODE">GET</field>
+                                                          <field name="WHERE">FROM_END</field>
+                                                          <value name="VALUE">
+                                                            <block type="variables_get">
+                                                              <field name="VAR">Digits</field>
+                                                            </block>
+                                                          </value>
+                                                          <value name="AT">
+                                                            <shadow type="math_number_positive">
+                                                              <field name="NUM">1</field>
+                                                            </shadow>
+                                                          </value>
+                                                        </block>
+                                                      </value>
+                                                      <value name="B">
+                                                        <shadow type="math_number">
+                                                          <field name="NUM">5</field>
+                                                        </shadow>
+                                                      </value>
+                                                    </block>
+                                                  </value>
+                                                  <value name="B">
+                                                    <block type="logic_compare" id="blk_s85">
+                                                      <field name="OP">GTE</field>
+                                                      <value name="A">
+                                                        <block type="lists_getIndex" id="blk_s86">
+                                                          <mutation xmlns="http://www.w3.org/1999/xhtml" statement="false" at="true"></mutation>
+                                                          <field name="MODE">GET</field>
+                                                          <field name="WHERE">FROM_END</field>
+                                                          <value name="VALUE">
+                                                            <block type="variables_get">
+                                                              <field name="VAR">Digits</field>
+                                                            </block>
+                                                          </value>
+                                                          <value name="AT">
+                                                            <shadow type="math_number_positive">
+                                                              <field name="NUM">2</field>
+                                                            </shadow>
+                                                          </value>
+                                                        </block>
+                                                      </value>
+                                                      <value name="B">
+                                                        <shadow type="math_number">
+                                                          <field name="NUM">5</field>
+                                                        </shadow>
+                                                      </value>
+                                                    </block>
+                                                  </value>
+                                                </block>
+                                              </value>
+                                              <value name="B">
+                                                <block type="logic_compare" id="blk_s87">
+                                                  <field name="OP">GTE</field>
+                                                  <value name="A">
+                                                    <block type="math_arithmetic" id="blk_s88">
+                                                      <field name="OP">MULTIPLY</field>
+                                                      <value name="A">
+                                                        <block type="variables_get">
+                                                          <field name="VAR">Under5Cnt</field>
+                                                        </block>
+                                                      </value>
+                                                      <value name="B">
+                                                        <shadow type="math_number">
+                                                          <field name="NUM">100</field>
+                                                        </shadow>
+                                                      </value>
+                                                    </block>
+                                                  </value>
+                                                  <value name="B">
+                                                    <block type="math_arithmetic" id="blk_s89">
+                                                      <field name="OP">MULTIPLY</field>
+                                                      <value name="A">
+                                                        <shadow type="math_number">
+                                                          <field name="NUM">55</field>
+                                                        </shadow>
+                                                      </value>
+                                                      <value name="B">
+                                                        <block type="lists_length" id="blk_s90">
+                                                          <value name="VALUE">
+                                                            <block type="variables_get">
+                                                              <field name="VAR">Digits</field>
+                                                            </block>
+                                                          </value>
+                                                        </block>
+                                                      </value>
+                                                    </block>
+                                                  </value>
+                                                </block>
+                                              </value>
+                                            </block>
+                                          </value>
+                                          <statement name="DO1">
+                                            <block type="variables_set" id="blk_s91">
+                                              <field name="VAR">Predict</field>
+                                              <value name="VALUE">
+                                                <shadow type="math_number">
+                                                  <field name="NUM">5</field>
+                                                </shadow>
+                                              </value>
+                                            </block>
+                                          </statement>
+                                        </block>
+                                      </statement>
+                                    </block>
+                                  </next>
+                                </block>
+                              </next>
+                            </block>
+                          </next>
+                        </next>
+                      </block>
+                    </next>
+                  </block>
+                </next>
+              </block>
+            </next>
+          </block>
+        </next>
+      </block>
+    </statement>
+    <value name="RETURN">
+      <block type="variables_get">
+        <field name="VAR">Predict</field>
+      </block>
+    </value>
+  </block>
+</xml>

@@ -3,6 +3,7 @@ import { observer } from 'mobx-react-lite';
 import { useStore } from '@/hooks/useStore';
 import useThemeSwitcher from '@/hooks/useThemeSwitcher';
 import AITradingHub from '@/pages/ai-trading-hub';
+import HubAccountSwitcher from '@/pages/ai-trading-hub/account-switcher';
 import OUBotPage from '@/pages/ou-bot';
 import AISignalScannerPage from '@/pages/ai-signal-scanner';
 import BacktestPage from '@/pages/backtest';
@@ -19,22 +20,17 @@ import Landing from '@/pages/landing';
 import BotDock from '@/components/bot-dock';
 import AIBotDock from '@/components/ai-bot';
 import VersionBanner from '@/components/version-banner';
-import HubSidebar, { HUB_VIEW_LABELS, type HubViewId } from '@/components/hub-sidebar';
+import { HUB_VIEW_LABELS, type HubViewId } from '@/components/hub-sidebar';
+import HubTabNav from '@/components/hub-tab-nav';
+import ShellExecBar from '@/components/shell-execbar';
+import AiScanner from '@/components/ai-scanner';
+import RiskPill from '@/components/risk-pill';
 import { voiceService } from '@/services/voice-service';
 import { soundService } from '@/services/sound-service';
 import { subscribeHubNavigation } from '@/services/hub-navigation';
 import VoiceAgentControl from '@/components/voice-agent';
 import AppWrapper from './main';
 import './main.scss';
-
-const useUtcClock = () => {
-    const [now, setNow] = useState(() => new Date());
-    useEffect(() => {
-        const t = setInterval(() => setNow(new Date()), 1000);
-        return () => clearInterval(t);
-    }, []);
-    return now.toLocaleTimeString('en-GB', { timeZone: 'UTC', hour12: false });
-};
 
 /** True once the welcome fanfare/voice has fired for this page load. */
 let welcomedThisLoad = false;
@@ -43,11 +39,9 @@ const Main = observer(() => {
     const { ui } = useStore() ?? {};
     const { is_dark_mode_on, toggleTheme } = useThemeSwitcher();
     const [activeView, setActiveView] = useState<HubViewId>('ai-hub');
-    const [navOpen, setNavOpen] = useState(false);
     // The landing page greets every app open (fresh load or refresh) — the
     // welcome fanfare below plays over it, and Enter/any CTA dismisses it.
     const [landingDone, setLandingDone] = useState(false);
-    const clock = useUtcClock();
 
     // Welcome voice + chime when the app opens (or is refreshed). Both services
     // no-op when muted/unsupported; the voice retries on the first gesture when
@@ -89,34 +83,21 @@ const Main = observer(() => {
     return (
         <div className='main-dashboard'>
             <VersionBanner />
-            <HubSidebar
-                activeView={activeView}
-                onSelect={setActiveView}
-                isDarkMode={!!is_dark_mode_on}
-                onToggleTheme={toggleTheme}
-                isMobileOpen={navOpen}
-                onRequestClose={() => setNavOpen(false)}
-            />
             <div className='main-shell'>
                 <header className='main-topbar'>
-                    <button
-                        type='button'
-                        className='main-topbar__menu'
-                        onClick={() => setNavOpen(true)}
-                        aria-label='Open navigation'
-                        aria-expanded={navOpen}
-                    >
-                        <svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='2' strokeLinecap='round' aria-hidden>
-                            <path d='M4 7h16M4 12h16M4 17h16' />
-                        </svg>
-                    </button>
-                    <h1 className='main-topbar__title'>{HUB_VIEW_LABELS[activeView]}</h1>
-                    <span className='main-topbar__clock' title='Server time (UTC)'>
-                        <span className='main-topbar__clock-dot' aria-hidden />
-                        {clock} UTC
+                    <span className='main-topbar__brand'>
+                        <span className='main-topbar__mark' aria-hidden='true'>
+                            D
+                        </span>
+                        <span className='main-topbar__wordmark'>Dollarvault</span>
                     </span>
+                    <h1 className='main-topbar__title'>{HUB_VIEW_LABELS[activeView]}</h1>
+                    <div className='main-topbar__account'>
+                        <HubAccountSwitcher />
+                    </div>
                     <VoiceAgentControl />
                 </header>
+                <HubTabNav activeView={activeView} onSelect={setActiveView} />
                 <main className='main-content'>
                     {/* Both views stay mounted. Unmounting the hub on switch would
                         drop its market WebSocket and wipe the RSI buffers, so the
@@ -216,6 +197,9 @@ const Main = observer(() => {
             </div>
             <BotDock onNavigate={(view) => setActiveView(view)} />
             <AIBotDock />
+            <AiScanner />
+            <RiskPill />
+            <ShellExecBar isDarkMode={!!is_dark_mode_on} onToggleTheme={toggleTheme} />
             {!landingDone && (
                 <Landing
                     onEnter={() => {

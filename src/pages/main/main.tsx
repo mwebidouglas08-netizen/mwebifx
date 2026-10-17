@@ -39,6 +39,7 @@ import { LegacyGuide1pxIcon } from '@deriv/quill-icons/Legacy';
 import { Localize, localize } from '@deriv-com/translations';
 import { useDevice } from '@deriv-com/ui';
 import RunPanel from '../../components/run-panel';
+import DashboardLaunchpad from '@/components/dashboard-launchpad';
 import ChartModal from '../chart/chart-modal';
 import Dashboard from '../dashboard';
 import RunStrategy from '../dashboard/run-strategy';
@@ -390,6 +391,7 @@ const AppWrapper = observer(() => {
                                 }
                                 id='id-dbot-dashboard'
                             >
+                                <DashboardLaunchpad />
                                 <Dashboard handleTabChange={handleTabChange} />
                             </div>
                             <div

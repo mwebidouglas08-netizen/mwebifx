@@ -8,11 +8,13 @@ import {
     PairProfileId,
     PAIR_PROFILES,
     bestPairCandidate,
+    classifyUniverseCategory,
     filterUniverseByScope,
     isFavourable,
     isStrongSignal,
     lastDigitAt,
     martingaleStake,
+    neutradeSignal,
     pairCandidateToSignal,
     pipSizeDefault,
     resolveUniversePipSize,
@@ -166,6 +168,8 @@ const normalizeSettings = (s: Partial<AlgoProSettings>): AlgoProSettings => {
     const base = { ...DEFAULT_ALGO_PRO_SETTINGS, ...s };
     return {
         ...base,
+        // Neutrade runs its own regime gates — the pair scanner can never override them.
+        usePairScanner: base.strategyId === 'neutrade-ai' ? false : base.usePairScanner,
         stake: Math.max(0.01, Number.isFinite(base.stake) ? base.stake : 0.5),
         ticks: Math.min(10, Math.max(1, Math.round(base.ticks || 1))),
         takeProfit: Math.max(0, Number.isFinite(base.takeProfit) ? base.takeProfit : 5),
@@ -322,7 +326,7 @@ export class AlgoProEngine {
                 : `Algo Pro AI starting on ${accountIsDemo ? 'DEMO' : 'REAL'} account (${loginid}).`
         );
 
-        const markets = await this.buildUniverse(settings.scope);
+        const markets = await this.buildUniverse(settings);
         if (gen !== this.generation) return;
         if (!markets.length) {
             const msg = `No digit-capable markets found for scope "${settings.scope}" right now.`;
@@ -377,7 +381,16 @@ export class AlgoProEngine {
         this.lastTickAt = Date.now();
         this.startWatchdog(gen);
         this.update({ loading: false, running: true, status: 'Scanning' });
-        this.logEvent('discover', `Scanning ${markets.length} digit-capable markets (${settings.scope}) — strategy ${settings.strategyId}.`);
+        if (settings.strategyId === 'neutrade-ai') {
+            this.logEvent(
+                'discover',
+                `Multi-Market Scanner Activated! Monitoring ${markets.length} volatility markets: ${markets
+                    .map(m => m.symbol)
+                    .join(', ')}. The bot will automatically trade on any market that meets your purchase conditions.`
+            );
+        } else {
+            this.logEvent('discover', `Scanning ${markets.length} digit-capable markets (${settings.scope}) — strategy ${settings.strategyId}.`);
+        }
         this.say(`Algo Pro AI started. Scanning ${markets.length} markets.`);
     }
 
@@ -442,7 +455,8 @@ export class AlgoProEngine {
      * static ALGO_PRO_MARKETS catalog when discovery returns nothing
      * (offline / mocked sessions) so paper trading keeps working.
      */
-    private async buildUniverse(scope: AlgoProScope): Promise<AlgoProUniverseEntry[]> {
+    private async buildUniverse(settings: AlgoProSettings): Promise<AlgoProUniverseEntry[]> {
+        const scope = settings.scope;
         let discovered: SyntheticSymbol[] = [];
         try {
             discovered = await discoverSyntheticSymbols();
@@ -451,14 +465,18 @@ export class AlgoProEngine {
         }
         const open = discovered.filter(s => s.exchangeIsOpen && !s.isSuspended);
         if (!open.length) {
-            return scopeMarkets(scope).map(m => ({
-                symbol: m.symbol,
-                displayName: m.displayName,
-                oneSecond: m.oneSecond,
-                pipSize: pipSizeDefault(m.symbol),
-            }));
+            return scopeMarkets(scope)
+                .filter(m => settings.strategyId !== 'neutrade-ai' || classifyUniverseCategory(m.symbol, m.displayName) === 'volatility')
+                .map(m => ({
+                    symbol: m.symbol,
+                    displayName: m.displayName,
+                    oneSecond: m.oneSecond,
+                    pipSize: pipSizeDefault(m.symbol),
+                }));
         }
-        const scoped = filterUniverseByScope(open, scope);
+        let scoped = filterUniverseByScope(open, scope);
+        // Neutrade monitors only the volatility indices (the reference bot's 13-market list).
+        if (settings.strategyId === 'neutrade-ai') scoped = scoped.filter(c => c.category === 'volatility');
         const kept: UniverseCandidate[] = [];
         const CONCURRENCY = 8;
         for (let i = 0; i < scoped.length; i += CONCURRENCY) {
@@ -565,6 +583,15 @@ export class AlgoProEngine {
         settings: AlgoProSettings,
         recoveryMode: boolean
     ): { signal: AlgoProSignal | null; pairConfidence: number; signalEdge: number; favourable: boolean } {
+        // Neutrade: the reference bot trades purely on its regime gates — no
+        // pair scanner and no break-even edge filter. Edge is still measured
+        // for the UI ranking, but never blocks a gate that has fired.
+        if (settings.strategyId === 'neutrade-ai') {
+            const signal = neutradeSignal(digits, recoveryMode);
+            if (!signal) return { signal: null, pairConfidence: 0, signalEdge: 0, favourable: false };
+            const quality = signalQuality(signal, digits, prices);
+            return { signal, pairConfidence: 0, signalEdge: quality.edge, favourable: true };
+        }
         const profile = PAIR_PROFILES.find(p => p.id === settings.profileId) ?? PAIR_PROFILES[1];
         const best = bestPairCandidate(digits, profile);
         const signal = settings.usePairScanner
@@ -582,6 +609,7 @@ export class AlgoProEngine {
 
     private signalEligible(m: AlgoProMarketState): boolean {
         const s = this.state.settings;
+        if (s.strategyId === 'neutrade-ai') return !!m.signal;
         if (!m.signal || !m.favourable) return false;
         if (s.usePairScanner) return m.pairConfidence >= s.pairConfidenceGate;
         return true;
@@ -614,7 +642,10 @@ export class AlgoProEngine {
         // this very tick, so waiting would only miss the setup.
         const strong = strongOf(m);
         const confident = settings.usePairScanner && m.pairConfidence >= STRONG_PAIR_CONFIDENCE;
-        if (!strong && !confident && settings.cooldownMs > 0 && Date.now() - this.lastOrderAt < settings.cooldownMs) return;
+        // Neutrade fires the instant its gate meets (reference parity: no cooldown);
+        // everything else keeps the production anti-thrash window.
+        const cooldown = settings.strategyId === 'neutrade-ai' ? 0 : settings.cooldownMs;
+        if (!strong && !confident && cooldown > 0 && Date.now() - this.lastOrderAt < cooldown) return;
 
         // One trade per pattern tick: symbol:epoch:contract:barrier dedupe.
         const epoch = Math.floor(m.lastQuote * 100);
@@ -713,9 +744,21 @@ export class AlgoProEngine {
             activeSignal: signal.label,
             status: `${signal.label} on ${m.displayName}…`,
         });
-        this.logEvent('signal', `${signal.label} on ${m.displayName} — ${signal.contractType}${signal.barrier !== undefined ? ` ${signal.barrier}` : ''} @ stake ${stake.toFixed(2)}`, {
-            symbol: m.symbol,
-        });
+        if (settings.strategyId === 'neutrade-ai') {
+            this.logEvent(
+                'signal',
+                `Multi-Market Signal Detected! Market: ${m.displayName} Condition: ${neutradeCondition(signal)} Last 2 digits: [${m.digits
+                    .slice(-2)
+                    .join(', ')}] Status: CONDITION MET Preparing to trade on ${m.displayName}…`,
+                { symbol: m.symbol }
+            );
+        } else {
+            this.logEvent(
+                'signal',
+                `${signal.label} on ${m.displayName} — ${signal.contractType}${signal.barrier !== undefined ? ` ${signal.barrier}` : ''} @ stake ${stake.toFixed(2)}`,
+                { symbol: m.symbol }
+            );
+        }
         voiceService.announceSignal({
             bot: 'Algo Pro AI',
             market: m.displayName,
@@ -815,7 +858,10 @@ export class AlgoProEngine {
         );
         const totalProfit = Math.round((this.state.totalProfit + profit) * 1e8) / 1e8;
         const lossDepth = won ? 0 : this.state.lossDepth + 1;
-        const recoveryMode = settings.strategyId.includes('recovery') && !won;
+        // Neutrade's Recovery Mode flag: set after any loss, cleared by the next win
+        // (the reference bot flips it in its after_purchase block exactly this way).
+        const recoveryMode =
+            settings.strategyId === 'neutrade-ai' ? !won : settings.strategyId.includes('recovery') && !won;
         const runCount = won ? this.state.runCount + 1 : this.state.runCount;
         const wins = won ? this.state.wins + 1 : this.state.wins;
         const losses = won ? this.state.losses : this.state.losses + 1;
@@ -876,15 +922,17 @@ export class AlgoProEngine {
         }
 
         // Session guards (kicktrade exact: "Take profit reached" / "Stop loss reached";
-        // win target from Infinity Algo 1).
+        // win target from Infinity Algo 1). Neutrade prints the reference bot's own
+        // print-block wording.
+        const isNeutrade = settings.strategyId === 'neutrade-ai';
         if (settings.takeProfit > 0 && totalProfit + 1e-6 >= settings.takeProfit) {
-            const msg = `Take profit reached: ${totalProfit.toFixed(2)}`;
+            const msg = isNeutrade ? `Congratulations. TakeProfit Achieved (${totalProfit.toFixed(2)})` : `Take profit reached: ${totalProfit.toFixed(2)}`;
             this.say(msg, true);
             this.stop(msg);
             return;
         }
         if (settings.stopLoss > 0 && totalProfit - 1e-6 <= -settings.stopLoss) {
-            const msg = `Stop loss reached: ${totalProfit.toFixed(2)}`;
+            const msg = isNeutrade ? `Sorry!!! Stop Loss Hit (${totalProfit.toFixed(2)})` : `Stop loss reached: ${totalProfit.toFixed(2)}`;
             this.say(msg, true);
             this.stop(msg);
             return;
@@ -899,8 +947,18 @@ export class AlgoProEngine {
 }
 
 const signalLookback = (strategyId: AlgoProStrategyId, recoveryMode: boolean): number => {
+    if (strategyId === 'neutrade-ai') return 60;
     if (recoveryMode) return 5;
     return strategyId.endsWith('-ai') ? 5 : 2;
+};
+
+/** Entry-condition text the reference journal prints alongside a signal. */
+const neutradeCondition = (signal: AlgoProSignal): string => {
+    if (signal.contractType === 'DIGITOVER') return `≤ ${signal.barrier}`;
+    if (signal.contractType === 'DIGITUNDER') return `≥ ${signal.barrier}`;
+    if (signal.contractType === 'DIGITODD') return 'all even → Odd';
+    if (signal.contractType === 'DIGITEVEN') return 'all odd → Even';
+    return signal.label;
 };
 
 export const algoProEngine = new AlgoProEngine();

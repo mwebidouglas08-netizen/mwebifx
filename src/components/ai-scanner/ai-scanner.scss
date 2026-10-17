@@ -1,0 +1,360 @@
+/* Floating pulsing AI Scanner button — bottom-right, just left of the bot
+   dock FAB and above the execution bar (reference parity). */
+.ai-scanner-fab {
+    position: fixed;
+    right: 6.2rem;
+    bottom: 5rem;
+    z-index: 1180;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.55rem 1.1rem 0.55rem 0.6rem;
+    border: 1px solid rgb(34 211 238 / 45%);
+    border-radius: 999px;
+    background: linear-gradient(135deg, rgb(13 22 48 / 96%), rgb(18 29 60 / 96%));
+    color: #e8eefc;
+    cursor: pointer;
+    box-shadow: 0 10px 30px rgb(0 0 0 / 45%), 0 0 18px rgb(34 211 238 / 18%);
+    transition: border-color 0.18s ease, transform 0.18s ease;
+
+    &:hover {
+        border-color: #22d3ee;
+        transform: translateY(-1px);
+    }
+
+    &__icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 3rem;
+        height: 3rem;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #22d3ee, #8b5cf6);
+        color: #06122a;
+    }
+
+    &__text {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        line-height: 1.15;
+
+        strong {
+            font-size: 1.2rem;
+            font-weight: 800;
+            letter-spacing: 0.03em;
+        }
+
+        small {
+            font-size: 0.98rem;
+            color: #8b98b8;
+        }
+    }
+
+    &__ring {
+        position: absolute;
+        inset: -3px;
+        border-radius: 999px;
+        border: 2px solid rgb(34 211 238 / 55%);
+        animation: scannerPulse 1.9s ease-out infinite;
+        pointer-events: none;
+    }
+
+    @media (max-width: 859px) {
+        right: 1.4rem;
+        bottom: 11.4rem;
+        padding: 0.45rem 0.9rem 0.45rem 0.5rem;
+
+        &__text small {
+            display: none;
+        }
+    }
+}
+
+@keyframes scannerPulse {
+    0% {
+        opacity: 0.9;
+        transform: scale(1);
+    }
+    70% {
+        opacity: 0;
+        transform: scale(1.08);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(1.08);
+    }
+}
+
+/* Modal — dark reference-style card with the 01 Entry Scanner / 02 Pro AI
+   panels. */
+.ai-scan-modal__backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 2200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.6rem;
+    background: rgb(2 6 23 / 66%);
+    backdrop-filter: blur(4px);
+}
+
+.ai-scan-modal {
+    width: min(94vw, 560px);
+    max-height: min(88vh, 780px);
+    overflow-y: auto;
+    border: 1px solid rgb(148 163 184 / 20%);
+    border-radius: 18px;
+    background: #0a1128;
+    color: #e8eefc;
+    box-shadow: 0 30px 80px rgb(0 0 0 / 55%);
+    animation: scanModalIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+
+    &__head {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.9rem;
+        padding: 1.5rem 1.6rem 1.1rem;
+        border-bottom: 1px solid rgb(148 163 184 / 14%);
+
+        h2 {
+            margin: 0;
+            font-size: 1.7rem;
+            letter-spacing: 0.02em;
+        }
+
+        p {
+            margin: 0.25rem 0 0;
+            font-size: 1.12rem;
+            color: #8b98b8;
+        }
+    }
+
+    &__pulse {
+        flex: 0 0 auto;
+        width: 1rem;
+        height: 1rem;
+        margin-top: 0.55rem;
+        border-radius: 50%;
+        background: #22d3ee;
+        box-shadow: 0 0 10px rgb(34 211 238 / 85%);
+        animation: scannerPulse 1.9s ease-out infinite;
+    }
+
+    &__close {
+        margin-inline-start: auto;
+        width: 3rem;
+        height: 3rem;
+        border: 0;
+        border-radius: 0.7rem;
+        background: rgb(148 163 184 / 12%);
+        color: #cbd5e1;
+        font-size: 1.9rem;
+        line-height: 1;
+        cursor: pointer;
+
+        &:hover {
+            background: rgb(148 163 184 / 22%);
+            color: #fff;
+        }
+    }
+
+    &__panel {
+        padding: 1.3rem 1.6rem;
+        border-bottom: 1px solid rgb(148 163 184 / 14%);
+    }
+
+    &__panel-head {
+        display: flex;
+        align-items: center;
+        gap: 0.9rem;
+        margin-bottom: 1rem;
+
+        h3 {
+            margin: 0;
+            font-size: 1.35rem;
+            letter-spacing: 0.02em;
+        }
+
+        p {
+            margin: 0.15rem 0 0;
+            font-size: 1.05rem;
+            color: #8b98b8;
+        }
+    }
+
+    &__index {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.7rem;
+        height: 2.7rem;
+        border-radius: 0.75rem;
+        background: rgb(34 211 238 / 12%);
+        border: 1px solid rgb(34 211 238 / 35%);
+        color: #22d3ee;
+        font-weight: 800;
+        font-size: 1.15rem;
+    }
+
+    &__seg {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.4rem;
+        padding: 0.35rem;
+        border-radius: 0.85rem;
+        background: rgb(15 23 42 / 85%);
+        border: 1px solid rgb(148 163 184 / 16%);
+    }
+
+    &__seg-btn {
+        padding: 0.6rem 0.4rem;
+        border: 0;
+        border-radius: 0.6rem;
+        background: transparent;
+        color: #8b98b8;
+        font-size: 1.12rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: color 0.15s ease, background 0.15s ease;
+
+        &:hover {
+            color: #e8eefc;
+        }
+
+        &--on {
+            background: linear-gradient(135deg, rgb(34 211 238 / 22%), rgb(139 92 246 / 22%));
+            color: #22d3ee;
+            box-shadow: inset 0 0 0 1px rgb(34 211 238 / 40%);
+        }
+    }
+
+    &__meta {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.55rem;
+        margin: 1rem 0 0;
+
+        div {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.6rem;
+            padding: 0.55rem 0.75rem;
+            border-radius: 0.65rem;
+            background: rgb(15 23 42 / 70%);
+            border: 1px solid rgb(148 163 184 / 12%);
+        }
+
+        dt {
+            font-size: 0.98rem;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: #64748b;
+        }
+
+        dd {
+            margin: 0;
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #e8eefc;
+
+            select {
+                padding: 0.25rem 0.5rem;
+                border-radius: 0.5rem;
+                border: 1px solid rgb(148 163 184 / 25%);
+                background: #0d1630;
+                color: #e8eefc;
+                font-size: 1.1rem;
+            }
+        }
+    }
+
+    &__settings {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.7rem;
+
+        label {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+
+            span {
+                font-size: 0.98rem;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+                color: #64748b;
+            }
+
+            input {
+                padding: 0.6rem 0.75rem;
+                border-radius: 0.65rem;
+                border: 1px solid rgb(148 163 184 / 22%);
+                background: rgb(15 23 42 / 70%);
+                color: #e8eefc;
+                font-size: 1.2rem;
+                font-family: var(--brand-font-monospace);
+
+                &:focus {
+                    outline: none;
+                    border-color: rgb(34 211 238 / 55%);
+                }
+            }
+        }
+    }
+
+    &__actions {
+        display: flex;
+        gap: 0.7rem;
+        margin-top: 1.05rem;
+    }
+
+    &__foot {
+        padding: 1rem 1.6rem 1.3rem;
+        font-size: 1.02rem;
+        line-height: 1.5;
+        color: #64748b;
+    }
+}
+
+.ai-scan-btn {
+    padding: 0.68rem 1.3rem;
+    border-radius: 0.7rem;
+    border: 1px solid rgb(148 163 184 / 28%);
+    background: rgb(148 163 184 / 10%);
+    color: #cbd5e1;
+    font-size: 1.18rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+
+    &:hover:not(:disabled) {
+        border-color: rgb(34 211 238 / 45%);
+        color: #fff;
+    }
+
+    &:disabled {
+        opacity: 0.6;
+        cursor: wait;
+    }
+
+    &--primary {
+        border-color: transparent;
+        background: linear-gradient(135deg, #0891b2, #6d28d9);
+        color: #fff;
+
+        &:hover:not(:disabled) {
+            filter: brightness(1.12);
+        }
+    }
+}
+
+@keyframes scanModalIn {
+    from {
+        opacity: 0;
+        transform: translateY(16px) scale(0.98);
+    }
+}

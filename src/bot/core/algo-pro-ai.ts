@@ -14,7 +14,8 @@ export type AlgoProStrategyId =
     | 'over-2-recovery-even-odd'
     | 'over-2-recovery-over-4-under-5'
     | 'under-7-recovery-even-odd'
-    | 'under-7-recovery-over-4-under-5';
+    | 'under-7-recovery-over-4-under-5'
+    | 'neutrade-ai';
 
 export interface AlgoProStrategy {
     id: AlgoProStrategyId;
@@ -89,11 +90,21 @@ export const ALGO_PRO_STRATEGIES: AlgoProStrategy[] = [
         id: 'under-7-recovery-over-4-under-5',
         number: '07',
         title: 'Under 7 Recovery → Over 4–Under 5',
-        shortTitle: 'Under 7 Recovery · Over 4–Under 5',
+        shortTitle: 'Under 7 Recovery · Over4–Under5',
         description: 'The selected digit count above 7 triggers Under 7, followed by range recovery after a loss.',
         accent: '#ff3f7d',
         primaryCount: 2,
         recoveryCount: 5,
+    },
+    {
+        id: 'neutrade-ai',
+        number: '08',
+        title: 'NEUTRADE AI',
+        shortTitle: 'NEUTRADE AI',
+        description: 'Premium automated trading bot with advanced algorithms.',
+        accent: '#12d6a0',
+        primaryCount: 2,
+        recoveryCount: 4,
     },
 ];
 
@@ -116,9 +127,12 @@ export const ALGO_PRO_MARKETS: AlgoProMarket[] = [
     { symbol: 'R_75', displayName: 'Volatility 75 Index', oneSecond: false },
     { symbol: 'R_100', displayName: 'Volatility 100 Index', oneSecond: false },
     { symbol: '1HZ10V', displayName: 'Volatility 10 (1s) Index', oneSecond: true },
+    { symbol: '1HZ15V', displayName: 'Volatility 15 (1s) Index', oneSecond: true },
     { symbol: '1HZ25V', displayName: 'Volatility 25 (1s) Index', oneSecond: true },
+    { symbol: '1HZ30V', displayName: 'Volatility 30 (1s) Index', oneSecond: true },
     { symbol: '1HZ50V', displayName: 'Volatility 50 (1s) Index', oneSecond: true },
     { symbol: '1HZ75V', displayName: 'Volatility 75 (1s) Index', oneSecond: true },
+    { symbol: '1HZ90V', displayName: 'Volatility 90 (1s) Index', oneSecond: true },
     { symbol: '1HZ100V', displayName: 'Volatility 100 (1s) Index', oneSecond: true },
 ];
 
@@ -231,8 +245,10 @@ export const allRising = (prices: number[]): boolean =>
 export const allFalling = (prices: number[]): boolean =>
     prices.length > 1 && prices.every((p, i) => i === 0 || p < prices[i - 1]);
 
-/** tE(): lookback window — 5 for *-ai strategies and recovery mode, else 2. */
+/** tE(): lookback window — 5 for *-ai strategies and recovery mode, 60 for
+ *  Neutrade (its percentage gates measure the last 60 digits), else 2. */
 export const checkedTicks = (strategyId: AlgoProStrategyId, recoveryMode: boolean): number => {
+    if (strategyId === 'neutrade-ai') return 60;
     if (recoveryMode) return 5;
     return strategyId.endsWith('-ai') ? 5 : 2;
 };
@@ -296,9 +312,105 @@ export const signalFromStrategy = (
         case 'under-7-recovery-over-4-under-5':
             if (recoveryMode) return over4Under5Pattern(digits);
             return allAbove(digits.slice(-2), 7) ? { contractType: 'DIGITUNDER', label: 'Trade Under 7', barrier: 7 } : null;
+        case 'neutrade-ai':
+            return neutradeSignal(digits, recoveryMode);
         default:
             return null;
     }
+};
+
+// ---------------------------------------------------------------------------
+// NEUTRADE AI — exact port of traderscheme.com's Neutrade bot regime gates
+// (loaded blockly blocks: 6 normal elseif gates + 4 recovery elseif gates,
+//  percentages measured over the last 60 digits, last-2 entry conditions)
+// ---------------------------------------------------------------------------
+
+/** Digit window the reference bot measures its percentages over. */
+export const NEUTRADE_WINDOW = 60;
+
+const countHits = (digits: readonly number[], pred: (d: number) => boolean): number =>
+    digits.reduce((n, d) => (pred(d) ? n + 1 : n), 0);
+
+/** Reference percentage math in exact integer form: hits·100 ≥ threshold·total. */
+export const meetsPercent = (hits: number, total: number, threshold: number): boolean =>
+    total > 0 && hits * 100 >= threshold * total;
+
+/** Mode of the window — ties resolve to the LOWEST digit (reference tie-break). */
+export const mostFrequentDigit = (digits: readonly number[]): number | undefined => {
+    if (!digits.length) return undefined;
+    const counts = new Array<number>(10).fill(0);
+    for (const d of digits) if (d >= 0 && d <= 9) counts[d] += 1;
+    let best = -1;
+    let bestCount = -1;
+    for (let d = 0; d < 10; d++) {
+        if (counts[d] > bestCount) {
+            bestCount = counts[d];
+            best = d;
+        }
+    }
+    return best;
+};
+
+/** Second-most-frequent distinct digit (count desc, digit asc tie-break);
+ *  undefined when fewer than two distinct digits are present. */
+export const secondMostFrequentDigit = (digits: readonly number[]): number | undefined => {
+    if (!digits.length) return undefined;
+    const counts = new Array<number>(10).fill(0);
+    for (const d of digits) if (d >= 0 && d <= 9) counts[d] += 1;
+    const present: number[] = [];
+    for (let d = 0; d < 10; d++) if (counts[d] > 0) present.push(d);
+    if (present.length < 2) return undefined;
+    present.sort((a, b) => counts[b] - counts[a] || a - b);
+    return present[1];
+};
+
+/** neutradeSignal(): the reference bot's gate chain, verbatim.
+ *  Normal mode (recoveryMode = false), elseif order:
+ *    1. last2 ≤ 2 ∧ Over2% over 60 ≥ 75      → Over 2
+ *    2. last2 ≤ 2 ∧ mode60 > 5               → Over 2
+ *    3. last2 ≥ 7 ∧ Under7% over 60 ≥ 75     → Under 7
+ *    4. last2 ≥ 7 ∧ mode60 < 4               → Under 7
+ *    5. last2 ≤ 2 ∧ mode60 > 5 ∧ mode2 > 5   → Over 2   (redundant by gate 2, kept exact)
+ *    6. last2 ≥ 7 ∧ mode60 < 4 ∧ mode2 < 4   → Under 7  (redundant by gate 4, kept exact)
+ *  Recovery mode (after a loss), elseif order:
+ *    a. last2 all-even ∧ Odd%  over 60 ≥ 55  → Odd
+ *    b. last2 all-odd  ∧ Even% over 60 ≥ 55  → Even
+ *    c. last2 ≤ 4 ∧ Over4% over 60 ≥ 55      → Over 4
+ *    d. last2 ≥ 5 ∧ Under5% over 60 ≥ 55     → Under 5 */
+export const neutradeSignal = (digits: number[], recoveryMode: boolean): AlgoProSignal | null => {
+    if (digits.length < 2) return null;
+    const last2 = digits.slice(-2);
+    const win = digits.slice(-NEUTRADE_WINDOW);
+
+    if (!recoveryMode) {
+        const last2Low = last2.every(d => d <= 2);
+        const last2High = last2.every(d => d >= 7);
+        if (!last2Low && !last2High) return null;
+        const mode = mostFrequentDigit(win) ?? -1;
+        const second = secondMostFrequentDigit(win);
+        if (last2Low) {
+            if (meetsPercent(countHits(win, d => d > 2), win.length, 75)) return { contractType: 'DIGITOVER', label: 'Trade Over 2', barrier: 2 };
+            if (mode > 5) return { contractType: 'DIGITOVER', label: 'Trade Over 2', barrier: 2 };
+            if (second !== undefined && mode > 5 && second > 5) return { contractType: 'DIGITOVER', label: 'Trade Over 2', barrier: 2 };
+            return null;
+        }
+        if (meetsPercent(countHits(win, d => d < 7), win.length, 75)) return { contractType: 'DIGITUNDER', label: 'Trade Under 7', barrier: 7 };
+        if (mode < 4) return { contractType: 'DIGITUNDER', label: 'Trade Under 7', barrier: 7 };
+        if (second !== undefined && mode < 4 && second < 4) return { contractType: 'DIGITUNDER', label: 'Trade Under 7', barrier: 7 };
+        return null;
+    }
+
+    const oddHits = countHits(win, d => d % 2 === 1);
+    const evenHits = win.length - oddHits;
+    if (allEven(last2) && meetsPercent(oddHits, win.length, 55)) return { contractType: 'DIGITODD', label: 'Trade Odd' };
+    if (allOdd(last2) && meetsPercent(evenHits, win.length, 55)) return { contractType: 'DIGITEVEN', label: 'Trade Even' };
+    if (last2.every(d => d <= 4) && meetsPercent(countHits(win, d => d > 4), win.length, 55)) {
+        return { contractType: 'DIGITOVER', label: 'Trade Over 4', barrier: 4 };
+    }
+    if (last2.every(d => d >= 5) && meetsPercent(countHits(win, d => d < 5), win.length, 55)) {
+        return { contractType: 'DIGITUNDER', label: 'Trade Under 5', barrier: 5 };
+    }
+    return null;
 };
 
 // ---------------------------------------------------------------------------

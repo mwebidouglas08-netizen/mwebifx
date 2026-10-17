@@ -121,16 +121,16 @@ describe('resolveUniversePipSize', () => {
 });
 
 describe('static fallback catalog (backwards compatibility)', () => {
-    it('ALGO_PRO_MARKETS / scopeMarkets still expose the original 10-market list', () => {
-        expect(ALGO_PRO_MARKETS).toHaveLength(10);
-        expect(scopeMarkets('all')).toHaveLength(10);
+    it('ALGO_PRO_MARKETS / scopeMarkets expose the reference 13-market list', () => {
+        expect(ALGO_PRO_MARKETS).toHaveLength(13);
+        expect(scopeMarkets('all')).toHaveLength(13);
         expect(scopeMarkets('standard')).toHaveLength(5);
-        expect(scopeMarkets('one-second')).toHaveLength(5);
+        expect(scopeMarkets('one-second')).toHaveLength(8);
     });
 
     it('the fallback catalog covers the classic + 1s families the scope filter targets', () => {
         const all = filterUniverseByScope(scopeMarkets('all'), 'all');
         expect(all.filter(m => m.category === 'volatility' && !m.oneSecond)).toHaveLength(5);
-        expect(all.filter(m => m.oneSecond)).toHaveLength(5);
+        expect(all.filter(m => m.oneSecond)).toHaveLength(8);
     });
 });

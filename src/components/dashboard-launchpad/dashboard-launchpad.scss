@@ -1,0 +1,198 @@
+/* Reference-style dashboard launchpad: rotating hero + 4 numbered cards.
+   Uses the shell tokens inherited from .main-dashboard. */
+.launchpad {
+    margin-bottom: 1.6rem;
+
+    &__hero {
+        position: relative;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        min-height: 15rem;
+        padding: 2.2rem 2.4rem;
+        border-radius: 18px;
+        border: 1px solid var(--shell-border);
+        background:
+            radial-gradient(120% 160% at 8% 0%, rgb(34 211 238 / 16%), transparent 55%),
+            radial-gradient(120% 160% at 96% 10%, rgb(139 92 246 / 18%), transparent 55%),
+            var(--shell-navy-800);
+        animation: launchIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    &__hero-copy {
+        position: relative;
+        z-index: 1;
+        max-width: 56rem;
+
+        h1 {
+            margin: 0.5rem 0 0;
+            font-size: clamp(2rem, 3.4vw, 3rem);
+            line-height: 1.14;
+            letter-spacing: -0.01em;
+            color: var(--shell-text);
+        }
+    }
+
+    &__kicker {
+        font-size: 1.05rem;
+        font-weight: 800;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--shell-accent);
+    }
+
+    &__rotating {
+        margin: 0.9rem 0 0;
+        min-height: 1.6em;
+        font-size: 1.35rem;
+        color: var(--shell-text-muted);
+        animation: launchRotate 0.5s ease both;
+    }
+
+    &__hero-art {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+    }
+
+    &__orb {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(2px);
+        opacity: 0.55;
+
+        &--a {
+            right: 18%;
+            top: -30%;
+            width: 16rem;
+            height: 16rem;
+            background: radial-gradient(circle at 30% 30%, #22d3ee, transparent 70%);
+        }
+
+        &--b {
+            right: 4%;
+            bottom: -46%;
+            width: 18rem;
+            height: 18rem;
+            background: radial-gradient(circle at 40% 40%, #8b5cf6, transparent 70%);
+        }
+
+        &--c {
+            right: 34%;
+            bottom: -26%;
+            width: 9rem;
+            height: 9rem;
+            background: radial-gradient(circle at 40% 40%, #14b8a6, transparent 70%);
+        }
+    }
+
+    &__cards {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 1.1rem;
+        margin-top: 1.2rem;
+
+        @media (max-width: 1100px) {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        @media (max-width: 560px) {
+            grid-template-columns: minmax(0, 1fr);
+        }
+    }
+
+    &__card {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 1.25rem 1.3rem;
+        border-radius: 14px;
+        border: 1px solid var(--shell-border);
+        background: var(--shell-navy-800);
+        color: var(--shell-text);
+        text-align: start;
+        cursor: pointer;
+        transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+        animation: launchIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+
+        &:nth-child(2) {
+            animation-delay: 0.06s;
+        }
+
+        &:nth-child(3) {
+            animation-delay: 0.12s;
+        }
+
+        &:nth-child(4) {
+            animation-delay: 0.18s;
+        }
+
+        &:hover {
+            border-color: rgb(34 211 238 / 45%);
+            transform: translateY(-2px);
+            box-shadow: 0 14px 30px rgb(0 0 0 / 22%);
+        }
+    }
+
+    &__card-num {
+        font-size: 2.3rem;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        color: var(--shell-accent);
+        font-family: var(--brand-font-monospace);
+    }
+
+    &__card-body {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        min-width: 0;
+
+        strong {
+            font-size: 1.35rem;
+            letter-spacing: 0.01em;
+        }
+
+        small {
+            font-size: 1.05rem;
+            color: var(--shell-text-muted);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+    }
+
+    &__card-arrow {
+        margin-inline-start: auto;
+        flex: 0 0 auto;
+        color: var(--shell-text-muted);
+        transition: transform 0.18s ease, color 0.18s ease;
+    }
+
+    &__card:hover &__card-arrow {
+        transform: translateX(3px);
+        color: var(--shell-accent);
+    }
+}
+
+@keyframes launchIn {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+}
+
+@keyframes launchRotate {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .launchpad,
+    .launchpad__card,
+    .launchpad__rotating {
+        animation: none !important;
+    }
+}

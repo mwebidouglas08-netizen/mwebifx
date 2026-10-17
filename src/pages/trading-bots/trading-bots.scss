@@ -70,6 +70,37 @@
             flex-wrap: wrap;
         }
 
+        /* Reference Free Bots grid badges: teal QUICK/FREE, gold PREMIUM. */
+        &__badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.28rem 0.6rem;
+            border-radius: 6px;
+            font-size: 0.92rem;
+            font-weight: 800;
+            letter-spacing: 0.07em;
+            border: 1px solid transparent;
+
+            &--quick,
+            &--free {
+                border-color: rgb(20 184 166 / 55%);
+                background: rgb(20 184 166 / 14%);
+                color: var(--brand-success, #14b8a6);
+            }
+
+            &--premium {
+                border-color: rgb(245 158 11 / 55%);
+                background: rgb(245 158 11 / 14%);
+                color: var(--brand-warning, #f59e0b);
+            }
+        }
+
+        &__load {
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            font-weight: 800;
+        }
+
         &__desc {
             margin: 0;
             flex: 1;

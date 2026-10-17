@@ -1,0 +1,181 @@
+/* Reference-style bottom execution bar — fixed, always dark. */
+.shell-execbar {
+    position: fixed;
+    inset: auto 0 0 0;
+    height: 4.4rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0 1.4rem;
+    background: #0d1630;
+    border-top: 1px solid rgb(148 163 184 / 14%);
+    color: #e8eefc;
+    z-index: 1150;
+
+    &__run {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+        padding: 0.62rem 1.5rem;
+        border: 0;
+        border-radius: 0.7rem;
+        background: #16a34a;
+        color: #fff;
+        font-size: 1.25rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        cursor: pointer;
+        transition: background 0.18s ease, transform 0.18s ease;
+
+        &:hover:not(:disabled) {
+            background: #22c55e;
+            transform: translateY(-1px);
+        }
+
+        &:disabled {
+            opacity: 0.6;
+            cursor: wait;
+        }
+
+        &--stop {
+            background: #dc2626;
+
+            &:hover:not(:disabled) {
+                background: #ef4444;
+            }
+        }
+    }
+
+    &__fast {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+        padding: 0.55rem 1rem;
+        border: 1px solid rgb(148 163 184 / 24%);
+        border-radius: 999px;
+        background: transparent;
+        color: #8b98b8;
+        font-size: 1.1rem;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        cursor: pointer;
+        transition: color 0.18s ease, border-color 0.18s ease;
+
+        strong {
+            color: inherit;
+            font-weight: 800;
+        }
+
+        &--on {
+            color: #22d3ee;
+            border-color: rgb(34 211 238 / 45%);
+            background: rgb(34 211 238 / 10%);
+        }
+    }
+
+    &__fast-dot {
+        width: 0.6rem;
+        height: 0.6rem;
+        border-radius: 50%;
+        background: rgb(148 163 184 / 45%);
+    }
+
+    &__fast--on &__fast-dot {
+        background: #22d3ee;
+        box-shadow: 0 0 8px rgb(34 211 238 / 80%);
+    }
+
+    &__status {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+        max-width: 34rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 1.1rem;
+        color: #8b98b8;
+    }
+
+    &__status-dot {
+        flex: 0 0 auto;
+        width: 0.7rem;
+        height: 0.7rem;
+        border-radius: 50%;
+        background: #64748b;
+
+        &--on {
+            background: #22c55e;
+            box-shadow: 0 0 8px rgb(34 197 94 / 75%);
+        }
+    }
+
+    &__spacer {
+        flex: 1;
+    }
+
+    &__clock {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6rem;
+        font-family: var(--brand-font-monospace);
+        font-size: 1.15rem;
+        letter-spacing: 0.04em;
+        color: #cbd5e1;
+        white-space: nowrap;
+    }
+
+    &__clock-dot {
+        width: 0.65rem;
+        height: 0.65rem;
+        border-radius: 50%;
+        background: #10b981;
+        animation: execClockPing 2.2s ease-out infinite;
+    }
+
+    &__icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 3rem;
+        height: 3rem;
+        border-radius: 0.7rem;
+        border: 1px solid rgb(148 163 184 / 24%);
+        background: transparent;
+        color: #cbd5e1;
+        cursor: pointer;
+        transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+
+        &:hover {
+            color: #22d3ee;
+            border-color: rgb(34 211 238 / 45%);
+            background: rgb(34 211 238 / 8%);
+        }
+    }
+
+    @media (max-width: 859px) {
+        height: 4.6rem;
+        gap: 0.7rem;
+        padding: 0 1rem;
+
+        &__status {
+            display: none;
+        }
+
+        &__fast {
+            padding: 0.5rem 0.75rem;
+        }
+    }
+}
+
+@keyframes execClockPing {
+    0% {
+        box-shadow: 0 0 0 0 rgb(16 185 129 / 55%);
+    }
+    70% {
+        box-shadow: 0 0 0 0.55rem rgb(16 185 129 / 0%);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgb(16 185 129 / 0%);
+    }
+}

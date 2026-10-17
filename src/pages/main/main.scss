@@ -803,11 +803,11 @@ body.hub-view {
     height: 100%;
     min-height: 0;
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
     grid-template-areas:
-        'banner banner'
-        'sidebar shell';
+        'banner'
+        'shell';
     overflow: hidden;
     position: relative;
     /* Sit the shell at (or above) the layout header's sticky z-index so the
@@ -850,21 +850,25 @@ body.hub-view {
     }
 }
 
-/* AIBotDock parks bottom-left; the desktop rail occupies that corner, so
-   shift the dock clear of it (collapsing the rail moves it back). On mobile
-   the rail is an off-canvas drawer and the dock keeps its original spot. */
+/* Bottom-dock offsets for the reference shell: the execution bar owns the
+   bottom edge, so both floating docks lift clear of it — the AI dock above
+   the Risk pill (left), the bot dock above the scanner row (right). */
 .main-dashboard .ai-dock {
-    left: calc(248px + 1.4rem);
+    left: 1.4rem;
+    bottom: 9.4rem;
 }
 
-.main-dashboard:has(.hub-sidebar--collapsed) .ai-dock {
-    left: calc(68px + 1.4rem);
+.main-dashboard .bot-dock {
+    bottom: 5rem;
 }
 
 @media (max-width: 859px) {
-    .main-dashboard .ai-dock,
-    .main-dashboard:has(.hub-sidebar--collapsed) .ai-dock {
-        left: 1.4rem;
+    .main-dashboard .ai-dock {
+        bottom: 10.4rem;
+    }
+
+    .main-dashboard .bot-dock {
+        bottom: 5.2rem;
     }
 }
 
@@ -889,26 +893,35 @@ body.hub-view {
     z-index: 5;
     animation: heroIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 
-    &__menu {
-        display: none;
+    &__brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.8rem;
+        flex: 0 0 auto;
+    }
+
+    &__mark {
+        display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 3.4rem;
-        height: 3.4rem;
+        width: 3.1rem;
+        height: 3.1rem;
         border-radius: 0.9rem;
-        border: 1px solid var(--shell-border);
-        background: var(--shell-glass);
+        background: linear-gradient(135deg, #22d3ee, #14b8a6 45%, #818cf8);
+        color: #041022;
+        font-size: 1.55rem;
+        font-weight: 800;
+        box-shadow: 0 6px 18px rgb(34 211 238 / 25%);
+    }
+
+    &__wordmark {
+        font-size: 1.45rem;
+        font-weight: 800;
+        letter-spacing: 0.03em;
         color: var(--shell-text);
-        cursor: pointer;
-        transition: border-color 0.2s ease, background 0.2s ease;
 
-        &:hover {
-            border-color: var(--shell-accent);
-            background: var(--shell-accent-soft);
-        }
-
-        @media (max-width: 859px) {
-            display: inline-flex;
+        @media (max-width: 640px) {
+            display: none;
         }
     }
 
@@ -923,30 +936,9 @@ body.hub-view {
         text-overflow: ellipsis;
     }
 
-    &__clock {
+    &__account {
         margin-inline-start: auto;
-        display: inline-flex;
-        align-items: center;
-        gap: 0.7rem;
-        padding: 0.55rem 1.1rem;
-        border-radius: 999px;
-        border: 1px solid var(--shell-border);
-        background: var(--shell-glass);
-        backdrop-filter: blur(10px);
-        font-family: var(--brand-font-monospace);
-        font-size: 1.2rem;
-        letter-spacing: 0.04em;
-        color: var(--shell-text);
-        white-space: nowrap;
-    }
-
-    &__clock-dot {
-        width: 0.7rem;
-        height: 0.7rem;
-        border-radius: 50%;
-        background: var(--brand-success);
-        box-shadow: 0 0 0 0 rgb(16 185 129 / 55%);
-        animation: clockPing 2.2s ease-out infinite;
+        flex: 0 0 auto;
     }
 }
 
@@ -957,29 +949,17 @@ body.hub-view {
     }
 }
 
-@keyframes clockPing {
-    0% {
-        box-shadow: 0 0 0 0 rgb(16 185 129 / 55%);
-    }
-    70% {
-        box-shadow: 0 0 0 0.6rem rgb(16 185 129 / 0%);
-    }
-    100% {
-        box-shadow: 0 0 0 0 rgb(16 185 129 / 0%);
-    }
-}
-
 .main-content {
     flex: 1;
     min-height: 0;
     min-width: 0;
     overflow-y: auto;
-    padding: 1.6rem 1.6rem 5.2rem;
+    padding: 1.6rem 1.6rem 10rem;
     scrollbar-width: thin;
     scrollbar-color: var(--shell-border) transparent;
 
     @media (max-width: 859px) {
-        padding: 1.2rem 1rem 5.6rem;
+        padding: 1.2rem 1rem 10.4rem;
     }
 }
 

@@ -19,17 +19,28 @@ import './trading-bots.scss';
 
 type LoadKind = 'quick' | 'hub' | 'xml' | 'manual';
 
+/** Reference Free Bots grid badges — quick progressions, hub scanners, examples. */
+type CardBadge = 'QUICK BOT' | 'PREMIUM BOT' | 'FREE BOT';
+
 interface BotCard {
     id: string;
     name: string;
     description: string;
     kind: LoadKind;
+    badge?: CardBadge;
     quickKey?: string;
     hub?: HubStrategy;
     xml?: string;
     automated: boolean;
     popular?: boolean;
 }
+
+const KIND_BADGE: Record<LoadKind, CardBadge | undefined> = {
+    quick: 'QUICK BOT',
+    hub: 'PREMIUM BOT',
+    xml: 'FREE BOT',
+    manual: undefined,
+};
 
 const CHIPS = ['All', 'Popular', 'Automated', 'Manual'] as const;
 type Chip = (typeof CHIPS)[number];
@@ -75,6 +86,7 @@ const buildCatalog = (): BotCard[] => {
             name,
             description: firstParagraph(strategy.description) || accumulatorDescription(key),
             kind: 'quick',
+            badge: KIND_BADGE.quick,
             quickKey: key,
             automated: true,
             popular: POPULAR_QUICK.has(key),
@@ -86,6 +98,7 @@ const buildCatalog = (): BotCard[] => {
         name: strategy.name,
         description: strategy.description,
         kind: 'hub',
+        badge: KIND_BADGE.hub,
         hub: strategy,
         automated: true,
         popular: POPULAR_HUB.has(strategy.id),
@@ -140,7 +153,10 @@ const buildCatalog = (): BotCard[] => {
         },
     ];
 
-    return [...hubCards, ...quickCards, ...exampleCards, ...manualCards];
+    return [...hubCards, ...quickCards, ...exampleCards, ...manualCards].map(card => ({
+        ...card,
+        badge: card.badge ?? KIND_BADGE[card.kind],
+    }));
 };
 
 type EventsApi = {
@@ -340,6 +356,13 @@ const TradingBotsPage = observer(({ onOpenDashboard }: Props) => {
                             <div className='bots-card__top'>
                                 <h3>{card.name}</h3>
                                 <div className='bots-card__tags'>
+                                    {card.badge && (
+                                        <span
+                                            className={`bots-card__badge bots-card__badge--${card.badge.split(' ')[0].toLowerCase()}`}
+                                        >
+                                            {card.badge}
+                                        </span>
+                                    )}
                                     {card.popular && (
                                         <span className='hub-badge hub-badge--sm hub-badge--info'>Popular</span>
                                     )}
@@ -352,7 +375,7 @@ const TradingBotsPage = observer(({ onOpenDashboard }: Props) => {
                             <div className='bots-card__foot'>
                                 <button
                                     type='button'
-                                    className='hub-btn hub-btn--primary'
+                                    className='hub-btn hub-btn--primary bots-card__load'
                                     disabled={busyId !== null}
                                     onClick={() => onLoad(card)}
                                 >
@@ -360,7 +383,7 @@ const TradingBotsPage = observer(({ onOpenDashboard }: Props) => {
                                         ? 'Loading…'
                                         : card.kind === 'manual'
                                           ? 'Open builder'
-                                          : 'Load'}
+                                          : 'LOAD BOT'}
                                 </button>
                                 <span
                                     className='bots-paper'

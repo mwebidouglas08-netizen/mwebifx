@@ -44,11 +44,11 @@ describe('pipSizeDefault', () => {
 });
 
 describe('scopeMarkets', () => {
-    it('scopes the exact 10-market list', () => {
-        expect(ALGO_PRO_MARKETS).toHaveLength(10);
-        expect(scopeMarkets('all')).toHaveLength(10);
+    it('scopes the exact 13-market list (the reference multi-market scan list)', () => {
+        expect(ALGO_PRO_MARKETS).toHaveLength(13);
+        expect(scopeMarkets('all')).toHaveLength(13);
         expect(scopeMarkets('standard')).toHaveLength(5);
-        expect(scopeMarkets('one-second')).toHaveLength(5);
+        expect(scopeMarkets('one-second')).toHaveLength(8);
         expect(scopeMarkets('standard').every(m => !m.oneSecond)).toBe(true);
         expect(scopeMarkets('one-second').every(m => m.oneSecond)).toBe(true);
     });
@@ -73,12 +73,14 @@ describe('pattern helpers', () => {
 });
 
 describe('checkedTicks (tE)', () => {
-    it('lookback 5 for *-ai strategies and recovery mode, else 2', () => {
+    it('lookback 5 for *-ai strategies and recovery mode, 60 for Neutrade, else 2', () => {
         expect(checkedTicks('even-odd-ai', false)).toBe(5);
         expect(checkedTicks('rise-fall-ai', false)).toBe(5);
         expect(checkedTicks('over-2-recovery-even-odd', false)).toBe(2);
         expect(checkedTicks('over-2-recovery-even-odd', true)).toBe(5);
         expect(checkedTicks('under-7-recovery-over-4-under-5', true)).toBe(5);
+        expect(checkedTicks('neutrade-ai', false)).toBe(60);
+        expect(checkedTicks('neutrade-ai', true)).toBe(60);
     });
 });
 
@@ -157,7 +159,7 @@ describe('signalFromStrategy (tN)', () => {
     });
 
     it('matches the strategy catalog', () => {
-        expect(ALGO_PRO_STRATEGIES).toHaveLength(7);
+        expect(ALGO_PRO_STRATEGIES).toHaveLength(8);
         expect(ALGO_PRO_STRATEGIES.map(s => s.id)).toEqual([
             'even-odd-ai',
             'over-4-under-5-ai',
@@ -166,8 +168,10 @@ describe('signalFromStrategy (tN)', () => {
             'over-2-recovery-over-4-under-5',
             'under-7-recovery-even-odd',
             'under-7-recovery-over-4-under-5',
+            'neutrade-ai',
         ]);
         expect(ALGO_PRO_STRATEGIES.every(s => s.primaryCount === 2 || s.primaryCount === 5)).toBe(true);
+        expect(ALGO_PRO_STRATEGIES.find(s => s.id === 'neutrade-ai')).toMatchObject({ number: '08', primaryCount: 2, recoveryCount: 4 });
     });
 });
 

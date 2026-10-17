@@ -1,0 +1,70 @@
+/* Dark horizontal dc-tabs-style strip — always dark, like the reference
+   workspace bar, regardless of the app's light/dark theme. */
+.hub-tabnav {
+    flex: 0 0 auto;
+    background: #0d1630;
+    border-bottom: 1px solid rgb(148 163 184 / 14%);
+    z-index: 4;
+
+    &__list {
+        display: flex;
+        align-items: stretch;
+        gap: 0.2rem;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 0 0.8rem;
+        scrollbar-width: none;
+
+        &::-webkit-scrollbar {
+            display: none;
+        }
+    }
+
+    &__group {
+        display: flex;
+        align-items: stretch;
+        flex: 0 0 auto;
+    }
+
+    &__divider {
+        width: 1px;
+        margin: 0.7rem 0.55rem;
+        background: rgb(148 163 184 / 20%);
+    }
+
+    &__item {
+        position: relative;
+        flex: 0 0 auto;
+        padding: 0.95rem 1.05rem;
+        border: 0;
+        background: transparent;
+        color: #8b98b8;
+        font-size: 1.2rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: color 0.18s ease, background 0.18s ease;
+
+        &:hover {
+            color: #e8eefc;
+            background: rgb(148 163 184 / 8%);
+        }
+
+        &--active,
+        &:focus-visible {
+            color: #22d3ee;
+            background: rgb(34 211 238 / 8%);
+        }
+
+        &--active::after {
+            content: '';
+            position: absolute;
+            inset: auto 0.7rem -1px;
+            height: 2px;
+            border-radius: 2px 2px 0 0;
+            background: #22d3ee;
+            box-shadow: 0 0 10px rgb(34 211 238 / 55%);
+        }
+    }
+}
