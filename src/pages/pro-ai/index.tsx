@@ -220,27 +220,23 @@ const ProAiPage = observer(() => {
         }
     };
 
-    // Entry: requires a logged-in account plus an explicit confirm.
-    // Guests are sent to the login dialog; real-money accounts confirm a
-    // REAL-order warning first (demo accounts confirm a demo order).
+    // Entry: guests are sent to the login dialog. Demo orders place the moment
+    // the button is clicked (the ranked signal is the decision); only REAL
+    // money keeps an explicit confirm before funds are spent.
     const demoBuy = async (c: ProAiCandidate) => {
         if (!isLoggedIn) {
             run_panel?.showLoginDialog?.();
             return;
         }
         const amount = Number(stake) || 1;
-        const ok = isDemo
-            ? window.confirm(
-                  `Place a DEMO order: ${contractLabel(c.direction, c.barrier)} on ${c.displayName} for ${money(
-                      amount
-                  )}? Pro AI is a ranked heuristic, not a guaranteed edge.`
-              )
-            : window.confirm(
-                  `Place a REAL-MONEY order: ${contractLabel(c.direction, c.barrier)} on ${c.displayName} for ${money(
-                      amount
-                  )} on account ${activeLoginid}? This spends real funds. Pro AI is a ranked heuristic, not a guaranteed edge.`
-              );
-        if (!ok) return;
+        if (!isDemo) {
+            const ok = window.confirm(
+                `Place a REAL-MONEY order: ${contractLabel(c.direction, c.barrier)} on ${c.displayName} for ${money(
+                    amount
+                )} on account ${activeLoginid}? This spends real funds. Pro AI is a ranked heuristic, not a guaranteed edge.`
+            );
+            if (!ok) return;
+        }
 
         const id = newId('demo');
         pushEntry({
@@ -504,7 +500,7 @@ const ProAiPage = observer(() => {
                                                 title={
                                                     isLoggedIn
                                                         ? isDemo
-                                                            ? 'Place a demo order (you confirm first)'
+                                                            ? 'Place a demo order immediately'
                                                             : 'Place a REAL-money order (you confirm first)'
                                                         : 'Log in to place orders'
                                                 }

@@ -131,6 +131,12 @@ export const DEFAULT_AI_BOT_CONFIG: AIBotConfig = {
 
 const EVENT_CAP = 240;
 const PROBE_CONCURRENCY = 8;
+/**
+ * Minimum spacing between two orders — just enough to clear the shared
+ * proposal pacing in deriv/execution. A confirmed signal executes on the
+ * scan that detected it instead of waiting a full scan interval.
+ */
+const MIN_ORDER_SPACING_MS = 300;
 /** Default number of tradable markets watched when the config lists no symbols. */
 const DEFAULT_WATCH_CAP = 12;
 /** Deriv's minimum order stake — the equity cap never blocks a trade this small. */
@@ -610,7 +616,7 @@ export class AIBotEngine {
             }
 
             const now = Date.now();
-            if (now - this.lastTradeAt < cfg.scanIntervalMs) return;
+            if (now - this.lastTradeAt < MIN_ORDER_SPACING_MS) return;
             const stake = this.currentStake();
             const gate = this.riskAllows(stake);
             if (!gate.ok) {

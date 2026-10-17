@@ -119,6 +119,12 @@ const PROBE_CONCURRENCY = 8;
 const PAPER_START_EQUITY = 1000;
 /** Deriv's minimum order stake — the equity cap never blocks a trade this small. */
 const MIN_ORDER_STAKE = 0.35;
+/**
+ * Minimum spacing between two orders — just enough to clear the shared
+ * proposal pacing in deriv/execution. The strongest signal executes on the
+ * scan that detected it instead of waiting a full scan interval.
+ */
+const MIN_ORDER_SPACING_MS = 300;
 
 const theoreticalOver = (barrier: number) => ((9 - barrier) / 10) * 100;
 // DIGITUNDER(barrier) wins on digits 0..barrier-1 — `barrier` buckets, not barrier+1.
@@ -661,7 +667,7 @@ export class SignalScannerEngine {
             }
 
             const now = Date.now();
-            if (now - this.lastTradeAt < cfg.scanIntervalMs) return;
+            if (now - this.lastTradeAt < MIN_ORDER_SPACING_MS) return;
             // Intelligent market selection: every candidate has already cleared
             // `strength >= cfg.threshold` inside signalsFromMarket, so the shared
             // ranker orders survivors by measured strength×confidence and drops

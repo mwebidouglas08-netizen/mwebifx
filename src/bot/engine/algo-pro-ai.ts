@@ -19,6 +19,7 @@ import {
     scopeMarkets,
     signalFromStrategy,
     signalQuality,
+    STRONG_PAIR_CONFIDENCE,
     tradeKey,
     UniverseCandidate,
 } from '../core/algo-pro-ai';
@@ -607,11 +608,13 @@ export class AlgoProEngine {
         if (!signal) return;
 
         // Production anti-thrash: never fire two orders inside the cooldown
-        // window — EXCEPT on a strong signal (measured edge ≥ +2pp, pair
-        // confidence ≥ 0.8), which executes immediately: analysis happened on
+        // window — EXCEPT on a signal worth acting on right now: a strong
+        // signal (measured edge ≥ +2pp, pair confidence ≥ 0.8), or any setup
+        // whose pair confidence clears the strong floor. Analysis happened on
         // this very tick, so waiting would only miss the setup.
         const strong = strongOf(m);
-        if (!strong && settings.cooldownMs > 0 && Date.now() - this.lastOrderAt < settings.cooldownMs) return;
+        const confident = settings.usePairScanner && m.pairConfidence >= STRONG_PAIR_CONFIDENCE;
+        if (!strong && !confident && settings.cooldownMs > 0 && Date.now() - this.lastOrderAt < settings.cooldownMs) return;
 
         // One trade per pattern tick: symbol:epoch:contract:barrier dedupe.
         const epoch = Math.floor(m.lastQuote * 100);

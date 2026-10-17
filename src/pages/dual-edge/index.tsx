@@ -340,8 +340,20 @@ const DualEdgePage = observer(() => {
 
     const runLiveRound = async (activeProfile: DualProfile, config: DualConfig): Promise<void> => {
         const activeSymbol = symbolRef.current;
+        // Enter both sides back-to-back on this round's signal, THEN resolve
+        // them. Serialising (buy Over → wait for settlement → buy Under) pushed
+        // the second entry a full tick late and doubled every round's duration;
+        // paper mode has always settled both sides on the same tick digit.
+        const opened: {
+            side: 'over' | 'under';
+            contractId: number;
+            stake: number;
+            barrier: number;
+            askPrice: number;
+            payout: number;
+        }[] = [];
         for (const side of ['over', 'under'] as const) {
-            if (!runningRef.current) return;
+            if (!runningRef.current) break;
             const state = sidesRef.current.find(s => s.side === side);
             if (!state) continue;
             const action: SignalAction = side === 'over' ? 'OVER' : 'UNDER';
@@ -369,8 +381,18 @@ const DualEdgePage = observer(() => {
                 'purchase',
                 `Contract #${buy.contractId}: ${side} ${state.barrier} — stake ${(buy.buyPrice ?? state.stake).toFixed(2)}`
             );
+            opened.push({
+                side,
+                contractId: buy.contractId,
+                stake: state.stake,
+                barrier: state.barrier,
+                askPrice: quote.askPrice,
+                payout: quote.payout,
+            });
+        }
+        for (const rec of opened) {
             const settlement = await monitorUntilSettled(
-                buy.contractId,
+                rec.contractId,
                 pipSizeRef.current,
                 undefined,
                 settlementTimeoutMs(1, 't')
@@ -378,17 +400,17 @@ const DualEdgePage = observer(() => {
             if ('error' in settlement) {
                 // Outcome unknown — the recovery ladder must not advance on a
                 // result the market never delivered, so pause honestly.
-                log('error', `Settlement unknown for #${buy.contractId}: ${settlement.error} — outcome not recorded`);
+                log('error', `Settlement unknown for #${rec.contractId}: ${settlement.error} — outcome not recorded`);
                 stopEngine(
                     'Settlement unknown',
-                    `Contract #${buy.contractId} outcome unknown — paused so the recovery ladder stays honest. Check your open contracts, then restart.`
+                    `Contract #${rec.contractId} outcome unknown — paused so the recovery ladder stays honest. Check your open contracts, then restart.`
                 );
                 return;
             }
             const won = settlement.isWon;
             log(
                 'settlement',
-                `${won ? 'WIN' : 'LOSS'}: #${buy.contractId} ${side} ${state.barrier} — exit digit ${
+                `${won ? 'WIN' : 'LOSS'}: #${rec.contractId} ${rec.side} ${rec.barrier} — exit digit ${
                     settlement.exitDigit ?? '—'
                 }, ${settlement.profit >= 0 ? '+' : ''}${settlement.profit.toFixed(2)}`
             );
@@ -400,12 +422,20 @@ const DualEdgePage = observer(() => {
                 market: activeSymbol,
             });
             const next = sidesRef.current.map(s =>
-                s.side === side
-                    ? applySideResult(s, activeProfile, config, { won, profit: settlement.profit, payoutRatio: quote.askPrice > 0 ? quote.payout / quote.askPrice : undefined })
+                s.side === rec.side
+                    ? applySideResult(s, activeProfile, config, {
+                          won,
+                          profit: settlement.profit,
+                          payoutRatio: rec.askPrice > 0 ? rec.payout / rec.askPrice : undefined,
+                      })
                     : s
             );
-            if (commitAndCheck(next)) return;
+            // Commit each side's ladder result as it lands; the stop check
+            // (TP/SL/ladder exhaustion) runs once the whole round has resolved
+            // so an already-opened contract is never left unmonitored.
+            commit(next);
         }
+        if (opened.length) commitAndCheck(sidesRef.current);
     };
 
     // Paper: settle both sides on the tick digit. No payoutRatio is passed, so

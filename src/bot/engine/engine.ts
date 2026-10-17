@@ -94,7 +94,10 @@ const DEFAULT_CONFIG: EngineConfig = {
     duration: 1,
     durationUnit: 't',
     limits: { ...DEFAULT_RISK_LIMITS },
-    scanIntervalMs: 3000,
+    // Detection cadence: quote lookups are cached for 12s (QUOTE_TTL_MS), so a
+    // tighter scan interval keeps the ranked list fresh and places the best
+    // setup within ~1.5s of the signal forming instead of 3s+.
+    scanIntervalMs: 1500,
     // Kept in lock-step with the risk gate so the warm-up buffer and the
     // scan's minSampleSize gate can never drift apart.
     minTicksForAnalysis: DEFAULT_RISK_LIMITS.minSampleSize,
