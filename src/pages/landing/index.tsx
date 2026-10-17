@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import './landing.scss';
 
 /**
- * First-visit cinematic landing (SmartFlip-class): hero with typewriter titles,
- * live-style stats, feature grid, rotating benefits, review marquee, trust
- * badges and a final CTA — all dismissing into the trading hub via onEnter.
+ * First-visit landing: hero with typewriter titles, live-style stats, feature
+ * grid, rotating benefits, review marquee, trust badges and a final CTA — all
+ * dismissing into the trading hub via onEnter. Photos are real market imagery;
+ * icons are hand-drawn line SVGs.
  */
 
 const BRAND = 'Dollarvault';
@@ -12,9 +13,9 @@ const BRAND = 'Dollarvault';
 const HERO_TITLES = [
     'Automate Your Trades',
     'Scan Live Market Signals',
-    'Deploy AI-Powered Bots',
+    'Deploy Automated Bots',
     'Backtest Before You Risk',
-    `Trade Smarter with ${BRAND}`,
+    `Trade with ${BRAND}`,
 ];
 
 const STATS = [
@@ -26,39 +27,55 @@ const STATS = [
 
 const FEATURES = [
     {
-        icon: '🤖',
-        img: 'https://picsum.photos/seed/dollarvault-bot/800/520',
-        title: 'AI-Powered Trading Bots',
-        tagline: 'Automate your success',
+        icon: (
+            <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='1.6' strokeLinecap='round' strokeLinejoin='round' width='26' height='26' aria-hidden>
+                <rect x='5' y='8' width='14' height='10' rx='3' />
+                <path d='M12 8V5.5' />
+                <circle cx='12' cy='4.2' r='1.1' fill='currentColor' stroke='none' />
+                <circle cx='9.6' cy='12.6' r='1.1' fill='currentColor' stroke='none' />
+                <circle cx='14.4' cy='12.6' r='1.1' fill='currentColor' stroke='none' />
+                <path d='M3.2 11.5v2M20.8 11.5v2M9 18v2.2M15 18v2.2' />
+            </svg>
+        ),
+        title: 'Automated Trading Bots',
+        tagline: 'Rules, not impulses',
         details: 'Deploy the Over/Under engine, the AI bot and the multi-family signal scanner. Configure risk, arm auto-trade, and let them work tick by tick.',
     },
     {
-        icon: '📊',
-        img: 'https://picsum.photos/seed/dollarvault-charts/800/520',
+        icon: (
+            <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='1.6' strokeLinecap='round' strokeLinejoin='round' width='26' height='26' aria-hidden>
+                <path d='M4 4v16h16' />
+                <path d='M7.2 15.2l3.4-4.4 3.4 2.6 4.2-6.2' />
+            </svg>
+        ),
         title: 'Real-Time Market Analysis',
-        tagline: 'Data-driven decisions',
+        tagline: 'Ranked before entry',
         details: 'Live synthetic and forex streams, RSI, digit distributions and confidence scores — every setup ranked before a single order is placed.',
     },
     {
-        icon: '🧠',
-        img: 'https://picsum.photos/seed/dollarvault-scanner/800/520',
+        icon: (
+            <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='1.6' strokeLinecap='round' strokeLinejoin='round' width='26' height='26' aria-hidden>
+                <circle cx='12' cy='12' r='8.2' />
+                <circle cx='12' cy='12' r='4.4' />
+                <circle cx='12' cy='12' r='1.1' fill='currentColor' stroke='none' />
+                <path d='M12 12l5.6-5.6' />
+            </svg>
+        ),
         title: 'Signal Scanner Engine',
         tagline: 'Five families, one loop',
         details: 'Rise/Fall, Even/Odd, Over/Under, Match/Differ and mean-reversion signals scored continuously, with paper trades to prove the flow first.',
     },
     {
-        icon: '🛡️',
-        img: 'https://picsum.photos/seed/dollarvault-shield/800/520',
+        icon: (
+            <svg viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='1.6' strokeLinecap='round' strokeLinejoin='round' width='26' height='26' aria-hidden>
+                <path d='M12 3.2l7 2.8v5.6c0 4.2-2.9 7.1-7 8.6-4.1-1.5-7-4.4-7-8.6V6l7-2.8z' />
+                <path d='M9.2 12.1l2 2 3.8-4' />
+            </svg>
+        ),
         title: 'Risk Management Tools',
         tagline: 'Protect your capital',
         details: 'Stake limits, max open positions, cooldowns, session stop-loss and martingale controls. Live trading stays behind an explicit confirm.',
     },
-];
-
-const MOMENTS = [
-    { seed: 'moment-1', src: 'https://picsum.photos/seed/dollarvault-moment-1/900/600' },
-    { seed: 'moment-2', src: 'https://picsum.photos/seed/dollarvault-moment-2/900/600' },
-    { seed: 'moment-3', src: 'https://picsum.photos/seed/dollarvault-moment-3/900/600' },
 ];
 
 const BENEFITS = [
@@ -183,31 +200,6 @@ const CountUp = ({ value, duration = 1400 }: { value: string; duration?: number 
     }, [value, duration]);
 
     return <span ref={ref}>{shown}</span>;
-};
-
-/** 3D tilt feature card that follows the pointer (skips until revealed). */
-const TiltCard = ({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) => {
-    const ref = useRef<HTMLDivElement | null>(null);
-    return (
-        <div
-            ref={ref}
-            className='landing__feature-card animated-element'
-            style={{ transitionDelay: `${delay}ms` }}
-            onPointerMove={e => {
-                const el = ref.current;
-                if (!el || !el.classList.contains('in')) return;
-                const r = el.getBoundingClientRect();
-                const px = (e.clientX - r.left) / r.width - 0.5;
-                const py = (e.clientY - r.top) / r.height - 0.5;
-                el.style.transform = `perspective(900px) rotateX(${(-py * 7).toFixed(2)}deg) rotateY(${(px * 7).toFixed(2)}deg) translateY(-4px)`;
-            }}
-            onPointerLeave={() => {
-                if (ref.current) ref.current.style.transform = '';
-            }}
-        >
-            {children}
-        </div>
-    );
 };
 
 /** Reveal-on-scroll: adds `.in` when the element enters the viewport. */
@@ -357,8 +349,6 @@ const Landing = ({ onEnter }: LandingProps) => {
             }}
         >
             <div className='landing__bg' aria-hidden='true' />
-            <div className='landing__orb landing__orb--a' aria-hidden='true' />
-            <div className='landing__orb landing__orb--b' aria-hidden='true' />
             <div className='landing__spotlight' ref={spotRef} aria-hidden='true' />
             <div className='landing__scroll' aria-hidden='true'>
                 <i ref={progressRef} />
@@ -381,7 +371,7 @@ const Landing = ({ onEnter }: LandingProps) => {
                 <div className='landing__hero-media' aria-hidden='true'>
                     <SmartImage
                         className='landing__hero-img'
-                        src='https://picsum.photos/seed/dollarvault-hero/2400/1400'
+                        src='https://images.pexels.com/photos/5831253/pexels-photo-5831253.jpeg?auto=compress&cs=tinysrgb&w=2400'
                         width={2400}
                         height={1400}
                         eager
@@ -402,8 +392,8 @@ const Landing = ({ onEnter }: LandingProps) => {
                         <TypewriterTitle />
                     </p>
                     <p className='landing__subtitle animated-text'>
-                        Your all-in-one workspace for automated trading, smart bots and real-time market insights —
-                        paper-trade first, go live when the edge is proven.
+                        Automated bots, live signal scanning and backtesting in one workspace —
+                        paper-trade first, go live when the numbers agree.
                     </p>
                     <div className='landing__cta animated-element'>
                         <button type='button' className='landing__cta-primary' onClick={onEnter}>
@@ -439,35 +429,26 @@ const Landing = ({ onEnter }: LandingProps) => {
                 <div className='landing__section-head'>
                     <span className='landing__eyebrow animated-text'>Platform</span>
                     <h2 className='landing__section-title animated-text'>
-                        Everything you need for today's fast-paced synthetic markets
+                        A complete toolkit for synthetic markets
                     </h2>
                     <p className='landing__section-sub animated-text'>
-                        Manual analysis, automated bot execution and continuous scanning — {BRAND} keeps the whole
-                        workflow in one place, with risk controls everywhere.
+                        Analysis, bot execution and continuous signal scanning in one place,
+                        with risk controls throughout.
                     </p>
                 </div>
                 <div className='landing__features-grid'>
                     {FEATURES.map((f, i) => (
-                        <TiltCard key={f.title} delay={i * 70}>
-                            <div className='landing__feature-media'>
-                                <SmartImage src={f.img} width={800} height={520} />
-                                <span className='landing__feature-icon' aria-hidden>{f.icon}</span>
-                            </div>
+                        <div
+                            key={f.title}
+                            className='landing__feature-card animated-element'
+                            style={{ transitionDelay: `${i * 70}ms` }}
+                        >
                             <div className='landing__feature-body'>
+                                <span className='landing__feature-icon' aria-hidden>{f.icon}</span>
                                 <h3 className='landing__feature-title'>{f.title}</h3>
                                 <p className='landing__feature-tag'>{f.tagline}</p>
                                 <p className='landing__feature-details'>{f.details}</p>
                             </div>
-                        </TiltCard>
-                    ))}
-                </div>
-            </section>
-
-            <section className='landing__moments' aria-hidden='true'>
-                <div className='landing__moments-row'>
-                    {MOMENTS.map((m, i) => (
-                        <div key={m.seed} className='landing__moment animated-element' style={{ transitionDelay: `${i * 90}ms` }}>
-                            <SmartImage src={m.src} width={900} height={600} />
                         </div>
                     ))}
                 </div>
@@ -489,7 +470,7 @@ const Landing = ({ onEnter }: LandingProps) => {
                     <div className='landing__benefits-frame'>
                         <SmartImage
                             className='landing__benefits-img'
-                            src='https://picsum.photos/seed/dollarvault-terminal/1200/1400'
+                            src='https://images.pexels.com/photos/7567236/pexels-photo-7567236.jpeg?auto=compress&cs=tinysrgb&w=1200'
                             width={1200}
                             height={1400}
                         />
@@ -552,7 +533,7 @@ const Landing = ({ onEnter }: LandingProps) => {
                 <div className='landing__final-media' aria-hidden='true'>
                     <SmartImage
                         className='landing__final-img'
-                        src='https://picsum.photos/seed/dollarvault-cta/2000/900'
+                        src='https://images.pexels.com/photos/38375326/pexels-photo-38375326.jpeg?auto=compress&cs=tinysrgb&w=2000'
                         width={2000}
                         height={900}
                     />
@@ -560,7 +541,7 @@ const Landing = ({ onEnter }: LandingProps) => {
                 </div>
                 <div className='landing__final-inner'>
                     <span className='landing__eyebrow animated-text'>Get started</span>
-                    <h2 className='landing__section-title animated-text'>Ready to transform your trading?</h2>
+                    <h2 className='landing__section-title animated-text'>Start with a demo account</h2>
                     <p className='landing__final-text animated-text'>
                         Open the terminal, paper-trade the signals, and arm the bots when the numbers agree.
                     </p>

@@ -1,5 +1,5 @@
-/* Cinematic landing overlay — self-contained dark aurora look that works over
-   either app theme. Dismissed into the hub via onEnter. */
+/* Landing overlay — restrained dark look that works over either app theme.
+   Dismissed into the hub via onEnter. Static photography, no drifting orbs. */
 
 .landing {
     position: fixed;
@@ -27,34 +27,8 @@
     inset: 0;
     pointer-events: none;
     background:
-        radial-gradient(1000px 560px at 78% -8%, rgb(20 184 166 / 16%), transparent 60%),
-        radial-gradient(860px 500px at 12% 12%, rgb(99 102 241 / 14%), transparent 55%);
-}
-
-/* Floating aurora orbs — slow cinematic drift behind the content. */
-.landing__orb {
-    position: fixed;
-    width: min(46vw, 640px);
-    height: min(46vw, 640px);
-    pointer-events: none;
-    background: radial-gradient(circle, rgb(20 184 166 / 45%), transparent 65%);
-    border-radius: 50%;
-    filter: blur(90px);
-    opacity: 0.35;
-    animation: landingFloat 16s ease-in-out infinite alternate;
-}
-
-.landing__orb--a {
-    top: -14%;
-    left: -8%;
-}
-
-.landing__orb--b {
-    right: -10%;
-    bottom: -16%;
-    background: radial-gradient(circle, rgb(99 102 241 / 45%), transparent 65%);
-    animation-duration: 21s;
-    animation-delay: -9s;
+        radial-gradient(1000px 560px at 78% -8%, rgb(20 184 166 / 12%), transparent 60%),
+        radial-gradient(860px 500px at 12% 12%, rgb(99 102 241 / 10%), transparent 55%);
 }
 
 /* Cursor-following spotlight glow. */
@@ -68,7 +42,7 @@
     margin: -260px 0 0 -260px;
     pointer-events: none;
     opacity: 0;
-    background: radial-gradient(circle, rgb(94 234 212 / 13%), rgb(99 102 241 / 7%) 42%, transparent 70%);
+    background: radial-gradient(circle, rgb(94 234 212 / 9%), rgb(99 102 241 / 5%) 42%, transparent 70%);
     transition: opacity 0.4s ease;
     will-change: left, top;
 }
@@ -87,9 +61,8 @@
         display: block;
         width: 0;
         height: 100%;
-        background: linear-gradient(90deg, #14b8a6, #6366f1);
+        background: #14b8a6;
         border-radius: 0 3px 3px 0;
-        box-shadow: 0 0 8px rgb(20 184 166 / 60%);
         transition: width 0.1s linear;
     }
 }
@@ -198,15 +171,12 @@ body.landing-open .app-footer {
     height: 100%;
     object-fit: cover;
     object-position: center 38%;
-    animation: landingKenBurns 30s ease-in-out infinite alternate;
 }
 
 .landing__hero-scrim {
     position: absolute;
     inset: 0;
-    background:
-        radial-gradient(900px 500px at 50% 16%, rgb(20 184 166 / 14%), transparent 65%),
-        linear-gradient(180deg, rgb(7 13 31 / 80%) 0%, rgb(5 10 24 / 88%) 55%, #050a18 100%);
+    background: linear-gradient(180deg, rgb(7 13 31 / 82%) 0%, rgb(5 10 24 / 90%) 55%, #050a18 100%);
 }
 
 .landing__hero-inner {
@@ -241,10 +211,7 @@ body.landing-open .app-footer {
 }
 
 .landing__tw {
-    background: linear-gradient(90deg, #99f6e4, #fff 45%, #a5b4fc);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    color: #fff;
 }
 
 .landing__tw-caret {
@@ -255,7 +222,6 @@ body.landing-open .app-footer {
     vertical-align: -0.05em;
     background: #5eead4;
     border-radius: 2px;
-    box-shadow: 0 0 10px rgb(94 234 212 / 80%);
     animation: landingCaret 0.85s step-end infinite;
 }
 
@@ -285,16 +251,16 @@ body.landing-open .app-footer {
     font-size: 1.5rem;
     font-weight: 800;
     cursor: pointer;
-    background: linear-gradient(135deg, #14b8a6, #0e9aa7 55%, #6366f1);
+    background: #14b8a6;
     border: none;
     border-radius: 14px;
-    box-shadow: 0 14px 36px rgb(20 184 166 / 35%);
+    box-shadow: 0 10px 28px rgb(20 184 166 / 28%);
     transition: transform 0.2s, box-shadow 0.2s, filter 0.2s;
 
     &:hover {
-        transform: translateY(-2px);
-        filter: brightness(1.08);
-        box-shadow: 0 18px 44px rgb(20 184 166 / 45%);
+        transform: translateY(-1px);
+        filter: brightness(1.06);
+        box-shadow: 0 12px 32px rgb(20 184 166 / 34%);
     }
 }
 
@@ -343,14 +309,10 @@ body.landing-open .app-footer {
 }
 
 .landing__stat-value {
-    color: #fff;
+    color: #99f6e4;
     font-family: 'Playfair Display', Georgia, serif;
     font-size: 2.4rem;
     font-weight: 800;
-    background: linear-gradient(90deg, #5eead4, #a5b4fc);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
 }
 
 .landing__stat-label {
@@ -489,80 +451,37 @@ body.landing-open .app-footer {
 }
 
 .landing__feature-card {
-    overflow: hidden;
     padding: 0;
     text-align: left;
     background: rgb(255 255 255 / 3%);
     border: 1px solid rgb(99 132 246 / 14%);
     border-radius: 16px;
-    transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+    transition: border-color 0.25s ease, box-shadow 0.25s ease;
 
     &:hover {
         border-color: rgb(94 234 212 / 40%);
-        box-shadow: 0 18px 40px rgb(0 0 0 / 35%);
-
-        .landing__feature-media img {
-            transform: scale(1.07);
-        }
+        box-shadow: 0 12px 28px rgb(0 0 0 / 30%);
     }
-
-    /* Once revealed, transform tracks the pointer with a light trailing ease. */
-    &.in {
-        transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1), transform 0.16s ease-out, border-color 0.25s ease, box-shadow 0.25s ease;
-    }
-}
-
-.landing__feature-media {
-    position: relative;
-    aspect-ratio: 16 / 10;
-    overflow: hidden;
-    background: linear-gradient(135deg, rgb(20 184 166 / 20%), rgb(99 102 241 / 20%));
-
-    img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        transition: transform 0.55s ease;
-    }
-
-    &::after {
-        content: '';
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(180deg, rgb(5 10 24 / 15%) 25%, rgb(5 10 24 / 78%) 100%);
-    }
-
-    /* Gold accent line along the media's bottom edge. */
-    &::before {
-        content: '';
-        position: absolute;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        z-index: 2;
-        height: 3px;
-        background: linear-gradient(90deg, #14b8a6, #6366f1 55%, #fbbf24);
-    }
-}
-
-.landing__feature-icon {
-    position: absolute;
-    left: 1.2rem;
-    bottom: 1.2rem;
-    z-index: 3;
-    display: grid;
-    place-items: center;
-    width: 3.8rem;
-    height: 3.8rem;
-    font-size: 1.8rem;
-    background: rgb(7 13 31 / 65%);
-    border: 1px solid rgb(255 255 255 / 14%);
-    border-radius: 11px;
-    backdrop-filter: blur(8px);
 }
 
 .landing__feature-body {
-    padding: 1.5rem 1.8rem 2rem;
+    padding: 1.8rem 1.8rem 2rem;
+}
+
+.landing__feature-icon {
+    display: grid;
+    place-items: center;
+    width: 4.6rem;
+    height: 4.6rem;
+    margin-bottom: 1.4rem;
+    color: #5eead4;
+    background: rgb(20 184 166 / 10%);
+    border: 1px solid rgb(20 184 166 / 25%);
+    border-radius: 12px;
+
+    svg {
+        display: block;
+    }
 }
 
 .landing__feature-title {
@@ -584,56 +503,6 @@ body.landing-open .app-footer {
     color: rgb(203 213 225 / 75%);
     font-size: 1.25rem;
     line-height: 1.6;
-}
-
-/* ----------------------------------------------------------------- moments */
-
-.landing__moments {
-    max-width: 1120px;
-    margin: 0 auto;
-    padding: 5.4rem 2.4rem 0;
-
-    @media (max-width: 640px) {
-        padding: 4rem 1.6rem 0;
-    }
-}
-
-.landing__moments-row {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 1.4rem;
-
-    @media (max-width: 760px) {
-        grid-template-columns: 1fr;
-    }
-}
-
-.landing__moment {
-    position: relative;
-    aspect-ratio: 3 / 2;
-    overflow: hidden;
-    background: linear-gradient(135deg, rgb(20 184 166 / 16%), rgb(99 102 241 / 16%));
-    border: 1px solid rgb(99 132 246 / 16%);
-    border-radius: 16px;
-
-    img {
-        display: block;
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        transition: transform 0.55s ease;
-    }
-
-    &::after {
-        content: '';
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(180deg, rgb(5 10 24 / 20%), rgb(5 10 24 / 55%));
-    }
-
-    &:hover img {
-        transform: scale(1.05);
-    }
 }
 
 /* ----------------------------------------------------------------- benefits */
@@ -723,9 +592,7 @@ body.landing-open .app-footer {
 .landing__benefits-scrim {
     position: absolute;
     inset: 0;
-    background:
-        radial-gradient(480px 320px at 28% 18%, rgb(20 184 166 / 16%), transparent 70%),
-        linear-gradient(180deg, rgb(5 10 24 / 35%) 0%, rgb(5 10 24 / 55%) 45%, rgb(5 10 24 / 88%) 100%);
+    background: linear-gradient(180deg, rgb(5 10 24 / 35%) 0%, rgb(5 10 24 / 55%) 45%, rgb(5 10 24 / 88%) 100%);
 }
 
 .landing__mini-stack {
@@ -740,7 +607,7 @@ body.landing-open .app-footer {
 
 .landing__mini-card {
     padding: 1.6rem 1.8rem;
-    background: linear-gradient(160deg, rgb(13 25 51 / 80%), rgb(7 14 30 / 90%));
+    background: rgb(13 25 51 / 88%);
     border: 1px solid rgb(99 132 246 / 18%);
     border-radius: 14px;
     box-shadow: 0 14px 34px rgb(0 0 0 / 30%);
@@ -784,7 +651,7 @@ body.landing-open .app-footer {
     i {
         display: block;
         height: 100%;
-        background: linear-gradient(90deg, #14b8a6, #6366f1);
+        background: #14b8a6;
         border-radius: 999px;
     }
 }
@@ -847,9 +714,7 @@ body.landing-open .app-footer {
     margin-top: 7rem;
     padding: 8rem 2.4rem 3rem;
     text-align: center;
-    background:
-        radial-gradient(700px 320px at 50% 0%, rgb(20 184 166 / 14%), transparent 70%),
-        linear-gradient(rgb(9 16 35 / 60%), rgb(5 10 24 / 90%));
+    background: linear-gradient(rgb(9 16 35 / 60%), rgb(5 10 24 / 90%));
     border-top: 1px solid rgb(99 132 246 / 12%);
 }
 
@@ -871,9 +736,7 @@ body.landing-open .app-footer {
 .landing__final-scrim {
     position: absolute;
     inset: 0;
-    background:
-        radial-gradient(700px 320px at 50% 0%, rgb(20 184 166 / 18%), transparent 70%),
-        linear-gradient(180deg, rgb(5 10 24 / 80%) 0%, rgb(5 10 24 / 92%) 60%, #050a18 100%);
+    background: linear-gradient(180deg, rgb(5 10 24 / 82%) 0%, rgb(5 10 24 / 92%) 60%, #050a18 100%);
 }
 
 .landing__final-inner {
@@ -933,16 +796,6 @@ body.landing-open .app-footer {
     50% { opacity: 0.45; }
 }
 
-@keyframes landingFloat {
-    from { transform: translate3d(0, 0, 0) scale(1); }
-    to { transform: translate3d(7vw, 5vh, 0) scale(1.18); }
-}
-
-@keyframes landingKenBurns {
-    from { transform: scale(1) translate3d(0, 0, 0); }
-    to { transform: scale(1.1) translate3d(-1.5%, -1%, 0); }
-}
-
 @media (prefers-reduced-motion: reduce) {
     .landing,
     .landing * {
@@ -957,7 +810,6 @@ body.landing-open .app-footer {
         transform: none;
     }
 
-    .landing__orb,
     .landing__spotlight {
         display: none;
     }
