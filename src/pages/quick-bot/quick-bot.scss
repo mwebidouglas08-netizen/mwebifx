@@ -1,0 +1,101 @@
+.quick-bot {
+    &__presets {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(24rem, 1fr));
+        gap: 1.2rem;
+    }
+
+    &__preset {
+        display: flex;
+        flex-direction: column;
+        gap: 0.8rem;
+        padding: 1.3rem 1.5rem;
+        border: 1px solid rgb(15 40 60 / 8%);
+        border-radius: 1.2rem;
+        background: #fff;
+
+        &.is-active {
+            border-color: rgb(39 184 195 / 55%);
+            box-shadow: 0 0 0 1px rgb(39 184 195 / 25%);
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+
+            h3 {
+                margin: 0;
+                font-size: 1.5rem;
+            }
+        }
+
+        p {
+            margin: 0;
+            flex: 1;
+            color: #4b6172;
+            font-size: 1.2rem;
+            line-height: 1.5;
+        }
+
+        button {
+            align-self: flex-start;
+        }
+    }
+
+    &__cols {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(34rem, 1fr));
+        gap: 1.3rem;
+    }
+
+    &__form {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 1.2rem;
+        padding: 1.3rem 1.4rem;
+    }
+
+    &__price {
+        display: flex;
+        flex-direction: column;
+        gap: 0.45rem;
+
+        > span:first-child {
+            color: #6b7f8f;
+            font-size: 1.05rem;
+            font-weight: 700;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+        }
+    }
+
+    &__toggle,
+    &__mini {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: #33506a;
+        font-size: 1.2rem;
+        font-weight: 600;
+        cursor: pointer;
+
+        input {
+            width: 1.5rem;
+            height: 1.5rem;
+            accent-color: #27b8c3;
+        }
+    }
+
+    &__purchase-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.8rem;
+        padding: 1.2rem 1.4rem;
+    }
+
+    &__pnl {
+        font-size: 1.2rem;
+    }
+}

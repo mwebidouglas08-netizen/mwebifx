@@ -1,0 +1,72 @@
+.apex-bot {
+    &__stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+        gap: 1.1rem;
+    }
+
+    &__stat {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        padding: 1.2rem 1.4rem;
+        border: 1px solid rgb(15 40 60 / 8%);
+        border-radius: 1rem;
+        background: #fff;
+
+        span {
+            color: #6b7f8f;
+            font-size: 1.05rem;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        strong {
+            font-size: 1.9rem;
+
+            &.is-win { color: #12a35c; }
+            &.is-loss { color: #d84646; }
+        }
+    }
+
+    &__body {
+        display: grid;
+        grid-template-columns: minmax(0, 34rem) minmax(0, 1fr);
+        gap: 1.3rem;
+        align-items: start;
+
+        @media (max-width: 1100px) {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    &__form {
+        display: flex;
+        flex-direction: column;
+        gap: 1.1rem;
+        padding: 1.3rem 1.4rem;
+    }
+
+    &__subhead {
+        padding: 1rem 1.4rem 0;
+
+        h3 {
+            margin: 0;
+            font-size: 1.3rem;
+        }
+    }
+
+    &__sub {
+        color: #7d8f9d;
+        font-size: 1.1rem;
+        font-weight: 600;
+    }
+
+    &__pattern {
+        color: #4b6172;
+        font-size: 1.1rem;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+}

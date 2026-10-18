@@ -42,6 +42,11 @@ export const HUB_STRATEGIES: HubStrategy[] = [
     { id: 'neutrade', name: 'NEUTRADE AI', description: 'Fall on Volatility 50 Index, 1 minute duration. Neutral mean-reversion.', risk: 'Low', symbol: 'R_50', direction: 'PUT', durationUnit: 'm', duration: 1, amount: 1 },
     { id: 'straddle_edge', name: 'STRADDLE EDGE', description: 'Fall on Boom 1000 Index, 2 tick duration. Breakout straddle edge.', risk: 'High', symbol: 'BOOM1000', direction: 'PUT', durationUnit: 't', duration: 2, amount: 1 },
     { id: 'pulsetrader', name: 'Pulsetrader AI', description: 'Rise on Jump 100 Index, 5 tick duration. Pulse-riding momentum bot.', risk: 'Medium', symbol: '1HZ100V', direction: 'CALL', durationUnit: 't', duration: 5, amount: 1 },
+    { id: 'aurora', name: 'Aurora Parity Premium', description: 'Rise on Volatility 100 (1s) Index, 1 tick duration. Dawn-parity momentum rider.', risk: 'High', symbol: '1HZ100V', direction: 'CALL', durationUnit: 't', duration: 1, amount: 1 },
+    { id: 'obsidian', name: 'Obsidian Parity Premium', description: 'Fall on Volatility 75 (1s) Index, 1 tick duration. Dark-parity streak hunter.', risk: 'High', symbol: '1HZ75V', direction: 'PUT', durationUnit: 't', duration: 1, amount: 1 },
+    { id: 'prism', name: 'Prism Extremes', description: 'Rise on Volatility 100 Index, 1 tick duration. Extreme-digit prism rider.', risk: 'Medium', symbol: 'R_100', direction: 'CALL', durationUnit: 't', duration: 1, amount: 1 },
+    { id: 'titan', name: 'Titan Range', description: 'Fall on Volatility 50 Index, 1 tick duration. Range-capping titan.', risk: 'Medium', symbol: 'R_50', direction: 'PUT', durationUnit: 't', duration: 1, amount: 1 },
+    { id: 'zenith', name: 'Zenith Flow Premium', description: 'Rise on Volatility 25 (1s) Index, 2 tick duration. Zenith flow rider.', risk: 'Low', symbol: '1HZ25V', direction: 'CALL', durationUnit: 't', duration: 2, amount: 1 },
 ];
 
 /**

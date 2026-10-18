@@ -1,0 +1,177 @@
+.auto-ai {
+    &__list {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(26rem, 1fr));
+        gap: 1.3rem;
+    }
+
+    &__card {
+        display: flex;
+        flex-direction: column;
+        gap: 0.8rem;
+        padding: 1.5rem 1.7rem;
+        border: 1px solid rgb(15 40 60 / 8%);
+        border-radius: 1.3rem;
+        background: #fff;
+
+        header {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+
+            h2 {
+                margin: 0;
+                font-size: 1.5rem;
+            }
+        }
+
+        p {
+            margin: 0;
+            flex: 1;
+            color: #4b6172;
+            font-size: 1.2rem;
+            line-height: 1.5;
+        }
+
+        button {
+            align-self: flex-start;
+        }
+    }
+
+    &__tabs {
+        display: flex;
+        gap: 0.5rem;
+        padding: 0.35rem;
+        border-radius: 999px;
+        background: #eef2f6;
+
+        button {
+            padding: 0.55rem 1.2rem;
+            border: 0;
+            border-radius: 999px;
+            background: transparent;
+            color: #5b7184;
+            font-family: inherit;
+            font-size: 1.15rem;
+            font-weight: 700;
+            cursor: pointer;
+
+            &.is-active {
+                background: #27b8c3;
+                color: #fff;
+            }
+        }
+    }
+
+    &__back {
+        margin-bottom: 0.6rem;
+        padding: 0;
+        border: 0;
+        background: none;
+        color: #0f8f98;
+        font-family: inherit;
+        font-size: 1.2rem;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+    &__dot {
+        width: 0.75rem;
+        height: 0.75rem;
+        border-radius: 50%;
+        background: currentColor;
+    }
+
+    &__body {
+        display: grid;
+        grid-template-columns: minmax(0, 32rem) minmax(0, 1fr);
+        gap: 1.3rem;
+        align-items: start;
+
+        @media (max-width: 1100px) {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    &__side {
+        display: flex;
+        flex-direction: column;
+        gap: 1.3rem;
+    }
+
+    &__form {
+        display: flex;
+        flex-direction: column;
+        gap: 1.1rem;
+        padding: 1.3rem 1.4rem;
+    }
+
+    &__checks {
+        margin: 0;
+        padding: 1rem 1.4rem 1.2rem;
+        list-style: none;
+
+        li {
+            display: flex;
+            align-items: center;
+            gap: 0.7rem;
+            padding: 0.45rem 0;
+            color: #33506a;
+            font-size: 1.25rem;
+        }
+    }
+
+    &__check-ok {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.9rem;
+        height: 1.9rem;
+        border-radius: 50%;
+        background: rgb(18 163 92 / 12%);
+        color: #12a35c;
+        font-size: 1.1rem;
+        font-weight: 700;
+    }
+
+    &__guard-note {
+        margin: 0;
+        padding: 0 1.4rem 1.3rem;
+        color: #7d8f9d;
+        font-size: 1.1rem;
+        line-height: 1.5;
+    }
+
+    &__sub {
+        color: #7d8f9d;
+        font-size: 1.1rem;
+        font-weight: 600;
+    }
+
+    &__spark {
+        display: inline-flex;
+        align-items: flex-end;
+        gap: 2px;
+        height: 1.8rem;
+        margin-left: 0.7rem;
+        vertical-align: middle;
+
+        i {
+            width: 3px;
+            border-radius: 2px;
+            background: #27b8c3;
+        }
+    }
+
+    &__footer {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 1rem 1.4rem;
+        border-top: 1px solid rgb(15 40 60 / 7%);
+        color: #4b6172;
+        font-size: 1.15rem;
+    }
+}

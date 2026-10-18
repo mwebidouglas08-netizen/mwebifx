@@ -5,10 +5,13 @@ import './dashboard-launchpad.scss';
 
 /** Rotating reference-style dashboard hero + the four numbered launcher cards. */
 const HEADLINES = [
-    'Load a strategy and paper-trade it first.',
-    'Scan 13 volatility markets with the AI scanner.',
-    'Run your bots on demo before risking real funds.',
+    'Plan your trade, then trade your plan.',
+    'Protect your capital — risk management comes first.',
+    'A missed opportunity is better than an unplanned trade.',
+    'The trend is your friend until it ends.',
 ];
+
+const WELCOME = 'Welcome to your trading workspace.';
 
 interface LaunchCard {
     number: string;
@@ -18,26 +21,36 @@ interface LaunchCard {
 }
 
 const CARDS: LaunchCard[] = [
-    { number: '01', title: 'Load Bot', hint: 'Bot catalog — load it into the builder', view: 'trading-bots' },
-    { number: '02', title: 'Premium Bots', hint: 'Ranked AI digit-entry scanners', view: 'pro-ai' },
-    { number: '03', title: 'Speed Bot', hint: 'Fast digit engine — Over/Under', view: 'ou-bot' },
-    { number: '04', title: 'Manual Trading', hint: 'Digits, RSI, MACD and chart tools', view: 'analysis-tool' },
+    { number: '01', title: 'Load Bot', hint: 'Free Bots — load a strategy', view: 'free-bots' },
+    { number: '02', title: 'Premium Bots', hint: 'AI scanner workspaces', view: 'premium-ai' },
+    { number: '03', title: 'Speed Bot', hint: 'Fast digit trader', view: 'speedbot' },
+    { number: '04', title: 'Manual Trading', hint: 'One-tick terminal', view: 'manual-trader' },
 ];
 
 const DashboardLaunchpad = () => {
     const [line, setLine] = useState(0);
+    const [typed, setTyped] = useState(0);
 
     useEffect(() => {
         const t = setInterval(() => setLine(prev => (prev + 1) % HEADLINES.length), 3600);
         return () => clearInterval(t);
     }, []);
 
+    useEffect(() => {
+        if (typed >= WELCOME.length) return;
+        const t = setTimeout(() => setTyped(n => n + 1), 38);
+        return () => clearTimeout(t);
+    }, [typed]);
+
     return (
         <section className='launchpad' aria-label='Dashboard shortcuts'>
             <div className='launchpad__hero'>
                 <div className='launchpad__hero-copy'>
                     <span className='launchpad__kicker'>Dollarvault Workspace</span>
-                    <h1>Trade smarter with automated AI bots.</h1>
+                    <h1 aria-live='polite'>
+                        {WELCOME.slice(0, typed)}
+                        <span className='launchpad__caret' aria-hidden='true' />
+                    </h1>
                     <p key={line} className='launchpad__rotating' aria-live='polite'>
                         {HEADLINES[line]}
                     </p>

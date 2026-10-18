@@ -1,0 +1,109 @@
+.hedging-tool {
+    &__price {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 1.1rem;
+        padding: 1.2rem 1.6rem;
+        border: 1px solid rgb(15 40 60 / 8%);
+        border-radius: 1.2rem;
+        background: linear-gradient(135deg, #ffffff 0%, #f2fbfc 100%);
+
+        > span:first-child {
+            color: #6b7f8f;
+            font-size: 1.05rem;
+            font-weight: 700;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+        }
+
+        strong {
+            font-size: 2rem;
+            font-variant-numeric: tabular-nums;
+        }
+
+        em {
+            color: #0f8f98;
+            font-size: 1.2rem;
+            font-style: normal;
+            font-weight: 700;
+        }
+    }
+
+    &__controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 1.2rem;
+        padding: 1.3rem 1.6rem;
+        border: 1px solid rgb(253 230 138 / 80%);
+        border-radius: 1.2rem;
+        background: linear-gradient(180deg, #fef9e7 0%, #fdf3d3 100%);
+    }
+
+    &__auto {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding-bottom: 0.6rem;
+        color: #4a3a06;
+        font-size: 1.2rem;
+        font-weight: 600;
+        cursor: pointer;
+
+        input {
+            width: 1.5rem;
+            height: 1.5rem;
+            accent-color: #27b8c3;
+        }
+    }
+
+    &__legs {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(24rem, 1fr));
+        gap: 1.2rem;
+    }
+
+    &__leg {
+        padding: 1.3rem 1.5rem;
+        border: 1px solid rgb(15 40 60 / 8%);
+        border-radius: 1.2rem;
+        background: #fff;
+
+        header {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+            margin-bottom: 0.6rem;
+
+            span {
+                color: #6b7f8f;
+                font-size: 1.05rem;
+                font-weight: 700;
+                letter-spacing: 0.07em;
+                text-transform: uppercase;
+            }
+
+            strong {
+                font-size: 1.6rem;
+            }
+        }
+
+        p {
+            margin: 0;
+            color: #4b6172;
+            font-size: 1.2rem;
+        }
+    }
+
+    &__sub {
+        color: #7d8f9d;
+        font-size: 1.15rem;
+        font-weight: 600;
+
+        strong {
+            &.is-win { color: #12a35c; }
+            &.is-loss { color: #d84646; }
+        }
+    }
+}

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Voice agent singleton — Web Speech recognition lifecycle and the shared
  * parse → execute → speak pipeline.
  *
@@ -166,10 +166,10 @@ describe('hearing transcripts', () => {
         expect(agent.getState().lastHeard).toBe('open the dashboard');
         expect(agent.getState().history[0]).toMatchObject({
             heard: 'open the dashboard',
-            reply: 'Opening Bot Dashboard.',
+            reply: 'Opening Dashboard.',
             ok: true,
         });
-        expect(voice.speak).toHaveBeenCalledWith('Opening Bot Dashboard.', { force: true });
+        expect(voice.speak).toHaveBeenCalledWith('Opening Dashboard.', { force: true });
     });
 
     it('asks a text submission and hears its reply', async () => {
@@ -283,3 +283,4 @@ describe('subscriptions', () => {
         expect(snapshots).toHaveLength(count);
     });
 });
+

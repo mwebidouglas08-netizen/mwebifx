@@ -1,278 +1,85 @@
 import { useMemo, useState } from 'react';
 import { observer } from 'mobx-react-lite';
-import { load } from '@/external/bot-skeleton';
-import { save_types } from '@/external/bot-skeleton/constants/save-type';
-import { DBOT_TABS } from '@/constants/bot-contents';
-import { useStore } from '@/hooks/useStore';
-import { STRATEGIES } from '@/pages/bot-builder/quick-strategy/config';
-import type { TDescriptionItem } from '@/pages/bot-builder/quick-strategy/types';
 import {
     HUB_STRATEGIES,
     deployHubStrategy,
     type HubStrategy,
 } from '@/pages/ai-trading-hub/deploy-strategy';
-import dalembertExampleXml from '../../xml/dalembert.xml';
-import martingaleExampleXml from '../../xml/martingale.xml';
-import oscarsGrindExampleXml from '../../xml/oscars_grind.xml';
+import { VERTEX_DIGITS, QUANTUM_EDGE } from '@/pages/quick-bot';
+import { navigateToHubView } from '@/services/hub-navigation';
 import { HubNote, HubPage, HubPageHeader } from '@/components/hub-page';
 import './trading-bots.scss';
 
-type LoadKind = 'quick' | 'hub' | 'xml' | 'manual';
-
-/** Reference Free Bots grid badges — quick progressions, hub scanners, examples. */
-type CardBadge = 'QUICK BOT' | 'PREMIUM BOT' | 'FREE BOT';
+type CardBadge = 'QUICK' | 'PREMIUM' | 'FREE';
 
 interface BotCard {
     id: string;
     name: string;
     description: string;
-    kind: LoadKind;
-    badge?: CardBadge;
-    quickKey?: string;
-    hub?: HubStrategy;
-    xml?: string;
-    automated: boolean;
-    popular?: boolean;
+    kind: 'quick' | 'hub';
+    badge: CardBadge;
+    hubId?: string;
+    preset?: 'vertex' | 'quantum';
 }
 
-const KIND_BADGE: Record<LoadKind, CardBadge | undefined> = {
-    quick: 'QUICK BOT',
-    hub: 'PREMIUM BOT',
-    xml: 'FREE BOT',
-    manual: undefined,
-};
+/** Exact Free Bots grid from the reference app — 13 cards, this order. */
+const REFERENCE_CARDS: BotCard[] = [
+    { id: 'vertex', name: 'Vertex Digits', description: 'Quick Over/Under + Even/Odd analysis bot. Stake 1.0, recovery ×2, pattern gate after every 3 trades and a first-entry percentage check.', kind: 'quick', badge: 'QUICK', preset: 'vertex' },
+    { id: 'digit_nexus', name: 'Digit Nexus AI', description: 'Premium digit-trend rider on Volatility 75. Three-tick Rise contracts with stake recovery.', kind: 'hub', badge: 'PREMIUM', hubId: 'digit_nexus' },
+    { id: 'volt_scalper', name: '💥 Volt Scalper', description: 'Premium ultra-fast scalper. One-tick Rise contracts on Volatility 100 with aggressive recovery.', kind: 'hub', badge: 'PREMIUM', hubId: 'volt_scalper' },
+    { id: 'apex_ai', name: 'Apex AI', description: 'Premium trend-following apex bot. Two-tick Rise contracts on Volatility 25.', kind: 'hub', badge: 'PREMIUM', hubId: 'apex_ai' },
+    { id: 'neutrade', name: 'NEUTRADE AI', description: 'Premium neutral mean-reversion bot. One-minute Fall contracts on Volatility 50.', kind: 'hub', badge: 'PREMIUM', hubId: 'neutrade' },
+    { id: 'straddle', name: 'STRADDLE EDGE', description: 'Premium breakout straddle. Two-tick Fall contracts on Boom 1000 Index.', kind: 'hub', badge: 'PREMIUM', hubId: 'straddle_edge' },
+    { id: 'aurora', name: 'Aurora Parity Premium', description: 'Free parity momentum rider. One-tick Rise contracts on Volatility 100 (1s) Index.', kind: 'hub', badge: 'FREE', hubId: 'aurora' },
+    { id: 'obsidian', name: 'Obsidian Parity Premium', description: 'Free dark-parity streak hunter. One-tick Fall contracts on Volatility 75 (1s) Index.', kind: 'hub', badge: 'FREE', hubId: 'obsidian' },
+    { id: 'prism', name: 'Prism Extremes', description: 'Free extreme-digit prism. One-tick Rise contracts on Volatility 100 Index.', kind: 'hub', badge: 'FREE', hubId: 'prism' },
+    { id: 'pulsetrader', name: 'Pulsetrader AI', description: 'Free pulse-riding momentum bot. Five-tick Rise contracts on Jump 100 Index.', kind: 'hub', badge: 'FREE', hubId: 'pulsetrader' },
+    { id: 'titan', name: 'Titan Range', description: 'Free range-capping titan. One-tick Fall contracts on Volatility 50 Index.', kind: 'hub', badge: 'FREE', hubId: 'titan' },
+    { id: 'zenith', name: 'Zenith Flow Premium', description: 'Free zenith flow rider. Two-tick Rise contracts on Volatility 25 (1s) Index.', kind: 'hub', badge: 'FREE', hubId: 'zenith' },
+    { id: 'quantum', name: '🥉 Quantum Edge AI', description: 'Quick extreme-digit bot. Stake 0.8, recovery ×2, Over/Under on every trade plus a percentage reversal after every 3 trades.', kind: 'quick', badge: 'QUICK', preset: 'quantum' },
+];
 
-const CHIPS = ['All', 'Popular', 'Automated', 'Manual'] as const;
-type Chip = (typeof CHIPS)[number];
-
-/** Strip HTML from constant copy so cards stay plain text. */
-const stripTags = (text: string) => text.replace(/<[^>]+>/g, '').trim();
-
-const firstParagraph = (items?: TDescriptionItem[]): string => {
-    const item = (items ?? []).find(entry => entry.type === 'text' && Boolean(entry.content?.[0]));
-    return item?.content?.[0] ? stripTags(item.content[0]) : '';
-};
-
-const ACCUMULATOR_VARIANT: Record<string, string> = {
-    MARTINGALE: 'Martingale',
-    DALEMBERT: "D'Alembert",
-    REVERSE_MARTINGALE: 'Reverse Martingale',
-    REVERSE_DALEMBERT: "Reverse D'Alembert",
-};
-
-const accumulatorDescription = (key: string): string => {
-    const variant = ACCUMULATOR_VARIANT[key.replace('ACCUMULATORS_', '').replace('_ON_STAT_RESET', '')] ?? 'stake';
-    const reset = key.endsWith('_ON_STAT_RESET')
-        ? ' The progression resets whenever the strategy statistics reset.'
-        : '';
-    return `Accumulator contracts stepped with a ${variant} stake progression — the stake steps between trades while the growth rate compounds per tick inside the range.${reset}`;
-};
-
-const POPULAR_QUICK = new Set(['MARTINGALE', 'D_ALEMBERT', 'OSCARS_GRIND']);
-const POPULAR_HUB = new Set(['digit_nexus', 'volt_scalper', 'apex_ai']);
-
-const buildCatalog = (): BotCard[] => {
-    const quickCards: BotCard[] = Object.entries(STRATEGIES()).map(([key, strategy]) => {
-        const isAccumulator = key.startsWith('ACCUMULATORS_');
-        const isReset = key.endsWith('_ON_STAT_RESET');
-        const capped = ['MARTINGALE', 'D_ALEMBERT', 'OSCARS_GRIND'].includes(key);
-        const name = isAccumulator
-            ? `Accumulators ${strategy.label}${isReset ? ' (stat reset)' : ''}`
-            : capped
-              ? `${strategy.label} (max stake)`
-              : strategy.label;
-        return {
-            id: `quick_${key}`,
-            name,
-            description: firstParagraph(strategy.description) || accumulatorDescription(key),
-            kind: 'quick',
-            badge: KIND_BADGE.quick,
-            quickKey: key,
-            automated: true,
-            popular: POPULAR_QUICK.has(key),
-        };
-    });
-
-    const hubCards: BotCard[] = HUB_STRATEGIES.map(strategy => ({
-        id: `hub_${strategy.id}`,
-        name: strategy.name,
-        description: strategy.description,
-        kind: 'hub',
-        badge: KIND_BADGE.hub,
-        hub: strategy,
-        automated: true,
-        popular: POPULAR_HUB.has(strategy.id),
-    }));
-
-    const exampleCards: BotCard[] = [
-        {
-            id: 'xml_martingale',
-            name: 'Martingale (classic)',
-            description:
-                'Example XML: doubles the stake after each loss on Rise/Fall contracts, with no maximum-stake cap. Load it and set your own cap before running.',
-            kind: 'xml',
-            xml: martingaleExampleXml,
-            automated: true,
-        },
-        {
-            id: 'xml_dalembert',
-            name: "D'Alembert (classic)",
-            description:
-                'Example XML: adds one unit to the stake after a loss and steps it back down after a win, on Rise/Fall contracts.',
-            kind: 'xml',
-            xml: dalembertExampleXml,
-            automated: true,
-        },
-        {
-            id: 'xml_oscars_grind',
-            name: "Oscar's Grind (classic)",
-            description:
-                'Example XML: grinds the stake up by one unit after a win and holds it after a loss, on Rise/Fall contracts.',
-            kind: 'xml',
-            xml: oscarsGrindExampleXml,
-            automated: true,
-        },
-    ];
-
-    const manualCards: BotCard[] = [
-        {
-            id: 'manual_builder',
-            name: 'Build from scratch',
-            description:
-                'Open an empty Blockly workspace and wire the market, purchase and risk blocks together yourself.',
-            kind: 'manual',
-            automated: false,
-        },
-        {
-            id: 'manual_quick_form',
-            name: 'Quick Strategy form',
-            description:
-                'Fill in symbol, stake, duration and profit/loss thresholds yourself — the form writes the blocks for you.',
-            kind: 'manual',
-            automated: false,
-        },
-    ];
-
-    return [...hubCards, ...quickCards, ...exampleCards, ...manualCards].map(card => ({
-        ...card,
-        badge: card.badge ?? KIND_BADGE[card.kind],
-    }));
-};
-
-type EventsApi = {
-    BlockCreate?: new (block: unknown) => unknown;
-    fire?: (event: unknown) => void;
-};
-
-/**
- * The market block blanks dropdown values it does not recognise when it runs its
- * onchange handler during load. Firing a create event on every market block
- * repopulates them — the same trick deploy-strategy.ts uses.
- */
-const replayMarketBlocks = (workspace: { getAllBlocks: () => { type: string }[] }) => {
-    try {
-        const events = (window.Blockly as unknown as { Events?: EventsApi }).Events;
-        if (!events?.BlockCreate || !events.fire) return;
-        workspace
-            .getAllBlocks()
-            .filter(block => block.type === 'trade_definition_market')
-            .forEach(block => events.fire!(new events.BlockCreate!(block)));
-    } catch {
-        // Non-fatal: the fields are already baked into the XML.
-    }
-};
-
-type Props = {
-    /** Provided by the shell so Load can jump straight to the Bot Dashboard. */
-    onOpenDashboard?: () => void;
-};
-
-const TradingBotsPage = observer(({ onOpenDashboard }: Props) => {
-    const { dashboard, quick_strategy } = useStore() ?? {};
+const TradingBotsPage = observer(() => {
     const [query, setQuery] = useState('');
-    const [chip, setChip] = useState<Chip>('All');
     const [busyId, setBusyId] = useState<string | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
-    const cards = useMemo(buildCatalog, []);
+    const cards = useMemo(() => REFERENCE_CARDS, []);
 
     const visible = useMemo(() => {
         const needle = query.trim().toLowerCase();
-        return cards.filter(card => {
-            const matchesChip =
-                chip === 'All' ||
-                (chip === 'Popular' && card.popular) ||
-                (chip === 'Automated' && card.automated) ||
-                (chip === 'Manual' && !card.automated);
-            return matchesChip && (!needle || card.name.toLowerCase().includes(needle));
-        });
-    }, [cards, chip, query]);
-
-    const openBuilderTab = () => {
-        dashboard?.setActiveTab(DBOT_TABS.BOT_BUILDER);
-        onOpenDashboard?.();
-    };
-
-    const loadXmlExample = async (xml: string, fileName: string) => {
-        const workspace = window.Blockly?.derivWorkspace;
-        if (!workspace) throw new Error('The Bot Dashboard workspace is still loading — try again in a moment.');
-        const result = await load({
-            block_string: xml,
-            workspace,
-            file_name: fileName,
-            from: save_types.UNSAVED,
-            drop_event: null,
-            strategy_id: null,
-            showIncompatibleStrategyDialog: null,
-            show_snackbar: false,
-        });
-        if (result?.error) throw new Error(result.error);
-        replayMarketBlocks(workspace);
-    };
+        if (!needle) return cards;
+        return cards.filter(card => card.name.toLowerCase().includes(needle));
+    }, [cards, query]);
 
     const onLoad = async (card: BotCard) => {
         setError(null);
         setNotice(null);
 
-        if (card.kind === 'manual') {
-            if (card.id === 'manual_quick_form') quick_strategy?.setFormVisibility(true);
-            openBuilderTab();
-            setNotice(`${card.name} opened in the Bot Builder.`);
+        if (card.kind === 'quick') {
+            const preset = card.preset === 'quantum' ? QUANTUM_EDGE : VERTEX_DIGITS;
+            window.sessionStorage.setItem('quick-bot-preset', JSON.stringify(preset));
+            navigateToHubView('quick-bot');
+            setNotice(`${card.name} loaded into the Quick Bot form.`);
             return;
         }
 
+        const strategy: HubStrategy | undefined = HUB_STRATEGIES.find(s => s.id === card.hubId);
         const workspace = window.Blockly?.derivWorkspace;
-        if (!workspace) {
-            setError('The Bot Dashboard workspace is still loading — try again in a moment.');
-            return;
-        }
-        if (!quick_strategy && card.kind === 'quick') {
-            setError('The Quick Strategy store is not ready yet — try again in a moment.');
+        if (!strategy || !workspace) {
+            setError('The Bot Builder workspace is still loading — try again in a moment.');
             return;
         }
 
         setBusyId(card.id);
         try {
-            if (card.kind === 'hub' && card.hub) {
-                await deployHubStrategy(card.hub, workspace);
-            } else if (card.kind === 'quick' && card.quickKey && quick_strategy) {
-                quick_strategy.setSelectedStrategy(card.quickKey);
-                // action 'EDIT' is the app's load-without-running path — the same
-                // call the Quick Strategy form makes, minus the auto-start.
-                await quick_strategy.onSubmit({ ...quick_strategy.form_data, action: 'EDIT' });
-            } else if (card.kind === 'xml' && card.xml) {
-                await loadXmlExample(card.xml, card.name);
-            }
-
+            await deployHubStrategy(strategy, workspace);
             if (workspace.getAllBlocks().length === 0) {
                 throw new Error('Nothing landed in the workspace — check your connection and try again.');
             }
-
-            openBuilderTab();
-            setNotice(
-                `${card.name} loaded into the Bot Builder. Press Run to start it — try it on a demo account first.`
-            );
+            navigateToHubView('bot-builder');
+            setNotice(`${card.name} loaded into the Bot Builder. Press Run to start it — try it on a demo account first.`);
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Could not load this strategy into the builder.');
         } finally {
@@ -283,8 +90,8 @@ const TradingBotsPage = observer(({ onOpenDashboard }: Props) => {
     return (
         <HubPage className='bots-page'>
             <HubPageHeader
-                title='Trading Bots'
-                subtitle='A catalog of every strategy this app can load into the Bot Builder — quick-strategy progressions, hub strategies and ready-made example XML.'
+                title='Free Bots'
+                subtitle='Load a ready-made strategy into the Bot Builder or open a Quick Bot preset. Nothing trades until you press Run.'
                 actions={
                     <input
                         type='search'
@@ -298,20 +105,6 @@ const TradingBotsPage = observer(({ onOpenDashboard }: Props) => {
             />
 
             <div className='bots-toolbar'>
-                <div className='hub-seg' role='tablist' aria-label='Filter bots'>
-                    {CHIPS.map(option => (
-                        <button
-                            key={option}
-                            type='button'
-                            role='tab'
-                            aria-selected={chip === option}
-                            className={`hub-seg__btn ${chip === option ? 'hub-seg__btn--on' : ''}`}
-                            onClick={() => setChip(option)}
-                        >
-                            {option}
-                        </button>
-                    ))}
-                </div>
                 <span className='bots-count'>
                     {visible.length} of {cards.length} bots
                 </span>
@@ -336,17 +129,10 @@ const TradingBotsPage = observer(({ onOpenDashboard }: Props) => {
 
             {visible.length === 0 ? (
                 <div className='bots-empty'>
-                    <strong>No bots match &ldquo;{query.trim() || chip}&rdquo;.</strong>
-                    <span>Try a shorter search, or switch the category back to All.</span>
-                    <button
-                        type='button'
-                        className='hub-btn hub-btn--ghost'
-                        onClick={() => {
-                            setQuery('');
-                            setChip('All');
-                        }}
-                    >
-                        Reset filters
+                    <strong>No bots match &ldquo;{query.trim()}&rdquo;.</strong>
+                    <span>Try a shorter search.</span>
+                    <button type='button' className='hub-btn hub-btn--ghost' onClick={() => setQuery('')}>
+                        Reset search
                     </button>
                 </div>
             ) : (
@@ -356,18 +142,8 @@ const TradingBotsPage = observer(({ onOpenDashboard }: Props) => {
                             <div className='bots-card__top'>
                                 <h3>{card.name}</h3>
                                 <div className='bots-card__tags'>
-                                    {card.badge && (
-                                        <span
-                                            className={`bots-card__badge bots-card__badge--${card.badge.split(' ')[0].toLowerCase()}`}
-                                        >
-                                            {card.badge}
-                                        </span>
-                                    )}
-                                    {card.popular && (
-                                        <span className='hub-badge hub-badge--sm hub-badge--info'>Popular</span>
-                                    )}
-                                    <span className='hub-badge hub-badge--sm'>
-                                        {card.automated ? 'Automated' : 'Manual'}
+                                    <span className={`bots-card__badge bots-card__badge--${card.badge.toLowerCase()}`}>
+                                        {card.badge}
                                     </span>
                                 </div>
                             </div>
@@ -379,16 +155,9 @@ const TradingBotsPage = observer(({ onOpenDashboard }: Props) => {
                                     disabled={busyId !== null}
                                     onClick={() => onLoad(card)}
                                 >
-                                    {busyId === card.id
-                                        ? 'Loading…'
-                                        : card.kind === 'manual'
-                                          ? 'Open builder'
-                                          : 'LOAD BOT'}
+                                    {busyId === card.id ? 'Loading…' : 'LOAD BOT'}
                                 </button>
-                                <span
-                                    className='bots-paper'
-                                    title='Practise on a demo account before risking real funds.'
-                                >
+                                <span className='bots-paper' title='Practise on a demo account before risking real funds.'>
                                     Try paper
                                 </span>
                             </div>

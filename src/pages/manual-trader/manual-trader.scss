@@ -1,0 +1,60 @@
+.manual-trader {
+    &__ticket {
+        display: flex;
+        flex-direction: column;
+        gap: 1.2rem;
+        padding: 1.4rem 1.6rem;
+        border: 1px solid rgb(15 40 60 / 8%);
+        border-radius: 1.3rem;
+        background: #fff;
+    }
+
+    &__quote {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 1.6rem;
+    }
+
+    &__price {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+
+        > span:first-child {
+            color: #6b7f8f;
+            font-size: 1.05rem;
+            font-weight: 700;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+        }
+
+        strong {
+            font-size: 1.9rem;
+            font-variant-numeric: tabular-nums;
+        }
+    }
+
+    &__fields {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1.2rem;
+    }
+
+    &__buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.8rem;
+    }
+
+    &__sub {
+        color: #7d8f9d;
+        font-size: 1.15rem;
+        font-weight: 600;
+
+        strong {
+            &.is-win { color: #12a35c; }
+            &.is-loss { color: #d84646; }
+        }
+    }
+}

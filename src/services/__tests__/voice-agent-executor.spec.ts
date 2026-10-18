@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Voice agent executor — intent → engine calls + spoken reply.
  *
  * Every engine singleton, the Deriv API facade and both preference services
@@ -103,7 +103,7 @@ describe('navigation', () => {
         const result = await executeVoiceIntent({ kind: 'navigate', view: 'dashboard' });
         off();
         expect(seen).toEqual(['dashboard']);
-        expect(result).toEqual({ ok: true, reply: 'Opening Bot Dashboard.' });
+        expect(result).toEqual({ ok: true, reply: 'Opening Dashboard.' });
     });
 
     it('tells the user where start/stop lives for page-local views', async () => {
@@ -410,3 +410,4 @@ describe('resilience', () => {
         expect(result).toEqual({ ok: true, reply: 'Voice agent off.' });
     });
 });
+

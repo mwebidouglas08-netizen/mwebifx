@@ -1,18 +1,32 @@
-/* Dark horizontal dc-tabs-style strip — always dark, like the reference
-   workspace bar, regardless of the app's light/dark theme. */
+/* Always-dark reference tab strip — solid teal active state, IBM Plex Sans. */
 .hub-tabnav {
+    position: relative;
     flex: 0 0 auto;
-    background: #0d1630;
-    border-bottom: 1px solid rgb(148 163 184 / 14%);
+    display: flex;
+    align-items: stretch;
+    background: linear-gradient(180deg, #05090f 0%, #0a1220 100%);
+    border-bottom: 1px solid rgb(255 255 255 / 6%);
     z-index: 4;
+    font-family: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+
+    &__filter {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 3.4rem;
+        border: 0;
+        border-right: 1px solid rgb(255 255 255 / 6%);
+        background: transparent;
+        cursor: pointer;
+    }
 
     &__list {
         display: flex;
         align-items: stretch;
-        gap: 0.2rem;
+        flex: 1 1 auto;
         overflow-x: auto;
         overflow-y: hidden;
-        padding: 0 0.8rem;
         scrollbar-width: none;
 
         &::-webkit-scrollbar {
@@ -20,51 +34,62 @@
         }
     }
 
-    &__group {
-        display: flex;
-        align-items: stretch;
-        flex: 0 0 auto;
-    }
-
-    &__divider {
-        width: 1px;
-        margin: 0.7rem 0.55rem;
-        background: rgb(148 163 184 / 20%);
-    }
-
     &__item {
-        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
         flex: 0 0 auto;
-        padding: 0.95rem 1.05rem;
+        padding: 0.95rem 1.15rem;
         border: 0;
         background: transparent;
-        color: #8b98b8;
-        font-size: 1.2rem;
-        font-weight: 600;
-        letter-spacing: 0.02em;
+        color: #e8eef8;
+        font-family: inherit;
+        font-size: 1.35rem;
+        font-weight: 700;
+        letter-spacing: 0.01em;
         white-space: nowrap;
         cursor: pointer;
-        transition: color 0.18s ease, background 0.18s ease;
+        transition: background 0.15s ease, color 0.15s ease;
+
+        svg {
+            flex: 0 0 auto;
+            color: #35c8d4;
+        }
 
         &:hover {
-            color: #e8eefc;
-            background: rgb(148 163 184 / 8%);
+            background: rgb(255 255 255 / 6%);
         }
 
-        &--active,
-        &:focus-visible {
-            color: #22d3ee;
-            background: rgb(34 211 238 / 8%);
-        }
+        &--active {
+            background: #27b8c3;
+            color: #fff;
 
-        &--active::after {
-            content: '';
-            position: absolute;
-            inset: auto 0.7rem -1px;
-            height: 2px;
-            border-radius: 2px 2px 0 0;
-            background: #22d3ee;
-            box-shadow: 0 0 10px rgb(34 211 238 / 55%);
+            svg {
+                color: #fff;
+            }
+
+            &:hover {
+                background: #27b8c3;
+            }
+        }
+    }
+
+    &__label {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0.35rem;
+    }
+
+    &__ai {
+        color: #2ee6d6;
+        font-family: 'Segoe Script', 'Bradley Hand', cursive;
+        font-size: 1.5rem;
+        font-style: italic;
+        font-weight: 700;
+        line-height: 1;
+
+        .hub-tabnav__item--active & {
+            color: #fff;
         }
     }
 }

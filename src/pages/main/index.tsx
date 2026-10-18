@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { observer } from 'mobx-react-lite';
 import { useStore } from '@/hooks/useStore';
 import useThemeSwitcher from '@/hooks/useThemeSwitcher';
@@ -7,16 +7,22 @@ import HubAccountSwitcher from '@/pages/ai-trading-hub/account-switcher';
 import OUBotPage from '@/pages/ou-bot';
 import AISignalScannerPage from '@/pages/ai-signal-scanner';
 import BacktestPage from '@/pages/backtest';
-import TradingBotsPage from '@/pages/trading-bots';
 import ProAiPage from '@/pages/pro-ai';
 import DualEdgePage from '@/pages/dual-edge';
-
 import AlgoProAiPage from '@/pages/algo-pro-ai';
 import BulkTraderPage from '@/pages/bulk-trader';
 import CopyTradingPage from '@/pages/copy-trading';
 import AnalysisToolPage from '@/pages/analysis-tool';
 import TradingViewPage from '@/pages/tradingview';
-import Landing from '@/pages/landing';
+import VoltAIPage from '@/pages/volt-ai';
+import PremiumAIPage from '@/pages/premium-ai';
+import QuickBotPage from '@/pages/quick-bot';
+import AutoAIPage from '@/pages/auto-ai';
+import ApexBotPage from '@/pages/apex-bot';
+import SpeedbotPage from '@/pages/speedbot';
+import AutomatedPage from '@/pages/automated';
+import HedgingToolPage from '@/pages/hedging-tool';
+import ManualTraderPage from '@/pages/manual-trader';
 import BotDock from '@/components/bot-dock';
 import AIBotDock from '@/components/ai-bot';
 import VersionBanner from '@/components/version-banner';
@@ -32,21 +38,18 @@ import VoiceAgentControl from '@/components/voice-agent';
 import AppWrapper from './main';
 import './main.scss';
 
+const BotBuilderPage = lazy(() => import('@/pages/bot-builder'));
+const ChartPage = lazy(() => import('@/pages/chart/chart-wrapper'));
+const TradingBotsPage = lazy(() => import('@/pages/trading-bots'));
+
 /** True once the welcome fanfare/voice has fired for this page load. */
 let welcomedThisLoad = false;
 
 const Main = observer(() => {
     const { ui } = useStore() ?? {};
     const { is_dark_mode_on, toggleTheme } = useThemeSwitcher();
-    const [activeView, setActiveView] = useState<HubViewId>('ai-hub');
-    // The landing page greets every app open (fresh load or refresh) — the
-    // welcome fanfare below plays over it, and Enter/any CTA dismisses it.
-    const [landingDone, setLandingDone] = useState(false);
+    const [activeView, setActiveView] = useState<HubViewId>('dashboard');
 
-    // Welcome voice + chime when the app opens (or is refreshed). Both services
-    // no-op when muted/unsupported; the voice retries on the first gesture when
-    // the browser blocks speech before interaction. The module-level flag keeps
-    // StrictMode's double-invoke (and any remount) from repeating it.
     useEffect(() => {
         if (welcomedThisLoad) return;
         welcomedThisLoad = true;
@@ -54,13 +57,6 @@ const Main = observer(() => {
         voiceService.announceWelcome();
     }, []);
 
-    // Publish the active view so dashboard-only chrome (the onboarding tour)
-    // knows to stay quiet while the hub is showing. Both views stay mounted —
-    // hiding the dashboard keeps the bot engine alive for the hub's controls.
-    //
-    // The shell is now a fixed-height grid: `.main-content` is the scroll
-    // container (see main.scss), so the body class no longer unlocks page
-    // scroll — it remains the signal dashboard-only chrome keys off of.
     useEffect(() => {
         ui?.setActiveHubView?.(activeView === 'dashboard' ? 'dashboard' : 'ai-hub');
         const isHub = activeView !== 'dashboard';
@@ -68,17 +64,23 @@ const Main = observer(() => {
         return () => document.body.classList.remove('hub-view');
     }, [activeView, ui]);
 
-    // The voice agent switches views through an emitter because the active
-    // view lives here as component state — same path the bot dock uses.
     useEffect(() => subscribeHubNavigation(setActiveView), []);
 
-    // Re-applies the entrance animation whenever a view becomes visible —
-    // wrappers stay mounted (display toggles), so the CSS animation alone would
-    // only ever play once, hidden, at first paint.
     const enterAnim = (view: HubViewId): { animation?: string } =>
         activeView === view
             ? { animation: 'hubEnter 0.45s cubic-bezier(0.22, 1, 0.36, 1) both' }
             : {};
+
+    const mount = (view: HubViewId, node: ReactNode, id?: string) => (
+        <div
+            key={id || view}
+            className='main-hub'
+            style={{ display: activeView === view ? 'block' : 'none', ...enterAnim(view) }}
+            aria-hidden={activeView !== view}
+        >
+            {node}
+        </div>
+    );
 
     return (
         <div className='main-dashboard'>
@@ -99,114 +101,62 @@ const Main = observer(() => {
                 </header>
                 <HubTabNav activeView={activeView} onSelect={setActiveView} />
                 <main className='main-content'>
-                    {/* Both views stay mounted. Unmounting the hub on switch would
-                        drop its market WebSocket and wipe the RSI buffers, so the
-                        user would stare at empty prices for several seconds. */}
+                    {/* Reference tabs */}
                     <div
-                        className='main-hub'
-                        style={{ display: activeView === 'ai-hub' ? 'block' : 'none', ...enterAnim('ai-hub') }}
-                        aria-hidden={activeView !== 'ai-hub'}
-                    >
-                        <AITradingHub onOpenDashboard={() => setActiveView('dashboard')} />
-                    </div>
-                    <div
-                        className='main-hub'
-                        style={{ display: activeView === 'ou-bot' ? 'block' : 'none', ...enterAnim('ou-bot') }}
-                        aria-hidden={activeView !== 'ou-bot'}
-                    >
-                        <OUBotPage />
-                    </div>
-                    <div
-                        className='main-hub'
-                        style={{ display: activeView === 'ai-scanner' ? 'block' : 'none', ...enterAnim('ai-scanner') }}
-                        aria-hidden={activeView !== 'ai-scanner'}
-                    >
-                        <AISignalScannerPage />
-                    </div>
-                    <div
-                        className='main-hub'
-                        style={{ display: activeView === 'backtest' ? 'block' : 'none', ...enterAnim('backtest') }}
-                        aria-hidden={activeView !== 'backtest'}
-                    >
-                        <BacktestPage />
-                    </div>
-                    <div
-                        className='main-hub'
-                        style={{ display: activeView === 'trading-bots' ? 'block' : 'none', ...enterAnim('trading-bots') }}
-                        aria-hidden={activeView !== 'trading-bots'}
-                    >
-                        <TradingBotsPage onOpenDashboard={() => setActiveView('dashboard')} />
-                    </div>
-                    <div
-                        className='main-hub'
-                        style={{ display: activeView === 'pro-ai' ? 'block' : 'none', ...enterAnim('pro-ai') }}
-                        aria-hidden={activeView !== 'pro-ai'}
-                    >
-                        <ProAiPage />
-                    </div>
-                    <div
-                        className='main-hub'
-                        style={{ display: activeView === 'dual-edge' ? 'block' : 'none', ...enterAnim('dual-edge') }}
-                        aria-hidden={activeView !== 'dual-edge'}
-                    >
-                        <DualEdgePage />
-                    </div>
-                    <div
-                        className='main-hub'
-                        style={{ display: activeView === 'algo-pro-ai' ? 'block' : 'none', ...enterAnim('algo-pro-ai') }}
-                        aria-hidden={activeView !== 'algo-pro-ai'}
-                    >
-                        <AlgoProAiPage />
-                    </div>
-                    <div
-                        className='main-hub'
-                        style={{ display: activeView === 'bulk-trader' ? 'block' : 'none', ...enterAnim('bulk-trader') }}
-                        aria-hidden={activeView !== 'bulk-trader'}
-                    >
-                        <BulkTraderPage />
-                    </div>
-                    <div
-                        className='main-hub'
-                        style={{ display: activeView === 'copy-trading' ? 'block' : 'none', ...enterAnim('copy-trading') }}
-                        aria-hidden={activeView !== 'copy-trading'}
-                    >
-                        <CopyTradingPage />
-                    </div>
-                    <div
-                        className='main-hub'
-                        style={{ display: activeView === 'analysis-tool' ? 'block' : 'none', ...enterAnim('analysis-tool') }}
-                        aria-hidden={activeView !== 'analysis-tool'}
-                    >
-                        <AnalysisToolPage />
-                    </div>
-                    <div
-                        className='main-hub'
-                        style={{ display: activeView === 'tradingview' ? 'block' : 'none', ...enterAnim('tradingview') }}
-                        aria-hidden={activeView !== 'tradingview'}
-                    >
-                        <TradingViewPage />
-                    </div>
-                    <div
-                        className='main-dashboard__engine'
+                        className='main-hub main-hub--dashboard'
                         style={{ display: activeView === 'dashboard' ? 'block' : 'none' }}
                         aria-hidden={activeView !== 'dashboard'}
                     >
                         <AppWrapper />
                     </div>
+                    {mount(
+                        'bot-builder',
+                        <Suspense fallback={<div className='main-hub__fallback'>Loading bot builder…</div>}>
+                            <BotBuilderPage />
+                        </Suspense>
+                    )}
+                    {mount('volt-ai', <VoltAIPage />)}
+                    {mount(
+                        'free-bots',
+                        <Suspense fallback={<div className='main-hub__fallback'>Loading bots…</div>}>
+                            <TradingBotsPage />
+                        </Suspense>
+                    )}
+                    {mount('premium-ai', <PremiumAIPage />)}
+                    {mount('quick-bot', <QuickBotPage />)}
+                    {mount('analysis-tools', <AnalysisToolPage />)}
+                    {mount('hedging-tool', <HedgingToolPage />)}
+                    {mount('auto-ai', <AutoAIPage />)}
+                    {mount('signal-ai', <AISignalScannerPage />)}
+                    {mount('manual-trader', <ManualTraderPage />)}
+                    {mount('bulk-trader', <BulkTraderPage />)}
+                    {mount('apex-bot', <ApexBotPage />)}
+                    {mount('copy-trader', <CopyTradingPage />)}
+                    {mount('speedbot', <SpeedbotPage />)}
+                    {mount('automated', <AutomatedPage />)}
+                    {mount(
+                        'chart',
+                        <Suspense fallback={<div className='main-hub__fallback'>Loading chart…</div>}>
+                            <ChartPage show_digits_stats={false} />
+                        </Suspense>
+                    )}
+
+                    {/* Legacy views reachable via voice / deep links */}
+                    {mount('ai-hub', <AITradingHub onOpenDashboard={() => setActiveView('dashboard')} />)}
+                    {mount('ou-bot', <OUBotPage />)}
+                    {mount('ai-scanner', <AISignalScannerPage />)}
+                    {mount('backtest', <BacktestPage />)}
+                    {mount('pro-ai', <ProAiPage />)}
+                    {mount('dual-edge', <DualEdgePage />)}
+                    {mount('algo-pro-ai', <AlgoProAiPage />)}
+                    {mount('tradingview', <TradingViewPage />)}
                 </main>
             </div>
-            <BotDock onNavigate={(view) => setActiveView(view)} />
+            <BotDock onNavigate={view => setActiveView(view)} />
             <AIBotDock />
             <AiScanner />
             <RiskPill />
             <ShellExecBar isDarkMode={!!is_dark_mode_on} onToggleTheme={toggleTheme} />
-            {!landingDone && (
-                <Landing
-                    onEnter={() => {
-                        setLandingDone(true);
-                    }}
-                />
-            )}
         </div>
     );
 });

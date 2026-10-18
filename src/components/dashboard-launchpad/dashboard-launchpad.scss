@@ -196,3 +196,17 @@
         animation: none !important;
     }
 }
+
+.launchpad__caret {
+    display: inline-block;
+    width: 0.55em;
+    height: 1em;
+    margin-left: 0.15em;
+    vertical-align: text-bottom;
+    background: currentColor;
+    animation: launchpad-blink 0.9s steps(1) infinite;
+}
+
+@keyframes launchpad-blink {
+    50% { opacity: 0; }
+}

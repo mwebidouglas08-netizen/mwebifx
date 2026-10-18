@@ -887,9 +887,8 @@ body.hub-view {
     align-items: center;
     gap: 1.2rem;
     padding: 0.85rem 1.6rem;
-    border-bottom: 1px solid var(--shell-border);
-    background: var(--shell-glass);
-    backdrop-filter: blur(12px);
+    border-bottom: 1px solid #e4eaf1;
+    background: #ffffff;
     z-index: 5;
     animation: heroIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 
@@ -907,18 +906,18 @@ body.hub-view {
         width: 3.1rem;
         height: 3.1rem;
         border-radius: 0.9rem;
-        background: linear-gradient(135deg, #22d3ee, #14b8a6 45%, #818cf8);
-        color: #041022;
+        background: linear-gradient(135deg, #27b8c3 0%, #1ea3ad 100%);
+        color: #ffffff;
         font-size: 1.55rem;
         font-weight: 800;
-        box-shadow: 0 6px 18px rgb(34 211 238 / 25%);
+        box-shadow: 0 6px 18px rgb(39 184 195 / 25%);
     }
 
     &__wordmark {
         font-size: 1.45rem;
         font-weight: 800;
         letter-spacing: 0.03em;
-        color: var(--shell-text);
+        color: #12263a;
 
         @media (max-width: 640px) {
             display: none;
@@ -930,7 +929,7 @@ body.hub-view {
         font-size: 1.4rem;
         font-weight: 700;
         letter-spacing: 0.02em;
-        color: var(--shell-text);
+        color: #33506a;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
